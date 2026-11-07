@@ -2,7 +2,8 @@ services:
   - type: web
     name: solana-meme-radar
     runtime: node
-    buildCommand: npm run check && npm run build
+    plan: free
+    buildCommand: npm run check
     startCommand: npm start
     healthCheckPath: /api/health
     autoDeployTrigger: commit
@@ -11,19 +12,3 @@ services:
         value: production
       - key: SOLANA_RPC_URL
         value: https://api.mainnet.solana.com
-      - key: PUMP_API_KEY
-        sync: false
-      - key: X_BEARER_TOKEN
-        sync: false
-      - key: YOUTUBE_API_KEY
-        sync: false
-      - key: REDDIT_CLIENT_ID
-        sync: false
-      - key: REDDIT_CLIENT_SECRET
-        sync: false
-      - key: INSTAGRAM_SOCIAL_ENDPOINT
-        sync: false
-      - key: INSTAGRAM_SOCIAL_TOKEN
-        sync: false
-      - key: TIKTOK_RESEARCH_TOKEN
-        sync: false
