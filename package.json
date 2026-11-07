@@ -1,0 +1,13 @@
+{
+  "name": "solana-meme-radar",
+  "version": "2.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "node serve.mjs",
+    "start": "node serve.mjs",
+    "build": "node build.mjs",
+    "check": "node --check public/app.js && node --check server/radar.mjs && node --check server/api.mjs && node --check serve.mjs && node -e \"JSON.parse(require('fs').readFileSync('openapi.json','utf8'))\""
+  },
+  "engines": {"node": ">=18"}
+}
