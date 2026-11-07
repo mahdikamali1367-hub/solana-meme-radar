@@ -72,11 +72,11 @@ async function security(mint){
 
 async function blueskySignal(t){
   const queries=[t.mint];
-  if(t.symbol && String(t.symbol).length>=3)queries.push(\`${t.symbol} solana\`);
+  if(t.symbol && String(t.symbol).length>=3)queries.push(`${t.symbol} solana`);
   let posts=[];
   for(const q of queries){
     try{
-      const d=await jfetch(\`https://public.api.bsky.app/xrpc/app.bsky.feed.searchPosts?q=${encodeURIComponent(q)}&limit=20&sort=latest\`,{},8000);
+      const d=await jfetch(`https://public.api.bsky.app/xrpc/app.bsky.feed.searchPosts?q=${encodeURIComponent(q)}&limit=20&sort=latest`,{},8000);
       posts=Array.isArray(d?.posts)?d.posts:[];
       if(posts.length)break;
     }catch{}
