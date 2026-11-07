@@ -69,6 +69,28 @@ async function security(mint){
   }catch{}
   return {score:clamp(score),coverage,mintDisabled,freezeDisabled,top10,flags};
 }
+
+async function blueskySignal(t){
+  const queries=[t.mint];
+  if(t.symbol && String(t.symbol).length>=3)queries.push(\`${t.symbol} solana\`);
+  let posts=[];
+  for(const q of queries){
+    try{
+      const d=await jfetch(\`https://public.api.bsky.app/xrpc/app.bsky.feed.searchPosts?q=${encodeURIComponent(q)}&limit=20&sort=latest\`,{},8000);
+      posts=Array.isArray(d?.posts)?d.posts:[];
+      if(posts.length)break;
+    }catch{}
+  }
+  const cutoff=Date.now()-2*60*60*1000;
+  const recent=posts.filter(p=>{
+    const ts=Date.parse(p?.record?.createdAt||p?.indexedAt||'');
+    return Number.isFinite(ts)&&ts>=cutoff;
+  });
+  let engagement=0;
+  for(const p of recent)engagement+=num(p.likeCount)+num(p.repostCount)*2+num(p.replyCount)+num(p.quoteCount)*2;
+  return {mentions2h:recent.length,engagement2h:engagement};
+}
+
 function socialMeta(seed,pair){
   const links=[...(seed.links||[]),...(pair?.info?.socials||[]),...(pair?.info?.websites||[])];
   const raw=links.map(x=>({type:String(x?.type||x?.label||'').toLowerCase(),url:String(x?.url||'')})).filter(x=>x.url);
@@ -135,15 +157,26 @@ async function build(){
       buys5m,sells5m,txns5m:buys5m+sells5m,priceChange5m:num(p.priceChange?.m5),security:sec
     };
     t.socialSources=socialMeta(s,p);
+    t.bluesky={mentions2h:0,engagement2h:0};
     t.trend=trendScore(t,s);
     t.verdict=verdict(t); out.push(t); await sleep(55);
+  }
+  const pre=[...out].sort((a,b)=>b.trend.score-a.trend.score).slice(0,10);
+  for(const t of pre){
+    const b=await blueskySignal(t); t.bluesky=b;
+    if(b.mentions2h>0){
+      t.trend.score=clamp(t.trend.score+Math.min(18,b.mentions2h*3)+Math.min(10,Math.log10(1+b.engagement2h)*4));
+      t.trend.reasons.push(`Bluesky: ${b.mentions2h} mention / 2h`);
+      if(!t.trend.sources.includes('Bluesky'))t.trend.sources.push('Bluesky');
+    }
+    t.verdict=verdict(t);
   }
   const rank={'STRONG WATCH':4,'WATCH':3,'LOW SIGNAL':2,'SKIP':1};
   out.sort((a,b)=>(rank[b.verdict]-rank[a.verdict])||(b.trend.score-a.trend.score)||(b.volume5m-a.volume5m));
   const strong=out.filter(x=>x.verdict==='STRONG WATCH').length;
   const trending=out.filter(x=>x.trend.score>=50).length;
   const data={ok:true,generatedAt:new Date().toISOString(),refreshSeconds:60,count:out.length,strong,trending,tokens:out,
-    sourceStatus:{dexscreener:'live',solanaRpc:'live',x:process.env.X_BEARER_TOKEN?'configured':'needs API key',youtube:process.env.YOUTUBE_API_KEY?'configured':'needs API key',reddit:process.env.REDDIT_CLIENT_ID?'configured':'needs OAuth',instagram:process.env.INSTAGRAM_SOCIAL_TOKEN?'configured':'needs API access',tiktok:process.env.TIKTOK_RESEARCH_TOKEN?'configured':'needs research access'},
+    sourceStatus:{dexscreener:'live',solanaRpc:'live',bluesky:'live-public',x:process.env.X_BEARER_TOKEN?'configured':'needs API key',youtube:process.env.YOUTUBE_API_KEY?'configured':'needs API key',reddit:process.env.REDDIT_CLIENT_ID?'configured':'needs OAuth',instagram:process.env.INSTAGRAM_SOCIAL_TOKEN?'configured':'needs API access',tiktok:process.env.TIKTOK_RESEARCH_TOKEN?'configured':'needs research access'},
     disclaimer:'Social Trend Score فعلاً از سیگنال‌های زنده DEX، Boost، لینک‌های اجتماعی و مومنتوم بازار ساخته می‌شود. نبود API شبکه اجتماعی به معنی نبود ترند نیست. هیچ توکنی بدون ریسک یا تضمین‌شده نیست.'};
   cache={at:Date.now(),data};return data;
 }
