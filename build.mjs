@@ -1,0 +1,13 @@
+import { cp, mkdir, rm, writeFile } from 'node:fs/promises';
+await rm('dist',{recursive:true,force:true});
+await mkdir('dist/client',{recursive:true});
+await mkdir('dist/server/server',{recursive:true});
+await cp('public','dist/client',{recursive:true});
+await cp('public','dist/server/public',{recursive:true});
+await cp('server','dist/server/server',{recursive:true});
+await cp('serve.mjs','dist/server/serve.mjs');
+await cp('openapi.json','dist/server/openapi.json');
+await cp('.env.example','dist/server/.env.example');
+await writeFile('dist/server/package.json',JSON.stringify({name:'solana-meme-radar-server',private:true,type:'module',scripts:{start:'node serve.mjs'},engines:{node:'>=18'}},null,2));
+await writeFile('dist/README.txt','Live mode: run the self-contained Node app in dist/server. Copy .env.example to .env, configure credentials, then `node serve.mjs`.\n');
+console.log('Built standalone Node app in dist/server and static mirror in dist/client');
