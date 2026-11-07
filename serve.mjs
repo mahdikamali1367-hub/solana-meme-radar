@@ -87,13 +87,14 @@ async function security(mint){
       top5=topHolders.slice(0,5).reduce((a,b)=>a+b.pct,0);
       top10=topHolders.slice(0,10).reduce((a,b)=>a+b.pct,0);
       coverage+=35;
-      if(largestHolder<=2.5&&top5<=8&&top10<=15){holderGrade='A';score+=20}
-      else if(largestHolder<=4&&top5<=12&&top10<=20){holderGrade='B';score+=12}
-      else if(largestHolder<=5&&top5<=15&&top10<=25){holderGrade='C';score+=2}
+      if(top10>=10&&top10<=15&&largestHolder<=2.5&&top5<=8){holderGrade='A';score+=20}
+      else if(top10>=10&&top10<=20&&largestHolder<=4&&top5<=12){holderGrade='B';score+=12}
+      else if(top10>=10&&top10<=20&&largestHolder<=5&&top5<=15){holderGrade='C';score+=2}
       else {holderGrade='F';score-=35}
+      if(top10<10)flags.push('Top10 کمتر از بازه هدف 10% است');
+      if(top10>20)flags.push('Top10 بیشتر از 20% است');
       if(largestHolder>5)flags.push('یک مالک بیش از 5% عرضه دارد');
       if(top5>15)flags.push('تمرکز Top5 بالاست');
-      if(top10>25)flags.push('تمرکز Top10 بالاست');
     }
   }catch{}
   const holderPolicyPassed=['A','B','C'].includes(holderGrade);
@@ -264,9 +265,9 @@ async function build(){
   const trending=out.filter(x=>x.trend.score>=50).length;
   const data={ok:true,generatedAt:new Date().toISOString(),refreshSeconds:60,count:out.length,strong,trending,tokens:out,
     sourceStatus:{dexscreener:'live',solanaRpc:'live',bluesky:'live-public',x:process.env.X_BEARER_TOKEN?'configured':'needs API key',youtube:process.env.YOUTUBE_API_KEY?'configured':'needs API key',reddit:process.env.REDDIT_CLIENT_ID?'configured':'needs OAuth',instagram:process.env.INSTAGRAM_SOCIAL_TOKEN?'configured':'needs API access',tiktok:process.env.TIKTOK_RESEARCH_TOKEN?'configured':'needs research access'},
-    holderPolicy:{gradeA:{largestMaxPct:2.5,top5MaxPct:8,top10MaxPct:15},gradeB:{largestMaxPct:4,top5MaxPct:12,top10MaxPct:20},gradeC:{largestMaxPct:5,top5MaxPct:15,top10MaxPct:25},hardFail:{largestAbovePct:5,top5AbovePct:15,top10AbovePct:25},unknownFailsStrong:true},
+    holderPolicy:{top10TargetPct:{min:10,max:20},gradeA:{largestMaxPct:2.5,top5MaxPct:8,top10RangePct:[10,15]},gradeB:{largestMaxPct:4,top5MaxPct:12,top10RangePct:[10,20]},gradeC:{largestMaxPct:5,top5MaxPct:15,top10RangePct:[10,20]},hardFail:{largestAbovePct:5,top5AbovePct:15,top10OutsidePct:[10,20]},unknownFailsStrong:true},
     activityPolicy:{probableOrganicMin:72,highSecurityMin:58,method:'aggregate heuristics; not proof of human identity'},
-    disclaimer:'Organic Activity یک تخمین ضدربات/ضدواش بر پایه الگوهای بازار است و انسان‌بودن واقعی را اثبات نمی‌کند. MAX SECURITY نیازمند فعالیت PROBABLE ORGANIC، Mint/Freeze غیرفعال، Holder Grade A/B، Security>=85 و Liquidity>=10K است. هیچ فیلتر آن‌چین کلاهبرداری را 100% رد نمی‌کند.'};
+    disclaimer:'فیلتر هولدر هدف می‌گیرد که مجموع Top10 بین 10% تا 20% باشد؛ خارج این بازه رد می‌شود. Organic Activity یک تخمین ضدربات/ضدواش است و انسان‌بودن واقعی را اثبات نمی‌کند. MAX SECURITY نیازمند PROBABLE ORGANIC، Mint/Freeze غیرفعال، Holder Grade A/B، Security>=85 و Liquidity>=10K است. هیچ فیلتر آن‌چین کلاهبرداری را 100% رد نمی‌کند.'};
   cache={at:Date.now(),data};return data;
 }
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -286,7 +287,7 @@ button,input,select{background:#101c31;color:#fff;border:1px solid #29415f;borde
 #status{color:#9db0cc}.warn{background:#271b0d;border:1px solid #5d4120;padding:10px;border-radius:10px;color:#ffd087;margin-bottom:14px}.sources{font-size:11px;color:#8fa3c2;margin-bottom:15px}
 @media(max-width:650px){.stats{grid-template-columns:1fr 1fr}.summary{grid-template-columns:1fr 1fr}.wrap{padding:12px}}
 </style></head><body><div class="wrap"><h1>🚀 Solana Meme Radar</h1><div class="sub">رادار زنده + Social Trend Score — بروزرسانی خودکار هر ۶۰ ثانیه</div>
-<div class="warn">فیلتر امنیت + ضدربات فعال است. MAX SECURITY فقط با فعالیت PROBABLE ORGANIC، Mint/Freeze غیرفعال، هولدرهای مناسب و نقدینگی کافی داده می‌شود. Organic بودن تخمین رفتاری است و هویت انسانی را ۱۰۰٪ اثبات نمی‌کند.</div>
+<div class="warn">فیلتر امنیت + ضدربات فعال است. مجموع Top10 باید بین ۱۰٪ تا ۲۰٪ باشد؛ بزرگ‌ترین هولدر و Top5 هم سقف جداگانه دارند. MAX SECURITY فقط با فعالیت PROBABLE ORGANIC و شرایط امنیتی کامل داده می‌شود.</div>
 <div class="summary"><div class="sum"><div class="k">توکن‌های دیده‌شده</div><div class="big" id="sCount">–</div></div><div class="sum"><div class="k">ترند Score≥50</div><div class="big" id="sTrend">–</div></div><div class="sum"><div class="k">Strong Watch</div><div class="big" id="sStrong">–</div></div><div class="sum"><div class="k">Refresh</div><div class="big">60s</div></div></div>
 <div id="sources" class="sources"></div>
 <div class="bar"><button onclick="load()">↻ بروزرسانی</button><input id="q" placeholder="جستجو نام / ticker / CA" oninput="render()"><select id="vf" onchange="render()"><option value="">همه وضعیت‌ها</option><option>STRONG WATCH</option><option>WATCH</option><option>LOW SIGNAL</option><option>SKIP</option></select><select id="sf" onchange="render()"><option value="0">همه امتیازهای ترند</option><option value="50">Trend ≥ 50</option><option value="70">Trend ≥ 70</option></select><select id="secf" onchange="render()"><option value="">همه امنیت‌ها</option><option>MAX SECURITY</option><option>HIGH</option><option>REVIEW</option><option>REJECT</option></select><select id="actf" onchange="render()"><option value="">همه فعالیت‌ها</option><option>PROBABLE ORGANIC</option><option>MIXED</option><option>BOT RISK</option></select><span id="status">در حال بارگذاری...</span></div>
