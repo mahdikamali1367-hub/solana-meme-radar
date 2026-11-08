@@ -1118,7 +1118,7 @@ async function buildFresh(){
     orderFlowPolicy:{buyerPower:'buy transaction count / total buy+sell transactions; not dollar buy volume',strongBuyer:'5m >=55% and 1h >=51% when available',volumeQuality:'absolute volume + tx count + volume/liquidity sanity check'},
     knowledgeEngine:{marketQuality:'transparency + liquidity + data coverage',chartDiscipline:'trend + FOMO + pump/dump guard',academy:'automated Solana RPC + Token-2022 extension audit + RugCheck full/summary + Jupiter sell-route quote + DexScreener sell evidence; unavailable evidence stays UNKNOWN'},
     ageBuckets:{fresh:'0-24h',day:'24h-7d',week:'7d-30d discovery horizon'},
-    entryExitPolicy:{entry:'buyer power > seller power + >=1 tracked net buyer >=100 USD + holder policy pass + no detected bot-wash; DEXScreener momentum is advisory/ranking only; critical safety/live-exit overrides remain',exit:'live exit/whale sell/seller dominance/Trust Guard block; price invalidation is a risk reference, not guaranteed execution'},
+    entryExitPolicy:{entry:'buyer power > seller power + holder policy pass + no detected bot-wash; no minimum buyer USD threshold; DEXScreener momentum is advisory/ranking only; critical safety/live-exit overrides remain',exit:'live exit/whale sell/seller dominance/Trust Guard block; price invalidation is a risk reference, not guaranteed execution'},
     trustGuard:{strongSignalRequires:'2+ holder snapshots, 2 consecutive good scans, >=45 seconds stable confirmation, buyer strength, healthy volume, no holder-outflow risk',downgrade:'holder movement, seller dominance, whale/tracked exits or pump cooldown immediately remove strong status'},
     signalWindows:{short:'5m-1h',medium:'1h-6h',long:'6h-24h',securityGate:'HIGH/MAX requires zero manual, zero unknown and zero failed automated security checks; unknown evidence cannot receive strong approval'},
     disclaimer:'قانون هولدرها: هولدر شماره 1 باید کمتر از 10% و هرکدام از هولدرهای شماره 2 تا 10 باید کمتر از 5% داشته باشند. مجموع Top10 فقط جهت اطلاع نمایش داده می‌شود و شرط رد نیست. Organic Activity یک تخمین ضدربات/ضدواش است. هیچ فیلتر آن‌چین کلاهبرداری را 100% رد نمی‌کند.'};
@@ -1879,7 +1879,7 @@ html,body,.shell,.panel,.list{overflow-anchor:none}
 </section>
 <details class="accordion" open>
     <summary>🔥 پیشنهادهای اولویت‌دار</summary>
-    <div class="accordion-body"><p class="muted" style="font-size:11px">منطق ورود: قدرت خریدار باید از فروشنده بیشتر باشد، حداقل یک خریدار ردیابی‌شده 100$+ وجود داشته باشد، قانون هولدر پاس شود و Bot/Wash رد شود. فیلتر مومنتوم DEXScreener دیگر شرط قفل‌کننده نیست و فقط قدرت/کیفیت سیگنال را رتبه‌بندی می‌کند.</p><div class="subfilters">
+    <div class="accordion-body"><p class="muted" style="font-size:11px">منطق ورود: قدرت خریدار باید از فروشنده بیشتر باشد، قانون هولدر پاس شود، Bot/Wash تشخیص داده نشود و هشدار امنیتی/خروج فعال نباشد. هیچ حداقل مبلغ خریدی برای فعال شدن ورود وجود ندارد. فیلتر مومنتوم DEXScreener فقط برای رتبه‌بندی کیفیت سیگنال است.</p><div class="subfilters">
 <label>کوتاه‌مدت<select class="signal-filter" data-filter="short"><option value="">همه</option><option value="STRONG">قوی</option><option value="POSITIVE">مثبت</option><option value="NEUTRAL">خنثی</option><option value="WAIT_DATA">داده ناکافی</option><option value="AVOID">ورود نکن</option><option value="BLOCKED">مسدود امنیتی</option></select></label>
 <label>میان‌مدت<select class="signal-filter" data-filter="medium"><option value="">همه</option><option value="STRONG">قوی</option><option value="POSITIVE">مثبت</option><option value="NEUTRAL">خنثی</option><option value="WAIT_DATA">داده ناکافی</option><option value="AVOID">ورود نکن</option><option value="BLOCKED">مسدود امنیتی</option></select></label>
 <label>بلندمدت<select class="signal-filter" data-filter="long"><option value="">همه</option><option value="STRONG">قوی</option><option value="POSITIVE">مثبت</option><option value="NEUTRAL">خنثی</option><option value="WAIT_DATA">داده ناکافی</option><option value="AVOID">ورود نکن</option><option value="BLOCKED">مسدود امنیتی</option></select></label>
@@ -2281,12 +2281,8 @@ function momentumChip(t){
 
 function entryQualityGate(t){
   if(!t)return {ok:false,reasons:['توکن نامشخص']};
-  var fl=t.flow||{},act=t.activity||{},tr=findTracked(t.mint),reasons=[];
+  var fl=t.flow||{},act=t.activity||{},reasons=[];
   var momentum=dexscreenerMomentumFilter(t);
-
-  var buyers100=tr&&Array.isArray(tr.convictionHolders)?tr.convictionHolders:[];
-  var buyer100Ok=buyers100.length>=1;
-  if(!buyer100Ok)reasons.push('خریدار ردیابی‌شده 100$+ تأیید نشده');
 
   var botFree=act.label!=='BOT RISK'&&
     !(act.flags||[]).some(function(x){return /ربات|wash|فرکانس بسیار بالا|تراکنش‌های بسیار ریز/i.test(String(x))});
@@ -2297,13 +2293,9 @@ function entryQualityGate(t){
   var buyerDominant=buyerPower>sellerPower;
   if(!buyerDominant)reasons.push('قدرت خریدار از فروشنده بیشتر نیست');
 
-  // Momentum is advisory/ranking only. Do not block a valid entry solely because
-  // the token misses one or more DEXScreener momentum thresholds.
   return {
-    ok:buyer100Ok&&botFree&&buyerDominant,
-    buyer100Ok,botFree,buyerDominant,momentum,
-    buyers100Count:buyers100.length,
-    buyers100Usd:buyers100.reduce(function(a,x){return a+Number(x.buyUsd||0)},0),
+    ok:botFree&&buyerDominant,
+    botFree,buyerDominant,momentum,
     buyerPower,sellerPower,
     reasons
   };
@@ -2359,7 +2351,7 @@ function tradePlan(t){
       status:'ENTRY',
       confidence:(buyerPower>=60&&q.momentum&&q.momentum.score>=70)?'HIGH':buyerPower>=55?'MEDIUM':'EARLY',
       entry:p,entryLow,entryHigh,exit:invalidation,
-      reason:'ورود تأیید شد: قدرت خریدار '+buyerPower+'% در برابر فروشنده '+sellerPower+'% · '+q.buyers100Count+' خریدار 100$+ · مومنتوم DEX '+q.momentum.passed+'/'+q.momentum.total+' · بدون الگوی Bot/Wash',
+      reason:'ورود تأیید شد: قدرت خریدار '+buyerPower+'% در برابر فروشنده '+sellerPower+'% · '+q.buyers100Count+' خریدار ردیابی‌شده · مومنتوم DEX '+q.momentum.passed+'/'+q.momentum.total+' · بدون الگوی Bot/Wash',
       riskPct:riskPct*100,buyerPower,sellerPower,edge,quality:q
     };
   }
@@ -2376,7 +2368,7 @@ function tradePlanChips(t){
     var zone=(p.entryLow&&p.entryHigh)?fmtPrice(p.entryLow)+' تا '+fmtPrice(p.entryHigh):fmtPrice(p.entry);
     var label=p.confidence==='HIGH'?'🟢 نقطه ورود قوی':p.confidence==='MEDIUM'?'🟢 نقطه ورود فعال':'🟡 ورود زودهنگام';
     return '<span class="entry-chip entry-ready">'+label+' · '+zone+'</span>'+
-      (p.quality?'<span class="entry-chip entry-ready">💵 '+Number(p.quality.buyers100Count||0)+' خریدار 100$+</span><span class="entry-chip entry-ready">📊 DEX '+Number(p.quality.momentum?.passed||0)+'/'+Number(p.quality.momentum?.total||0)+'</span>':'')+
+      (p.quality?'<span class="entry-chip entry-ready">📊 DEX '+Number(p.quality.momentum?.passed||0)+'/'+Number(p.quality.momentum?.total||0)+'</span>':'')+
       (p.quality&&p.quality.momentum?'<span class="entry-chip entry-ready">📊 مومنتوم '+Number(p.quality.momentum.passed||0)+'/'+Number(p.quality.momentum.total||0)+'</span>':'')+
       '<span class="entry-chip entry-exit">🛑 خروج/ابطال · '+fmtPrice(p.exit)+'</span>';
   }
