@@ -562,103 +562,7 @@ function renderFeatured(){
 
  featuredGrid.innerHTML=rows.map(function(x){
   var t=x.t,wh=x.wh,sm=x.sm;
-  return '<div class="card"><div class="top"><div><div class="name">🔥 '+esc(t.name)+' <small>
- const map=new Map();
- for(const t of (data||[])){
-  const k=t.mint; if(!k)continue;
-  map.set(k,{address:k,symbol:t.symbol,name:t.name,meme:true,security:t.security,trend:t.trend,verdict:t.verdict,score:1,dexUrl:t.dexUrl||''});
- }
- for(const t of (smartData?.tokens||[])){
-  const k=t.address;if(!k)continue;
-  const x=map.get(k)||{address:k,symbol:t.symbol,name:t.name,score:0};
-  x.smart=true;x.smartMoneyCount=t.smartMoneyCount||0;x.smartValue=t.totalValueUsd||0;x.security=x.security||t.security;x.dexUrl=x.dexUrl||t.dexUrl||'';x.score+=2+(t.smartMoneyCount||0);map.set(k,x);
- }
- for(const e of (liveData?.whaleBuys||[])){
-  const k=e.tokenAddress;if(!k)continue;
-  const x=map.get(k)||{address:k,symbol:e.token,name:e.token,score:0};
-  x.whale=true;x.whaleUsd=(x.whaleUsd||0)+num(e.tradeUsd);x.whaleCount=(x.whaleCount||0)+1;x.score+=2;map.set(k,x);
- }
- const rows=[...map.values()].filter(x=>(x.smart||x.whale)&&x.meme).sort((a,b)=>b.score-a.score).slice(0,12);
- unifiedGrid.innerHTML=rows.map(x=>{
-  const reasons=[x.meme?'میم‌کوین رادار':'',x.smart?('اسمارت‌مانی ×'+x.smartMoneyCount):'',x.whale?('خرید نهنگ ×'+x.whaleCount):''].filter(Boolean);
-  return '<div class="card"><div class="top"><div><div class="name">'+esc(x.symbol||x.name||'?')+'</div><div class="mint">'+esc(x.address)+'</div></div><span class="badge strong">تأیید چندمنبعی</span></div>'+
-   '<div class="chips">'+reasons.map(r=>'<span class="chip">'+esc(r)+'</span>').join('')+'</div>'+
-   '<div class="stats"><div class="stat"><div class="k">ارزش پوزیشن اسمارت‌مانی</div><div class="v">'+money(x.smartValue||0)+'</div></div><div class="stat"><div class="k">خرید نهنگ</div><div class="v">'+money(x.whaleUsd||0)+'</div></div><div class="stat"><div class="k">امنیت</div><div class="v">'+esc(faSecurity(x.security?.tier||'REVIEW'))+'</div></div></div>'+
-   '<div class="links" style="margin-top:10px"><a target="_blank" rel="noopener" href="'+esc(x.dexUrl||dexSearch(x.address))+'">📈 مشاهده چارت در DexScreener</a><a target="_blank" rel="noopener" href="https://solscan.io/token/'+esc(x.address)+'">سول‌اسکن</a></div></div>'
- }).join('')||'<p>فعلاً ارز مشترک بین میم‌کوین + اسمارت‌مانی + خرید نهنگ پیدا نشده.</p>';
-}
-
-async function loadSmart(){
- try{
-  const r=await fetch('/api/v1/smart-money');const d=await r.json();smartData=d;
-  if(!d.configured){smartStatus.textContent='برای ردیابی زنده Smart Money، FOMO_API_KEY رایگان را در Render اضافه کن.';smartGrid.innerHTML='';return}
-  smartStatus.textContent='آخرین تصویر اسمارت‌مانی: '+new Date(d.generatedAt).toLocaleString('fa-IR')+' | '+d.traders.length+' کیف‌پول سودده منتخب';
-  smartGrid.innerHTML=(d.tokens||[]).map(t=>{
-   const hs=t.security||{};const pass=hs.mintDisabled===true&&hs.freezeDisabled===true&&hs.holderPolicyPassed;
-   const tr=(t.traders||[]).map(x=>'<span class="chip">'+esc(x.handle||'wallet')+' '+money(x.valueUsd)+'</span>').join('');
-   return '<div class="card"><div class="top"><div><div class="name">'+esc(t.symbol||'?')+'</div><div class="mint">'+esc(t.address)+'</div></div><span class="badge '+(pass?'strong':'watch')+'">'+(pass?'امنیت تأیید':'نیاز به بررسی')+'</span></div>'+
-   '<div class="stats"><div class="stat"><div class="k">کیف‌پول اسمارت‌مانی</div><div class="v">'+t.smartMoneyCount+'</div></div><div class="stat"><div class="k">ارزش پوزیشن فعلی</div><div class="v">'+money(t.totalValueUsd)+'</div></div><div class="stat"><div class="k">Market Cap</div><div class="v">'+money(t.marketCap)+'</div></div><div class="stat"><div class="k">Liquidity</div><div class="v">'+money(t.liquidity)+'</div></div><div class="stat"><div class="k">Top10</div><div class="v">'+pct(hs.top10)+'</div></div><div class="stat"><div class="k">بزرگ‌ترین هولدر</div><div class="v">'+pct(hs.largestHolder)+'</div></div></div>'+
-   '<div class="chips">'+tr+'</div><div class="links" style="margin-top:10px"><a target="_blank" rel="noopener" href="'+esc(t.dexUrl||dexSearch(t.address))+'">📈 مشاهده چارت در DexScreener</a><a target="_blank" rel="noopener" href="https://solscan.io/token/'+esc(t.address)+'">سول‌اسکن</a></div></div>'
-  }).join('')||'<p>فعلاً پوزیشن Solana قابل‌نمایش پیدا نشد.</p>';
- }catch(e){smartStatus.textContent='Smart Money فعلاً در دسترس نیست.'}
-}
-
-loadSmart();setInterval(loadSmart,6*60*60*1000);
-
-let seenLiveEventIds=new Set();
-async function loadLiveSmart(){
- try{
-  const r=await fetch('/api/v1/smart-money-live');const d=await r.json();liveData=d;
-  const delay=d.delaySeconds==null?'نامشخص':(d.delaySeconds+'s');
-  liveSmartStatus.textContent=(d.connected?'● متصل':'○ قطع')+' | تأخیر: '+delay+(d.keyConfigured?' | کلید API فعال':' | بدون کلید/حالت محدود');
-  const clusters=(d.exitClusters||[]).slice(0,5);
-  liveExitBanner.innerHTML=clusters.filter(x=>x.severity==='MULTI-WALLET EXIT').map(x=>'<div class="warn" style="border-color:#a43848;color:#ff9bad">🚨 خروج همزمان چند کیف‌پول: '+esc(x.token)+' — '+x.uniqueSellers+' تریدر در ۳۰ دقیقه اخیر شروع به فروش کرده‌اند.</div>').join('');
-  const whales=(d.whaleBuys||[]).slice(0,12);
-  whaleStatus.textContent='خرید نهنگ = معامله ≥ ۵٬۰۰۰ دلار یا پوزیشن ≥ ۲۵٬۰۰۰ دلار | '+whales.length+' خرید بزرگ اخیر';
-  whaleGrid.innerHTML=whales.map(e=>'<div class="card"><div class="top"><div><div class="name">🐋 '+esc(e.token)+'</div><div class="mint">'+esc(e.tokenAddress||'')+'</div></div><span class="badge strong">خرید نهنگ</span></div><div class="stats"><div class="stat"><div class="k">تریدر</div><div class="v">'+esc(e.trader)+'</div></div><div class="stat"><div class="k">اندازه خرید</div><div class="v">'+(e.tradeUsd!=null?money(e.tradeUsd):'نامشخص')+'</div></div><div class="stat"><div class="k">ارزش پوزیشن</div><div class="v">'+(e.positionValueUsd!=null?money(e.positionValueUsd):'نامشخص')+'</div></div></div><div class="links" style="margin-top:10px"><a target="_blank" rel="noopener" href="https://solscan.io/token/'+esc(e.tokenAddress||'')+'">سول‌اسکن</a></div></div>').join('')||'<p>فعلاً خرید نهنگ تازه‌ای ثبت نشده.</p>';
-  renderFeatured();renderUnified();
-  const events=(d.events||[]).slice(0,18);
-  liveSmartGrid.innerHTML=events.map(e=>{
-   const sell=e.alertType==='sell';
-   const cls=sell?'skip':'strong';
-   const sev=faSeverity(e.severity||e.alertType.toUpperCase());
-   const when=new Date(e.ts).toLocaleTimeString('fa-IR');
-   const amount=e.tradeUsd!=null?money(e.tradeUsd):'اندازه نامشخص';
-   const remain=e.positionVerified?(e.exitStatus+' | باقی‌مانده '+money(e.remainingValueUsd||0)):'';
-   return '<div class="card"><div class="top"><div><div class="name">'+(sell?'🔴':'🟢')+' '+esc(e.token)+'</div><div class="mint">'+esc(e.tokenAddress||'')+'</div></div><span class="badge '+cls+'">'+esc(sev)+'</span></div>'+
-    '<div class="stats"><div class="stat"><div class="k">تریدر</div><div class="v">'+esc(e.trader)+'</div></div><div class="stat"><div class="k">جهت</div><div class="v">'+esc(faSide(e.alertType))+'</div></div><div class="stat"><div class="k">اندازه معامله</div><div class="v">'+amount+'</div></div><div class="stat"><div class="k">زمان</div><div class="v">'+when+'</div></div><div class="stat"><div class="k">اسمارت‌مانی ردیابی‌شده</div><div class="v">'+(e.trackedSmart?'بله':'—')+'</div></div><div class="stat"><div class="k">وضعیت پوزیشن</div><div class="v">'+esc(remain||'در انتظار/نامشخص')+'</div></div></div>'+
-    '<div class="links" style="margin-top:10px"><a target="_blank" rel="noopener" href="'+esc(dexSearch(e.tokenAddress||''))+'">📈 مشاهده چارت در DexScreener</a><a target="_blank" rel="noopener" href="https://solscan.io/token/'+esc(e.tokenAddress||'')+'">توکن در سول‌اسکن</a>'+(e.txHash?'<a target="_blank" rel="noopener" href="https://solscan.io/tx/'+esc(e.txHash)+'">تراکنش</a>':'')+'</div></div>'
-  }).join('')||'<p>هنوز رویداد خرید/فروش جدیدی دریافت نشده.</p>';
-
-  for(const e of events){
-   if(seenLiveEventIds.has(e.eventId))continue;
-   seenLiveEventIds.add(e.eventId);
-   if(e.alertType==='sell'&&Notification?.permission==='granted'){
-    new Notification('هشدار خروج اسمارت‌مانی: '+e.token,{body:faSeverity(e.severity||'SELL')+' — '+e.trader});
-   }
-  }
- }catch(e){liveSmartStatus.textContent='جریان زنده فعلاً در دسترس نیست.'}
-}
-
-loadLiveSmart();setInterval(loadLiveSmart,5000);
-</script></body></html>`;
-
-createServer(async(req,res)=>{
-  const url=new URL(req.url,'http://localhost');
-  try{
-    if(url.pathname==='/api/health'){res.writeHead(200,{'content-type':'application/json',...headers});return res.end(JSON.stringify({ok:true,time:new Date().toISOString()}))}
-    if(url.pathname==='/api/v1/smart-money'){const sm=await buildSmartMoney();res.writeHead(200,{'content-type':'application/json; charset=utf-8','cache-control':'no-store',...headers});return res.end(JSON.stringify(sm))}
-    if(url.pathname==='/api/v1/smart-money-live'){const sm=liveSmartMoneyPayload();res.writeHead(200,{'content-type':'application/json; charset=utf-8','cache-control':'no-store',...headers});return res.end(JSON.stringify(sm))}
-    if(url.pathname==='/api/v1/tokens'||url.pathname==='/api/radar'||url.pathname==='/api/v1/trending'){
-      const d=await build(); let body=d;
-      if(url.pathname==='/api/v1/trending')body={...d,tokens:[...d.tokens].sort((a,b)=>b.trend.score-a.trend.score)};
-      res.writeHead(200,{'content-type':'application/json; charset=utf-8','cache-control':'no-store',...headers});return res.end(JSON.stringify(body));
-    }
-    if(url.pathname==='/'){res.writeHead(200,{'content-type':'text/html; charset=utf-8','cache-control':'no-store',...headers});return res.end(html())}
-    res.writeHead(404,headers);res.end('Not found');
-  }catch(e){res.writeHead(502,{'content-type':'application/json',...headers});res.end(JSON.stringify({ok:false,error:String(e?.message||e)}))}
-}).listen(PORT,'0.0.0.0',()=>console.log('Solana Meme Radar v3 live on '+PORT));
-+esc(t.symbol)+'</small></div><div class="mint">'+esc(t.mint)+'</div></div><span class="badge strong">امتیاز '+x.score+'/100</span></div>'+
+  return '<div class="card"><div class="top"><div><div class="name">🔥 '+esc(t.name)+' <small>$'+esc(t.symbol)+'</small></div><div class="mint">'+esc(t.mint)+'</div></div><span class="badge strong">امتیاز '+x.score+'/100</span></div>'+
    '<div class="stats"><div class="stat"><div class="k">خرید نهنگ</div><div class="v">'+money(wh?wh.usd:0)+'</div></div><div class="stat"><div class="k">تعداد خرید نهنگ</div><div class="v">'+(wh?wh.count:0)+'</div></div><div class="stat"><div class="k">کیف‌پول اسمارت‌مانی</div><div class="v">'+(sm?sm.smartMoneyCount:0)+'</div></div>'+
    '<div class="stat"><div class="k">تغییر ۵ دقیقه</div><div class="v">'+Number(t.priceChange5m||0).toFixed(1)+'%</div></div><div class="stat"><div class="k">حجم ۵ دقیقه</div><div class="v">'+money(t.volume5m)+'</div></div><div class="stat"><div class="k">امنیت</div><div class="v">'+esc(faSecurity(t.security&&t.security.tier?t.security.tier:'REVIEW'))+'</div></div></div>'+
    '<div class="chips">'+x.why.slice(0,6).map(function(r){return '<span class="chip">'+esc(r)+'</span>'}).join('')+'</div>'+
@@ -720,7 +624,7 @@ async function loadLiveSmart(){
   const whales=(d.whaleBuys||[]).slice(0,12);
   whaleStatus.textContent='خرید نهنگ = معامله ≥ ۵٬۰۰۰ دلار یا پوزیشن ≥ ۲۵٬۰۰۰ دلار | '+whales.length+' خرید بزرگ اخیر';
   whaleGrid.innerHTML=whales.map(e=>'<div class="card"><div class="top"><div><div class="name">🐋 '+esc(e.token)+'</div><div class="mint">'+esc(e.tokenAddress||'')+'</div></div><span class="badge strong">خرید نهنگ</span></div><div class="stats"><div class="stat"><div class="k">تریدر</div><div class="v">'+esc(e.trader)+'</div></div><div class="stat"><div class="k">اندازه خرید</div><div class="v">'+(e.tradeUsd!=null?money(e.tradeUsd):'نامشخص')+'</div></div><div class="stat"><div class="k">ارزش پوزیشن</div><div class="v">'+(e.positionValueUsd!=null?money(e.positionValueUsd):'نامشخص')+'</div></div></div><div class="links" style="margin-top:10px"><a target="_blank" rel="noopener" href="https://solscan.io/token/'+esc(e.tokenAddress||'')+'">سول‌اسکن</a></div></div>').join('')||'<p>فعلاً خرید نهنگ تازه‌ای ثبت نشده.</p>';
-  renderUnified();
+  renderFeatured();renderUnified();
   const events=(d.events||[]).slice(0,18);
   liveSmartGrid.innerHTML=events.map(e=>{
    const sell=e.alertType==='sell';
