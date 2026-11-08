@@ -783,6 +783,8 @@ function securityGate(t){
   if(num(mq.score)<65)cautions.push('کیفیت بازار/داده متوسط یا پایین');
   if(sec.tier==='REVIEW')cautions.push('امنیت هنوز کامل تأیید نشده');
   if(chart.fomoRisk==='HIGH')cautions.push('ریسک FOMO بالا');
+  if(num(academy.unknown)>0)cautions.push('شواهد امنیتی خودکار هنوز کامل نیست: '+num(academy.unknown)+' مورد نامشخص');
+  if(num(academy.fail)>0)hard.push('یک یا چند چک امنیتی خودکار رد شده');
   const blocked=hard.length>0;
   const level=blocked?'BLOCK':cautions.length?'CAUTION':'PASS';
   return {level,blocked,hard,cautions,automaticChecks:(academy.checks||[]).length,unknownChecks:num(academy.unknown),manualChecks:0};
@@ -874,10 +876,15 @@ function assessSecurity(t){
   const verifiedCore=s.mintDisabled===true&&s.freezeDisabled===true&&s.holderPolicyPassed===true;
   const organicOk=t.activity&&t.activity.score>=72&&t.activity.label==='PROBABLE ORGANIC';
   const organicHigh=t.activity&&t.activity.score>=58&&t.activity.label!=='BOT RISK';
-  const knowledgeOk=t.academy?.blocked!==true&&(t.marketQuality?.score??0)>=65&&t.chart?.pumpDumpRisk!=='HIGH';
+  const academy=t.academy||{};
+  const criticalNames=['Liquidity Lock/Burn خودکار','Dev holding خودکار','Bundle/Sniper/Insider خودکار','Sellability / Honeypot خودکار','RugCheck ریسک کلی','Token-2022 extensionهای پرریسک','سابقه سازنده / Rug history'];
+  const criticalChecks=(academy.checks||[]).filter(x=>criticalNames.includes(x.name));
+  const criticalEvidenceComplete=criticalChecks.length===criticalNames.length&&criticalChecks.every(x=>x.state!=='unknown'&&x.state!=='fail');
+  const fullAutoEvidence=num(academy.manual)===0&&num(academy.unknown)===0&&num(academy.fail)===0;
+  const knowledgeOk=academy.blocked!==true&&criticalEvidenceComplete&&(t.marketQuality?.score??0)>=65&&t.chart?.pumpDumpRisk!=='HIGH';
 
-  const maxOk=!explicitFail&&verifiedCore&&organicOk&&knowledgeOk&&s.holderStrong===true&&s.score>=85&&t.liquidity>=10000;
-  const highOk=!explicitFail&&verifiedCore&&organicHigh&&s.score>=75&&t.liquidity>=5000;
+  const maxOk=!explicitFail&&verifiedCore&&organicOk&&knowledgeOk&&fullAutoEvidence&&academy.warn<=2&&s.holderStrong===true&&s.score>=85&&t.liquidity>=10000;
+  const highOk=!explicitFail&&verifiedCore&&organicHigh&&knowledgeOk&&num(academy.unknown)===0&&num(academy.fail)===0&&s.score>=75&&t.liquidity>=5000;
   const tier=explicitFail?'REJECT':maxOk?'MAX SECURITY':highOk?'HIGH':'REVIEW';
   return {tier,maxOk,highOk,explicitFail,verifiedCore};
 }
@@ -965,7 +972,7 @@ async function build(){
     orderFlowPolicy:{buyerPower:'buy transaction count / total buy+sell transactions; not dollar buy volume',strongBuyer:'5m >=55% and 1h >=51% when available',volumeQuality:'absolute volume + tx count + volume/liquidity sanity check'},
     knowledgeEngine:{marketQuality:'transparency + liquidity + data coverage',chartDiscipline:'trend + FOMO + pump/dump guard',academy:'automated Solana RPC + Token-2022 extension audit + RugCheck full/summary + Jupiter sell-route quote + DexScreener sell evidence; unavailable evidence stays UNKNOWN'},
     ageBuckets:{fresh:'0-24h',day:'24h-7d',week:'7d-30d discovery horizon'},
-    signalWindows:{short:'5m-1h',medium:'1h-6h',long:'6h-24h',securityGate:'explicit failures block; unknown security data becomes CAUTION and caps confidence instead of auto-reject'},
+    signalWindows:{short:'5m-1h',medium:'1h-6h',long:'6h-24h',securityGate:'HIGH/MAX requires zero manual, zero unknown and zero failed automated security checks; unknown evidence cannot receive strong approval'},
     disclaimer:'قانون هولدرها: هولدر شماره 1 حداکثر 10% و هرکدام از هولدرهای شماره 2 تا 10 حداکثر 5% می‌توانند داشته باشند. مجموع Top10 فقط جهت اطلاع نمایش داده می‌شود و شرط رد نیست. Organic Activity یک تخمین ضدربات/ضدواش است. هیچ فیلتر آن‌چین کلاهبرداری را 100% رد نمی‌کند.'};
   cache={at:Date.now(),data};return data;
 }
@@ -1671,7 +1678,7 @@ function qualifyingTrackedHolders(t){
 function kolTrendSafe(t){
   if(!t||!t.kolTrend)return false;
   var sec=t.security||{},ac=t.academy||{},gate=t.securityGate||{};
-  return !gate.blocked&&!ac.blocked&&sec.holderPolicyPassed===true&&(sec.tier==='MAX SECURITY'||sec.tier==='HIGH');
+  return !gate.blocked&&!ac.blocked&&Number(ac.manual||0)===0&&Number(ac.unknown||0)===0&&Number(ac.fail||0)===0&&sec.holderPolicyPassed===true&&(sec.tier==='MAX SECURITY'||sec.tier==='HIGH');
 }
 function kolTrendScore(t){
   if(!t||!t.kolTrend)return 0;
@@ -1766,7 +1773,8 @@ function beginnerDecision(t,overallScore){
   if(gate.blocked||sec.tier==='REJECT'||exitFor(t.mint).length)return {label:'ورود نکن',cls:'decision-stop',reason:'ریسک امنیتی یا هشدار خروج فعال است'};
   var strongWindows=[sg.short,sg.medium,sg.long].filter(function(x){return Number(x?.score||0)>=75&&x?.label!=='BLOCKED'&&x?.label!=='AVOID'}).length;
   var flow=t.flow||{};
-  var safe=(sec.tier==='MAX SECURITY'||sec.tier==='HIGH')&&Number(t.liquidity||0)>=10000&&t.activity?.label!=='BOT RISK';
+  var autoSecure=t.academy&&Number(t.academy.manual||0)===0&&Number(t.academy.unknown||0)===0&&Number(t.academy.fail||0)===0;
+  var safe=(sec.tier==='MAX SECURITY'||sec.tier==='HIGH')&&autoSecure&&Number(t.liquidity||0)>=10000&&t.activity?.label!=='BOT RISK';
   var flowOk=(flow.volumeLabel==='STRONG'||flow.volumeLabel==='GOOD')&&flow.buyerDominant===true;
   var bf=largeBuyerFlow(t),trackedOk=(bf.buyers+bf.sellers===0)||bf.dominant;
   if(safe&&flowOk&&trackedOk&&strongWindows>=2&&Number(overallScore||0)>=78)return {label:'شرایط ورود قوی',cls:'decision-buy',reason:'امنیت بالا + حجم خوب + قدرت خریدار غالب + خریدارهای ۵۰۰$+ بیشتر از فروشنده‌ها (اگر داده ردیابی موجود باشد) + حداقل دو بازه زمانی قوی'};
@@ -1981,7 +1989,7 @@ function renderAlerts(){
   document.getElementById('kExits').textContent=c.length;document.getElementById('alerts').innerHTML=c.map(function(x){return '<div class="alert">🚨 خروج همزمان چند کیف‌پول از <b>'+esc(x.token||short(x.tokenAddress))+'</b> · '+Number(x.uniqueSellers||0)+' فروشنده</div>'}).join('');
 }
 function renderAll(){document.getElementById('kTokens').textContent=tokens.length;renderChampion();renderAlerts();renderFeatured();renderWhales();renderSmart();renderSocialTrends();renderWallets();renderConviction();renderKolTrends();renderTokens()}
-function stateLabel(v){return v==='pass'?'<span class="pass">✓ تأیید خودکار</span>':v==='fail'?'<span class="fail">✕ رد خودکار</span>':v==='warn'?'<span class="manual">△ هشدار</span>':'<span class="manual">? داده ناکافی</span>'}
+function stateLabel(v){return v==='pass'?'<span class="pass">✓ تأیید خودکار</span>':v==='fail'?'<span class="fail">✕ رد خودکار</span>':v==='warn'?'<span class="manual">△ هشدار خودکار</span>':'<span class="manual">? تأیید نشده — داده ناکافی</span>'}
 function openDetail(m){
   var t=findToken(m),tr=findTracked(m),sm=smartFor(m),wh=whaleFor(m),name=t?(t.symbol+' · '+t.name):(tr?(tr.symbol+' · '+tr.name):short(m)),h='';
   document.getElementById('detailTitle').textContent=name;
