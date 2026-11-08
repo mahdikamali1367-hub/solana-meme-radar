@@ -300,6 +300,91 @@ function academyGuard(t){
   return {score,label,pass,fail,manual,blocked,checks,source:'memecoin-academy-derived rules; manual checks remain manual'};
 }
 
+
+function securityGate(t){
+  const sec=t.security||{},mq=t.marketQuality||{},act=t.activity||{},chart=t.chart||{},academy=t.academy||{};
+  const hard=[];
+  if(sec.mintDisabled!==true)hard.push('Mint authority امن نیست/نامشخص');
+  if(sec.freezeDisabled!==true)hard.push('Freeze authority امن نیست/نامشخص');
+  if(sec.holderPolicyPassed!==true)hard.push('توزیع هولدرها رد/نامشخص');
+  if(act.label==='BOT RISK')hard.push('ریسک ربات/Wash');
+  if(chart.pumpDumpRisk==='HIGH')hard.push('ریسک Pump/Dump بالا');
+  if(academy.blocked)hard.push('Academy Guard مسدود');
+  if(num(t.liquidity)<3000)hard.push('نقدینگی خیلی کم');
+  const cautions=[];
+  if(num(mq.score)<65)cautions.push('کیفیت بازار/داده متوسط یا پایین');
+  if(sec.tier==='REVIEW')cautions.push('امنیت نیازمند بررسی');
+  if(chart.fomoRisk==='HIGH')cautions.push('ریسک FOMO بالا');
+  const blocked=hard.length>0;
+  const level=blocked?'BLOCK':cautions.length?'CAUTION':'PASS';
+  return {level,blocked,hard,cautions,automaticChecks:6,manualChecks:num(academy.manual)};
+}
+function signalLabel(score,gate,confidence){
+  if(gate.blocked)return 'BLOCKED';
+  if(confidence==='LOW'&&score>=70)return 'WAIT_DATA';
+  if(score>=80)return 'STRONG';
+  if(score>=65)return 'POSITIVE';
+  if(score>=48)return 'NEUTRAL';
+  return 'AVOID';
+}
+function horizonScore(t,h){
+  const gate=t.securityGate||securityGate(t);
+  let score=50; const reasons=[];
+  const pc5=num(t.priceChange5m),pc1=num(t.priceChange1h),pc6=num(t.priceChange6h),pc24=num(t.priceChange24h);
+  const br5=(num(t.buys5m)+1)/(num(t.sells5m)+1);
+  const br1=(num(t.buys1h)+1)/(num(t.sells1h)+1);
+  const br6=(num(t.buys6h)+1)/(num(t.sells6h)+1);
+  const br24=(num(t.buys24h)+1)/(num(t.sells24h)+1);
+  const mq=num(t.marketQuality?.score),sec=num(t.security?.score),act=num(t.activity?.score),trend=num(t.trend?.score);
+  const add=(v,msg)=>{score+=v;if(msg)reasons.push(msg)};
+  if(sec>=85)add(8,'امنیت قوی'); else if(sec<60)add(-12,'امنیت ضعیف');
+  if(mq>=80)add(7,'کیفیت بازار بالا'); else if(mq<60)add(-8,'کیفیت بازار پایین');
+  if(act>=72)add(6,'فعالیت طبیعی');
+  if(t.security?.holderStrong)add(5,'توزیع هولدر مناسب');
+  if(gate.blocked)score-=45;
+
+  if(h==='short'){
+    if(pc5>=2&&pc5<=12)add(10,'مومنتوم 5m مثبت'); else if(pc5>20)add(-18,'پامپ 5m کشیده'); else if(pc5<-10)add(-15,'افت 5m شدید');
+    if(pc1>0&&pc1<=25)add(7,'روند 1h مثبت'); else if(pc1<-12)add(-10,'روند 1h ضعیف');
+    if(br5>=1.35)add(10,'خرید 5m غالب'); else if(br5<0.75)add(-10,'فروش 5m غالب');
+    if(num(t.volume5m)>=5000)add(8,'حجم 5m مناسب');
+    if(num(t.txns5m)>=50)add(6,'تراکنش کافی');
+    if(trend>=55)add(5,'ترند اجتماعی');
+  }else if(h==='medium'){
+    if(pc1>=3&&pc1<=30)add(10,'روند 1h مثبت'); else if(pc1>45)add(-15,'1h بیش‌ازحد کشیده'); else if(pc1<-15)add(-14,'1h نزولی');
+    if(pc6>=0&&pc6<=60)add(9,'ساختار 6h مثبت'); else if(pc6<-25)add(-14,'6h ضعیف');
+    if(br1>=1.15)add(8,'خریدار 1h بیشتر'); else if(br1<0.8)add(-8,'فروشنده 1h بیشتر');
+    if(br6>=1.05)add(5,'تعادل 6h مثبت');
+    if(num(t.volume1h)>=10000)add(7,'حجم 1h مناسب');
+    if(num(t.txns1h)>=100)add(5,'مشارکت 1h خوب');
+  }else{
+    if(pc6>=5&&pc6<=80)add(10,'روند 6h مثبت'); else if(pc6<-25)add(-15,'6h نزولی');
+    if(pc24>=0&&pc24<=150)add(8,'ساختار 24h مثبت'); else if(pc24<-35)add(-15,'24h ضعیف');
+    if(br6>=1.05)add(6,'خرید 6h متعادل'); else if(br6<0.8)add(-8,'فروش 6h غالب');
+    if(br24>=1.0)add(5,'جریان 24h مثبت');
+    if(num(t.volume6h)>=25000)add(6,'حجم 6h مناسب');
+    if(num(t.volume24h)>=50000)add(5,'حجم 24h مناسب');
+    if(trend>=45)add(4,'حضور اجتماعی');
+  }
+  if(t.chart?.fomoRisk==='HIGH')score-=12;
+  if(t.chart?.pumpDumpRisk==='HIGH')score-=25;
+  score=clamp(Math.round(score));
+  let confidence='HIGH';
+  if(h==='short'&&t.ageMinutes<15)confidence='LOW';
+  if(h==='medium'&&t.ageMinutes<60)confidence='LOW';
+  if(h==='long'&&t.ageMinutes<360)confidence='LOW';
+  const label=signalLabel(score,gate,confidence);
+  return {score,label,confidence,reasons:reasons.slice(0,5)};
+}
+function multiHorizonSignals(t){
+  t.securityGate=securityGate(t);
+  return {
+    short:{...horizonScore(t,'short'),window:'5m-1h'},
+    medium:{...horizonScore(t,'medium'),window:'1h-6h'},
+    long:{...horizonScore(t,'long'),window:'6h-24h'}
+  };
+}
+
 function assessSecurity(t){
   const s=t.security;
   const coreOk=s.mintDisabled===true&&s.freezeDisabled===true&&s.holderPolicyPassed;
@@ -325,19 +410,23 @@ async function build(){
   if(cache.data&&Date.now()-cache.at<CACHE_MS)return cache.data;
   const seeds=await discovery();
   const out=[];
-  for(const s of seeds.slice(0,25)){
+  for(const s of seeds.slice(0,35)){
     const p=await pairFor(s.mint); if(!p)continue;
     const created=num(p.pairCreatedAt);
     const ageMinutes=created?Math.max(0,(Date.now()-created)/60000):9999;
-    if(ageMinutes>240)continue;
+    if(ageMinutes>1440)continue;
     const sec=await security(s.mint);
     const buys5m=num(p.txns?.m5?.buys),sells5m=num(p.txns?.m5?.sells);
     const t={
       name:p.baseToken?.name||'Unknown',symbol:p.baseToken?.symbol||'?',mint:s.mint,
       dexId:p.dexId||'',dexUrl:p.url||'',image:p.info?.imageUrl||s.image||'',description:s.description,
       ageMinutes:+ageMinutes.toFixed(1),priceUsd:num(p.priceUsd),marketCap:num(p.marketCap||p.fdv),
-      liquidity:num(p.liquidity?.usd),volume5m:num(p.volume?.m5),volume1h:num(p.volume?.h1),
-      buys5m,sells5m,txns5m:buys5m+sells5m,priceChange5m:num(p.priceChange?.m5),security:sec
+      liquidity:num(p.liquidity?.usd),volume5m:num(p.volume?.m5),volume1h:num(p.volume?.h1),volume6h:num(p.volume?.h6),volume24h:num(p.volume?.h24),
+      buys5m,sells5m,txns5m:buys5m+sells5m,
+      buys1h:num(p.txns?.h1?.buys),sells1h:num(p.txns?.h1?.sells),txns1h:num(p.txns?.h1?.buys)+num(p.txns?.h1?.sells),
+      buys6h:num(p.txns?.h6?.buys),sells6h:num(p.txns?.h6?.sells),txns6h:num(p.txns?.h6?.buys)+num(p.txns?.h6?.sells),
+      buys24h:num(p.txns?.h24?.buys),sells24h:num(p.txns?.h24?.sells),txns24h:num(p.txns?.h24?.buys)+num(p.txns?.h24?.sells),
+      priceChange5m:num(p.priceChange?.m5),priceChange1h:num(p.priceChange?.h1),priceChange6h:num(p.priceChange?.h6),priceChange24h:num(p.priceChange?.h24),security:sec
     };
     t.socialSources=socialMeta(s,p);
     t.bluesky={mentions2h:0,engagement2h:0};
@@ -346,6 +435,7 @@ async function build(){
     t.marketQuality=marketQualityScore(t);
     t.chart=chartDiscipline(t);
     t.academy=academyGuard(t);
+    t.signals=multiHorizonSignals(t);
     t.verdict=verdict(t); out.push(t); await sleep(55);
   }
   const pre=[...out].sort((a,b)=>b.trend.score-a.trend.score).slice(0,10);
@@ -359,6 +449,7 @@ async function build(){
     t.marketQuality=marketQualityScore(t);
     t.chart=chartDiscipline(t);
     t.academy=academyGuard(t);
+    t.signals=multiHorizonSignals(t);
     t.verdict=verdict(t);
   }
   const rank={'STRONG WATCH':4,'WATCH':3,'LOW SIGNAL':2,'SKIP':1};
@@ -370,6 +461,7 @@ async function build(){
     holderPolicy:{hardRules:{holder1MaxPct:10,holders2to10EachMaxPct:5},gradeA:{holder1MaxPct:5,holders2to10EachMaxPct:2.5},gradeB:{holder1MaxPct:7.5,holders2to10EachMaxPct:4},gradeC:{holder1MaxPct:10,holders2to10EachMaxPct:5},unknownFailsStrong:true},
     activityPolicy:{probableOrganicMin:72,highSecurityMin:58,method:'aggregate heuristics; not proof of human identity'},
     knowledgeEngine:{marketQuality:'transparency + liquidity + data coverage',chartDiscipline:'trend + FOMO + pump/dump guard',academy:'rug/honeypot/MEV/sniper/risk checklist; unknown checks stay manual'},
+    signalWindows:{short:'5m-1h',medium:'1h-6h',long:'6h-24h',securityGate:'required for all three; insufficient history lowers confidence'},
     disclaimer:'قانون هولدرها: هولدر شماره 1 حداکثر 10% و هرکدام از هولدرهای شماره 2 تا 10 حداکثر 5% می‌توانند داشته باشند. مجموع Top10 فقط جهت اطلاع نمایش داده می‌شود و شرط رد نیست. Organic Activity یک تخمین ضدربات/ضدواش است. هیچ فیلتر آن‌چین کلاهبرداری را 100% رد نمی‌کند.'};
   cache={at:Date.now(),data};return data;
 }
@@ -766,7 +858,7 @@ dialog{width:min(720px,94vw);max-height:88vh;border:1px solid #36506e;border-rad
 </section>
 
 <section class="panel" id="tokensPanel">
-  <div class="section-title"><div><h2>همه توکن‌ها</h2><p>خلاصه بازار، امنیت و هولدرها.</p></div></div>
+  <div class="section-title"><div><h2>همه توکن‌ها</h2><p>سه سیگنال زمانی + امنیت و هولدرها برای همه توکن‌های کشف‌شده رادار.</p></div></div>
   <div class="list" id="tokenList"></div>
 </section>
 </main>
@@ -787,6 +879,9 @@ function faAct(v){return {'PROBABLE ORGANIC':'طبیعی','MIXED':'ترکیبی'
 function faVerdict(v){return {'STRONG WATCH':'قوی','WATCH':'واچ','LOW SIGNAL':'ضعیف','SKIP':'رد','REVIEW':'بررسی'}[v]||v||'—'}
 function secClass(v){return v==='MAX SECURITY'||v==='HIGH'?'good':v==='REJECT'?'bad':'mid'}
 function verdictClass(v){return v==='STRONG WATCH'?'good':v==='SKIP'?'bad':'mid'}
+function faSignal(v){return {'STRONG':'قوی','POSITIVE':'مثبت','NEUTRAL':'خنثی','AVOID':'ورود نکن','BLOCKED':'مسدود امنیتی','WAIT_DATA':'داده ناکافی'}[v]||v||'—'}
+function signalClass(v){return v==='STRONG'||v==='POSITIVE'?'good':v==='AVOID'||v==='BLOCKED'?'bad':'mid'}
+
 function dexUrl(mint,url){if(url)return url;var t=tokens.find(function(x){return x.mint===mint});if(t&&t.dexUrl)return t.dexUrl;var tr=tracked&&tracked.tokens?tracked.tokens.find(function(x){return x.mint===mint}):null;if(tr&&tr.dexUrl)return tr.dexUrl;return 'https://dexscreener.com/search?q='+encodeURIComponent(mint||'')}
 function findToken(m){return tokens.find(function(x){return x.mint===m})||null}
 function findTracked(m){return tracked&&tracked.tokens?tracked.tokens.find(function(x){return x.mint===m}):null}
@@ -822,14 +917,14 @@ function featuredRows(){
 }
 
 function tokenRow(t){
-  var s=t.security||{};
+  var s=t.security||{},g=t.securityGate||{},sg=t.signals||{},sh=sg.short||{},md=sg.medium||{},lg=sg.long||{};
   return '<div class="row">'+
   '<div class="asset"><b>'+esc(t.symbol||'?')+' · '+esc(t.name||'')+'</b><small>'+esc(short(t.mint))+'</small></div>'+
-  '<div class="cell"><small>امنیت</small><b><span class="badge '+secClass(s.tier)+'">'+esc(faSec(s.tier))+'</span></b></div>'+
-  '<div class="cell"><small>Market Cap</small><b>'+money(t.marketCap)+'</b></div>'+
-  '<div class="cell"><small>Vol 5m</small><b>'+money(t.volume5m)+'</b></div>'+
-  '<div class="cell hide-sm"><small>Top1 / 2-10</small><b>'+pct(s.largestHolder)+' / '+pct(s.maxOtherHolder)+'</b></div>'+
-  '<div class="cell hide-md"><small>سیگنال</small><b><span class="badge '+verdictClass(t.verdict)+'">'+esc(faVerdict(t.verdict))+'</span></b></div>'+
+  '<div class="cell"><small>کوتاه</small><b><span class="badge '+signalClass(sh.label)+'">'+esc(faSignal(sh.label))+' '+Number(sh.score||0)+'</span></b></div>'+
+  '<div class="cell"><small>میان</small><b><span class="badge '+signalClass(md.label)+'">'+esc(faSignal(md.label))+' '+Number(md.score||0)+'</span></b></div>'+
+  '<div class="cell"><small>بلند</small><b><span class="badge '+signalClass(lg.label)+'">'+esc(faSignal(lg.label))+' '+Number(lg.score||0)+'</span></b></div>'+
+  '<div class="cell hide-sm"><small>امنیت</small><b><span class="badge '+secClass(s.tier)+'">'+esc(faSec(s.tier))+'</span></b></div>'+
+  '<div class="cell hide-md"><small>Top1 / 2-10</small><b>'+pct(s.largestHolder)+' / '+pct(s.maxOtherHolder)+'</b></div>'+
   '<div class="actions"><a class="action" target="_blank" rel="noopener" href="'+esc(dexUrl(t.mint,t.dexUrl))+'">📈 چارت</a><button class="detail-btn" data-mint="'+esc(t.mint)+'">جزئیات</button></div></div>';
 }
 
