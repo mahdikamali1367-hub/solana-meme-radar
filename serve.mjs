@@ -52,7 +52,7 @@ async function pairFor(mint){
   }catch{return null}
 }
 async function security(mint){
-  let mintDisabled=null,freezeDisabled=null,top5=null,top10=null,largestHolder=null,holderGrade='UNKNOWN',flags=[],score=50,coverage=0,topHolders=[];
+  let mintDisabled=null,freezeDisabled=null,top5=null,top10=null,largestHolder=null,maxOtherHolder=null,holderGrade='UNKNOWN',flags=[],score=50,coverage=0,topHolders=[];
   try{
     const d=await rpc('getAccountInfo',[mint,{encoding:'jsonParsed',commitment:'confirmed'}]);
     const info=d?.result?.value?.data?.parsed?.info;
@@ -71,7 +71,7 @@ async function security(mint){
       rpc('getTokenSupply',[mint,{commitment:'confirmed'}])
     ]);
     const supply=num(sp?.result?.value?.uiAmount);
-    const rows=(la?.result?.value||[]).slice(0,10);
+    const rows=(la?.result?.value||[]).slice(0,20);
     if(supply>0&&rows.length){
       let parsed=[];
       try{
@@ -89,23 +89,22 @@ async function security(mint){
         .sort((a,b)=>b.pct-a.pct)
         .slice(0,10);
       largestHolder=topHolders[0]?.pct??null;
+      maxOtherHolder=topHolders.slice(1,10).reduce((m,h)=>Math.max(m,h.pct),0);
       top5=topHolders.slice(0,5).reduce((a,b)=>a+b.pct,0);
       top10=topHolders.slice(0,10).reduce((a,b)=>a+b.pct,0);
       coverage+=35;
-      if(top10>=10&&top10<=15&&largestHolder<=2.5&&top5<=8){holderGrade='A';score+=20}
-      else if(top10>=10&&top10<=20&&largestHolder<=4&&top5<=12){holderGrade='B';score+=12}
-      else if(top10>=10&&top10<=20&&largestHolder<=5&&top5<=15){holderGrade='C';score+=2}
+      if(largestHolder<=5&&maxOtherHolder<=2.5){holderGrade='A';score+=20}
+      else if(largestHolder<=7.5&&maxOtherHolder<=4){holderGrade='B';score+=12}
+      else if(largestHolder<=10&&maxOtherHolder<=5){holderGrade='C';score+=2}
       else {holderGrade='F';score-=35}
-      if(top10<10)flags.push('Top10 کمتر از بازه هدف 10% است');
-      if(top10>20)flags.push('Top10 بیشتر از 20% است');
-      if(largestHolder>5)flags.push('یک مالک بیش از 5% عرضه دارد');
-      if(top5>15)flags.push('تمرکز Top5 بالاست');
+      if(largestHolder>10)flags.push('هولدر شماره 1 بیش از 10% عرضه دارد');
+      if(maxOtherHolder>5)flags.push('یکی از هولدرهای شماره 2 تا 10 بیش از 5% عرضه دارد');
     }
   }catch{}
   const holderPolicyPassed=['A','B','C'].includes(holderGrade);
   const holderStrong=['A','B'].includes(holderGrade);
   if(top10==null){holderGrade='UNKNOWN';flags.push('داده هولدرها نامشخص')}
-  return {score:clamp(score),coverage,mintDisabled,freezeDisabled,top5,top10,largestHolder,holderGrade,holderPolicyPassed,holderStrong,topHolders,flags};
+  return {score:clamp(score),coverage,mintDisabled,freezeDisabled,top5,top10,largestHolder,maxOtherHolder,holderGrade,holderPolicyPassed,holderStrong,topHolders,flags};
 }
 
 async function blueskySignal(t){
@@ -215,7 +214,7 @@ function assessSecurity(t){
   const coreOk=s.mintDisabled===true&&s.freezeDisabled===true&&s.holderPolicyPassed;
   const organicOk=t.activity&&t.activity.score>=72&&t.activity.label==='PROBABLE ORGANIC';
   const organicHigh=t.activity&&t.activity.score>=58&&t.activity.label!=='BOT RISK';
-  const maxOk=coreOk&&organicOk&&s.holderStrong&&s.score>=85&&t.liquidity>=10000&&s.largestHolder<=4&&s.top5<=12&&s.top10<=20;
+  const maxOk=coreOk&&organicOk&&s.holderStrong&&s.score>=85&&t.liquidity>=10000;
   const highOk=coreOk&&organicHigh&&s.score>=75&&t.liquidity>=5000;
   const tier=maxOk?'MAX SECURITY':highOk?'HIGH':coreOk&&s.score>=60?'REVIEW':'REJECT';
   return {tier,maxOk,highOk};
@@ -270,9 +269,9 @@ async function build(){
   const trending=out.filter(x=>x.trend.score>=50).length;
   const data={ok:true,generatedAt:new Date().toISOString(),refreshSeconds:60,count:out.length,strong,trending,tokens:out,
     sourceStatus:{dexscreener:'live',solanaRpc:'live',bluesky:'live-public',x:process.env.X_BEARER_TOKEN?'configured':'needs API key',youtube:process.env.YOUTUBE_API_KEY?'configured':'needs API key',reddit:process.env.REDDIT_CLIENT_ID?'configured':'needs OAuth',instagram:process.env.INSTAGRAM_SOCIAL_TOKEN?'configured':'needs API access',tiktok:process.env.TIKTOK_RESEARCH_TOKEN?'configured':'needs research access'},
-    holderPolicy:{top10TargetPct:{min:10,max:20},gradeA:{largestMaxPct:2.5,top5MaxPct:8,top10RangePct:[10,15]},gradeB:{largestMaxPct:4,top5MaxPct:12,top10RangePct:[10,20]},gradeC:{largestMaxPct:5,top5MaxPct:15,top10RangePct:[10,20]},hardFail:{largestAbovePct:5,top5AbovePct:15,top10OutsidePct:[10,20]},unknownFailsStrong:true},
+    holderPolicy:{hardRules:{holder1MaxPct:10,holders2to10EachMaxPct:5},gradeA:{holder1MaxPct:5,holders2to10EachMaxPct:2.5},gradeB:{holder1MaxPct:7.5,holders2to10EachMaxPct:4},gradeC:{holder1MaxPct:10,holders2to10EachMaxPct:5},unknownFailsStrong:true},
     activityPolicy:{probableOrganicMin:72,highSecurityMin:58,method:'aggregate heuristics; not proof of human identity'},
-    disclaimer:'فیلتر هولدر هدف می‌گیرد که مجموع Top10 بین 10% تا 20% باشد؛ خارج این بازه رد می‌شود. Organic Activity یک تخمین ضدربات/ضدواش است و انسان‌بودن واقعی را اثبات نمی‌کند. MAX SECURITY نیازمند PROBABLE ORGANIC، Mint/Freeze غیرفعال، Holder Grade A/B، Security>=85 و Liquidity>=10K است. هیچ فیلتر آن‌چین کلاهبرداری را 100% رد نمی‌کند.'};
+    disclaimer:'قانون هولدرها: هولدر شماره 1 حداکثر 10% و هرکدام از هولدرهای شماره 2 تا 10 حداکثر 5% می‌توانند داشته باشند. مجموع Top10 فقط جهت اطلاع نمایش داده می‌شود و شرط رد نیست. Organic Activity یک تخمین ضدربات/ضدواش است. هیچ فیلتر آن‌چین کلاهبرداری را 100% رد نمی‌کند.'};
   cache={at:Date.now(),data};return data;
 }
 
@@ -473,7 +472,7 @@ button,input,select{background:#101c31;color:#fff;border:1px solid #29415f;borde
 #status{color:#9db0cc}.warn{background:#271b0d;border:1px solid #5d4120;padding:10px;border-radius:10px;color:#ffd087;margin-bottom:14px}.sources{font-size:11px;color:#8fa3c2;margin-bottom:15px}
 @media(max-width:650px){.stats{grid-template-columns:1fr 1fr}.summary{grid-template-columns:1fr 1fr}.wrap{padding:12px}}
 </style></head><body><div class="wrap"><h1>🚀 رادار یکپارچه سولانا</h1><div class="sub">میم‌کوین‌ها + اسمارت‌مانی + نهنگ‌ها + هولدرهای بزرگ + هشدار خروج — همه در یک صفحه</div>
-<div class="warn">🔥 بخش پیشنهادهای برتر فقط امتیاز مومنتوم ۹۰/۱۰۰+ را نشان می‌دهد؛ این امتیاز احتمال قطعی پامپ نیست.<br><br>📈 روی دکمه «مشاهده چارت در DexScreener» هر ارز بزن تا مستقیم چارتش باز شود.<br><br>فیلتر امنیت + ضدربات فعال است. مجموع Top10 باید بین ۱۰٪ تا ۲۰٪ باشد؛ بزرگ‌ترین هولدر و Top5 هم سقف جداگانه دارند. MAX SECURITY فقط با فعالیت PROBABLE ORGANIC و شرایط امنیتی کامل داده می‌شود.</div>
+<div class="warn">🔥 بخش پیشنهادهای برتر فقط امتیاز مومنتوم ۹۰/۱۰۰+ را نشان می‌دهد؛ این امتیاز احتمال قطعی پامپ نیست.<br><br>📈 روی دکمه «مشاهده چارت در DexScreener» هر ارز بزن تا مستقیم چارتش باز شود.<br><br>فیلتر امنیت + ضدربات فعال است. هولدر شماره ۱ باید حداکثر ۱۰٪ داشته باشد و هرکدام از هولدرهای شماره ۲ تا ۱۰ حداکثر ۵٪. مجموع Top10 فقط برای اطلاع نمایش داده می‌شود. امنیت خیلی بالا همچنان شرایط سخت‌گیرانه‌تری دارد.</div>
 <div class="summary"><div class="sum"><div class="k">تعداد ارزهای دیده‌شده</div><div class="big" id="sCount">–</div></div><div class="sum"><div class="k">ترند قوی ≥ ۵۰</div><div class="big" id="sTrend">–</div></div><div class="sum"><div class="k">زیر نظر قوی</div><div class="big" id="sStrong">–</div></div><div class="sum"><div class="k">بروزرسانی</div><div class="big">60s</div></div></div>
 <div id="sources" class="sources"></div><div style="margin:18px 0"><h2 style="margin:0 0 8px">🔥 پیشنهادهای برتر برای بررسی</h2><div class="sub" id="featuredStatus">فقط گزینه‌های با امتیاز مومنتوم خیلی بالا نمایش داده می‌شوند؛ ۹۰/۱۰۰ به معنی ۹۰٪ احتمال پامپ نیست.</div><div id="featuredGrid" class="grid"></div></div><div style="margin:18px 0"><h2 style="margin:0 0 8px">⭐ سیگنال‌های مشترک</h2><div class="sub">ارزهایی که همزمان در چند منبع دیده می‌شوند</div><div id="unifiedGrid" class="grid"></div></div><div style="margin:18px 0"><h2 style="margin:0 0 8px">🧠 اسمارت‌مانی — کیف‌پول‌های سودده روی چه ارزهایی سوارند</h2><div class="sub" id="smartStatus">در حال بررسی کیف‌پول‌های سودده...</div><div id="smartGrid" class="grid"></div></div><div style="margin:18px 0"><h2 style="margin:0 0 8px">🐋 خریدهای نهنگ‌ها</h2><div class="sub" id="whaleStatus">خریدهای بزرگ سولانا در حال بررسی است...</div><div id="whaleGrid" class="grid"></div></div><div style="margin:18px 0"><h2 style="margin:0 0 8px">⚡ جریان زنده خرید/فروش و هشدار خروج</h2><div class="sub" id="liveSmartStatus">در حال اتصال به جریان خرید/فروش سولانا...</div><div id="liveExitBanner"></div><div id="liveSmartGrid" class="grid"></div></div><div style="margin:18px 0"><h2 style="margin:0 0 8px">🪙 میم‌کوین‌های زیر نظر</h2><div class="sub">امنیت، هولدرها، فعالیت طبیعی و ترند اجتماعی</div></div>
 <div class="bar"><button onclick="load()">↻ بروزرسانی</button><button onclick="enableExitNotifications()">🔔 فعال‌کردن هشدار خروج</button><input id="q" placeholder="جستجو نام / نماد / آدرس توکن" oninput="render()"><select id="vf" onchange="render()"><option value="">همه وضعیت‌ها</option><option>STRONG WATCH</option><option>WATCH</option><option>LOW SIGNAL</option><option>SKIP</option></select><select id="sf" onchange="render()"><option value="0">همه امتیازهای ترند</option><option value="50">Trend ≥ 50</option><option value="70">Trend ≥ 70</option></select><select id="secf" onchange="render()"><option value="">همه سطح‌های امنیت</option><option>MAX SECURITY</option><option>HIGH</option><option>REVIEW</option><option>REJECT</option></select><select id="actf" onchange="render()"><option value="">همه نوع فعالیت</option><option>PROBABLE ORGANIC</option><option>MIXED</option><option>BOT RISK</option></select><span id="status">در حال بارگذاری...</span></div>
@@ -508,7 +507,7 @@ function render(){
   '<div class="'+sc+'" style="margin-top:8px;font-weight:800">🛡 '+esc(faSecurity(st))+'</div><div class="'+ac+'" style="margin-top:4px;font-weight:800">👤 فعالیت: '+esc(faActivity(al))+' '+(t.activity?('('+t.activity.score+'/100)'):'')+'</div>'+
   '<div class="stats"><div class="stat"><div class="k">سن توکن</div><div class="v">'+t.ageMinutes+'m</div></div><div class="stat"><div class="k">ارزش بازار</div><div class="v">'+money(t.marketCap)+'</div></div><div class="stat"><div class="k">نقدینگی</div><div class="v">'+money(t.liquidity)+'</div></div>'+
   '<div class="stat"><div class="k">حجم ۵ دقیقه</div><div class="v">'+money(t.volume5m)+'</div></div><div class="stat"><div class="k">تراکنش ۵ دقیقه</div><div class="v">'+t.txns5m+' ('+t.buys5m+'B/'+t.sells5m+'S)</div></div><div class="stat"><div class="k">امتیاز امنیت</div><div class="v">'+t.security.score+'/100</div></div>'+
-  '<div class="stat"><div class="k">فعالیت طبیعی</div><div class="v">'+(t.activity?.score??'?')+'/100</div></div><div class="stat"><div class="k">میانگین معامله</div><div class="v">'+money(t.activity?.avgTrade||0)+'</div></div><div class="stat"><div class="k">تراکنش/دقیقه</div><div class="v">'+Number(t.activity?.txPerMin||0).toFixed(1)+'</div></div><div class="stat"><div class="k">ترند اجتماعی</div><div class="v">'+t.trend.score+'/100</div><div class="score"><div class="fill" style="width:'+t.trend.score+'%"></div></div></div><div class="stat"><div class="k">درجه هولدرها</div><div class="v '+(['A','B'].includes(t.security.holderGrade)?'safe':'')+'">'+esc(t.security.holderGrade||'?')+'</div></div><div class="stat"><div class="k">بزرگ‌ترین هولدر</div><div class="v '+(t.security.largestHolder!=null&&t.security.largestHolder<=4?'safe':'')+'">'+pct(t.security.largestHolder)+'</div></div><div class="stat"><div class="k">۵ هولدر برتر</div><div class="v '+(t.security.top5!=null&&t.security.top5<=12?'safe':'')+'">'+pct(t.security.top5)+'</div></div><div class="stat"><div class="k">۱۰ هولدر برتر</div><div class="v '+(t.security.top10!=null&&t.security.top10<=20?'safe':'')+'">'+pct(t.security.top10)+'</div></div><div class="stat"><div class="k">مینت / فریز</div><div class="v '+(t.security.mintDisabled&&t.security.freezeDisabled?'safe':'')+'">'+(t.security.mintDisabled?'✓':'✕')+' / '+(t.security.freezeDisabled?'✓':'✕')+'</div></div></div>'+
+  '<div class="stat"><div class="k">فعالیت طبیعی</div><div class="v">'+(t.activity?.score??'?')+'/100</div></div><div class="stat"><div class="k">میانگین معامله</div><div class="v">'+money(t.activity?.avgTrade||0)+'</div></div><div class="stat"><div class="k">تراکنش/دقیقه</div><div class="v">'+Number(t.activity?.txPerMin||0).toFixed(1)+'</div></div><div class="stat"><div class="k">ترند اجتماعی</div><div class="v">'+t.trend.score+'/100</div><div class="score"><div class="fill" style="width:'+t.trend.score+'%"></div></div></div><div class="stat"><div class="k">درجه هولدرها</div><div class="v '+(['A','B'].includes(t.security.holderGrade)?'safe':'')+'">'+esc(t.security.holderGrade||'?')+'</div></div><div class="stat"><div class="k">هولدر شماره ۱</div><div class="v '+(t.security.largestHolder!=null&&t.security.largestHolder<=10?'safe':'')+'">'+pct(t.security.largestHolder)+'</div></div><div class="stat"><div class="k">بیشترین درصد بین هولدرهای ۲ تا ۱۰</div><div class="v '+(t.security.maxOtherHolder!=null&&t.security.maxOtherHolder<=5?'safe':'')+'">'+pct(t.security.maxOtherHolder)+'</div></div><div class="stat"><div class="k">۵ هولدر برتر</div><div class="v '+(t.security.top5!=null&&t.security.top5<=12?'safe':'')+'">'+pct(t.security.top5)+'</div></div><div class="stat"><div class="k">۱۰ هولدر برتر</div><div class="v '+(t.security.top10!=null&&t.security.top10<=20?'safe':'')+'">'+pct(t.security.top10)+'</div></div><div class="stat"><div class="k">مینت / فریز</div><div class="v '+(t.security.mintDisabled&&t.security.freezeDisabled?'safe':'')+'">'+(t.security.mintDisabled?'✓':'✕')+' / '+(t.security.freezeDisabled?'✓':'✕')+'</div></div></div>'+
   '<details><summary>نمایش هولدرهای بزرگ</summary><div class="holders">'+(holders||'داده هولدر موجود نیست')+'</div></details>'+
   '<div class="chips">'+chips+'</div><div class="chips">'+rs+'</div><div class="flags">'+esc(fl)+'</div><div class="flags">'+esc((t.activity?.flags||[]).join(' • '))+'</div><div class="links" style="margin-top:10px"><a target="_blank" rel="noopener" href="'+esc(t.dexUrl||dexSearch(t.mint))+'">📈 مشاهده چارت در DexScreener</a><a target="_blank" rel="noopener" href="https://solscan.io/token/'+esc(t.mint)+'">سول‌اسکن</a>'+(x?'<a target="_blank" rel="noopener" href="'+esc(x)+'">ایکس / توییتر</a>':'')+'</div></div>'
  }).join('')||'<p>موردی با فیلتر فعلی نیست.</p>'
