@@ -355,6 +355,38 @@ function activityScore(t){
 }
 
 
+
+function flowQuality(t){
+  const ratioPct=(b,s)=>{const total=num(b)+num(s);return total>0?num(b)/total*100:null};
+  const buyer5=ratioPct(t.buys5m,t.sells5m);
+  const buyer1h=ratioPct(t.buys1h,t.sells1h);
+  const buyer6h=ratioPct(t.buys6h,t.sells6h);
+  const liq=num(t.liquidity),v5=num(t.volume5m),v1=num(t.volume1h),tx5=num(t.txns5m);
+  const volLiq=liq>0?v5/liq:null;
+  let volumeScore=0,volumeLabel='LOW',flags=[];
+  if(v5>=10000)volumeScore+=35; else if(v5>=5000)volumeScore+=28; else if(v5>=2000)volumeScore+=18; else if(v5>=500)volumeScore+=8;
+  if(v1>=50000)volumeScore+=20; else if(v1>=20000)volumeScore+=15; else if(v1>=5000)volumeScore+=8;
+  if(tx5>=80)volumeScore+=20; else if(tx5>=50)volumeScore+=15; else if(tx5>=25)volumeScore+=8;
+  if(volLiq!=null){
+    if(volLiq>=0.08&&volLiq<=1.2)volumeScore+=25;
+    else if(volLiq>=0.03&&volLiq<=1.5)volumeScore+=15;
+    else if(volLiq>2){volumeScore-=25;flags.push('حجم نسبت به نقدینگی غیرعادی/واش محتمل')}
+    else if(volLiq<0.01)flags.push('حجم نسبت به نقدینگی کم');
+  }
+  volumeScore=clamp(Math.round(volumeScore));
+  volumeLabel=volumeScore>=80?'STRONG':volumeScore>=60?'GOOD':volumeScore>=40?'MEDIUM':volumeScore>=20?'LOW':'WEAK';
+  if(volLiq!=null&&volLiq>2)volumeLabel='SUSPICIOUS';
+
+  let buyerScore=50;
+  if(buyer5!=null)buyerScore=buyer5;
+  if(buyer1h!=null)buyerScore=buyer5==null?buyer1h:buyer5*0.65+buyer1h*0.35;
+  buyerScore=clamp(Math.round(buyerScore));
+  const buyerDominant=buyer5!=null&&buyer5>=55&&(buyer1h==null||buyer1h>=51);
+  const sellerDominant=buyer5!=null&&buyer5<45&&(buyer1h==null||buyer1h<49);
+  const pressureLabel=buyerDominant?'BUYERS':sellerDominant?'SELLERS':'BALANCED';
+  return {buyerPower:buyerScore,buyerPower5m:buyer5==null?null:+buyer5.toFixed(1),buyerPower1h:buyer1h==null?null:+buyer1h.toFixed(1),buyerPower6h:buyer6h==null?null:+buyer6h.toFixed(1),buyerDominant,sellerDominant,pressureLabel,volumeScore,volumeLabel,volumeLiquidity:volLiq,flags};
+}
+
 function marketQualityScore(t){
   let score=0; const reasons=[],warnings=[];
   if(t.dexUrl){score+=15;reasons.push('شفافیت و قابلیت رهگیری در DEX')}else warnings.push('لینک DEX نامشخص');
@@ -403,6 +435,8 @@ function academyGuard(t){
   checks.push({name:'نقدینگی سالم نسبت به Market Cap',state:mq.liqRatio>=0.05?'pass':mq.liqRatio>0&&mq.liqRatio<0.02?'fail':'manual'});
   checks.push({name:'حجم در حال رشد، نه محو شدن',state:chart.volumeTrend==='RISING'?'pass':chart.volumeTrend==='FADING'?'fail':'manual'});
   checks.push({name:'فعالیت غیررباتی',state:t.activity?.label==='PROBABLE ORGANIC'?'pass':t.activity?.label==='BOT RISK'?'fail':'manual'});
+  checks.push({name:'حجم معاملات سالم',state:(t.flow?.volumeLabel==='STRONG'||t.flow?.volumeLabel==='GOOD')?'pass':t.flow?.volumeLabel==='SUSPICIOUS'?'fail':'manual'});
+  checks.push({name:'قدرت خریدار بیشتر از فروشنده',state:t.flow?.buyerDominant?'pass':t.flow?.sellerDominant?'fail':'manual'});
   checks.push({name:'شبکه اجتماعی/جامعه قابل مشاهده',state:(t.socialSources||[]).length>=2&&t.trend?.score>=40?'pass':'manual'});
   checks.push({name:'Liquidity Lock/Burn تأیید شده',state:'manual'});
   checks.push({name:'Dev holding پایین تأیید شده',state:'manual'});
@@ -413,7 +447,7 @@ function academyGuard(t){
   const manual=checks.length-pass-fail;
   const criticalFail=
     sec.mintDisabled===false||sec.freezeDisabled===false||sec.holderPolicyPassed===false||
-    t.activity?.label==='BOT RISK'||chart.pumpDumpRisk==='HIGH'||(mq.liqRatio>0&&mq.liqRatio<0.02);
+    t.activity?.label==='BOT RISK'||chart.pumpDumpRisk==='HIGH'||t.flow?.volumeLabel==='SUSPICIOUS'||(mq.liqRatio>0&&mq.liqRatio<0.02);
   const blocked=criticalFail||fail>=2;
   const score=Math.round(pass/checks.length*100);
   const label=blocked?'BLOCK':fail===0&&pass>=6?'BASIC PASS':fail===0?'NEEDS REVIEW':'CAUTION';
@@ -465,6 +499,11 @@ function horizonScore(t,h){
   if(mq>=80)add(7,'کیفیت بازار بالا'); else if(mq<60)add(-8,'کیفیت بازار پایین');
   if(act>=72)add(6,'فعالیت طبیعی');
   if(t.security?.holderStrong)add(5,'توزیع هولدر مناسب');
+  if(t.flow?.volumeLabel==='STRONG')add(8,'حجم معاملات قوی');
+  else if(t.flow?.volumeLabel==='GOOD')add(5,'حجم معاملات خوب');
+  else if(t.flow?.volumeLabel==='SUSPICIOUS')add(-14,'حجم غیرعادی/مشکوک');
+  if(t.flow?.buyerDominant)add(8,'قدرت خریدار بیشتر از فروشنده');
+  else if(t.flow?.sellerDominant)add(-12,'قدرت فروشنده غالب');
   if(gate.blocked)score-=45;
 
   if(h==='short'){
@@ -568,6 +607,7 @@ async function build(){
     t.xSocial={configured:!!process.env.X_BEARER_TOKEN,posts2h:0,engagement2h:0};
     t.youtubeSocial={configured:!!process.env.YOUTUBE_API_KEY,videos24h:0};
     t.activity=activityScore(t);
+    t.flow=flowQuality(t);
     t.trend=trendScore(t,s);
     t.socialHeat=socialHeatScore(t);
     t.marketQuality=marketQualityScore(t);
@@ -609,6 +649,7 @@ async function build(){
     sourceStatus:{dexscreener:'live',solanaRpc:'live',bluesky:'live-public',x:process.env.X_BEARER_TOKEN?'live-api':'needs API key',youtube:process.env.YOUTUBE_API_KEY?'live-api':'needs API key',reddit:process.env.REDDIT_CLIENT_ID?'configured':'presence-only',instagram:'presence-only',facebook:'presence-only',tiktok:'presence-only',telegram:'presence-only'},
     holderPolicy:{hardRules:{holder1MaxPct:10,holders2to10EachMaxPct:5},gradeA:{holder1MaxPct:5,holders2to10EachMaxPct:2.5},gradeB:{holder1MaxPct:7.5,holders2to10EachMaxPct:4},gradeC:{holder1MaxPct:10,holders2to10EachMaxPct:5},unknownFailsStrong:true},
     activityPolicy:{probableOrganicMin:72,highSecurityMin:58,method:'aggregate heuristics; not proof of human identity'},
+    orderFlowPolicy:{buyerPower:'buy transaction count / total buy+sell transactions; not dollar buy volume',strongBuyer:'5m >=55% and 1h >=51% when available',volumeQuality:'absolute volume + tx count + volume/liquidity sanity check'},
     knowledgeEngine:{marketQuality:'transparency + liquidity + data coverage',chartDiscipline:'trend + FOMO + pump/dump guard',academy:'rug/honeypot/MEV/sniper/risk checklist; unknown checks stay manual'},
     signalWindows:{short:'5m-1h',medium:'1h-6h',long:'6h-24h',securityGate:'explicit failures block; unknown security data becomes CAUTION and caps confidence instead of auto-reject'},
     disclaimer:'قانون هولدرها: هولدر شماره 1 حداکثر 10% و هرکدام از هولدرهای شماره 2 تا 10 حداکثر 5% می‌توانند داشته باشند. مجموع Top10 فقط جهت اطلاع نمایش داده می‌شود و شرط رد نیست. Organic Activity یک تخمین ضدربات/ضدواش است. هیچ فیلتر آن‌چین کلاهبرداری را 100% رد نمی‌کند.'};
@@ -1212,6 +1253,10 @@ function faSignal(v){return {'STRONG':'قوی','POSITIVE':'مثبت','NEUTRAL':'
 function signalClass(v){return v==='STRONG'||v==='POSITIVE'?'good':v==='AVOID'||v==='BLOCKED'?'bad':'mid'}
 function faSocialHeat(v){return {'VIRAL':'وایرال','HOT':'خیلی داغ','WARM':'رو به رشد','LOW':'کم'}[v]||v||'—'}
 function socialHeatClass(v){return v==='VIRAL'||v==='HOT'?'good':v==='WARM'?'mid':'blue'}
+function faVolume(v){return {'STRONG':'قوی','GOOD':'خوب','MEDIUM':'متوسط','LOW':'کم','WEAK':'ضعیف','SUSPICIOUS':'مشکوک'}[v]||v||'—'}
+function volumeClass(v){return v==='STRONG'||v==='GOOD'?'good':v==='SUSPICIOUS'||v==='WEAK'?'bad':'mid'}
+function pressureClass(t){return t&&t.flow&&t.flow.buyerDominant?'good':t&&t.flow&&t.flow.sellerDominant?'bad':'mid'}
+
 
 function tokenStrength(t){
   if(!t)return -1;
@@ -1258,6 +1303,8 @@ function featuredRows(){
     if((Number(t.buys5m)+1)/(Number(t.sells5m)+1)>=1.35){s+=8;w.push('فشار خرید')}
     if(t.security&&t.security.holderStrong){s+=7;w.push('هولدر مناسب')}
     if(t.marketQuality&&t.marketQuality.score>=80)s+=7;
+    if(t.flow&&t.flow.volumeLabel==='STRONG'){s+=9;w.push('حجم قوی')}else if(t.flow&&t.flow.volumeLabel==='GOOD'){s+=5;w.push('حجم خوب')}
+    if(t.flow&&t.flow.buyerDominant){s+=10;w.push('قدرت خریدار غالب')}else if(t.flow&&t.flow.sellerDominant)s-=12;
     if(t.socialHeat&&t.socialHeat.score>=75){s+=10;w.push('وایرال اجتماعی')}else if(t.socialHeat&&t.socialHeat.score>=55){s+=6;w.push('ترند اجتماعی داغ')}
     if(t.chart&&t.chart.pumpDumpRisk==='HIGH')s-=25;
     if(t.chart&&t.chart.fomoRisk==='HIGH')s-=12;
@@ -1274,25 +1321,26 @@ function featuredRows(){
 }
 
 function tokenRow(t){
-  var s=t.security||{},g=t.securityGate||{},sg=t.signals||{},sh=sg.short||{},md=sg.medium||{},lg=sg.long||{};
+  var s=t.security||{},g=t.securityGate||{},sg=t.signals||{},sh=sg.short||{},md=sg.medium||{},lg=sg.long||{},fl=t.flow||{};
   return '<div class="row">'+
   '<div class="asset"><b>'+esc(t.symbol||'?')+' · '+esc(t.name||'')+'</b><small>'+esc(short(t.mint))+'</small>'+socialButtons(t)+'</div>'+
   '<div class="cell"><small>کوتاه</small><b><span class="badge '+signalClass(sh.label)+'">'+esc(faSignal(sh.label))+' '+Number(sh.score||0)+'</span></b></div>'+
   '<div class="cell"><small>میان</small><b><span class="badge '+signalClass(md.label)+'">'+esc(faSignal(md.label))+' '+Number(md.score||0)+'</span></b></div>'+
   '<div class="cell"><small>بلند</small><b><span class="badge '+signalClass(lg.label)+'">'+esc(faSignal(lg.label))+' '+Number(lg.score||0)+'</span></b></div>'+
-  '<div class="cell hide-sm"><small>امنیت</small><b><span class="badge '+secClass(s.tier)+'">'+esc(faSec(s.tier))+'</span></b></div>'+
-  '<div class="cell hide-md"><small>Top1 / 2-10</small><b>'+pct(s.largestHolder)+' / '+pct(s.maxOtherHolder)+'</b></div>'+
+  '<div class="cell hide-sm"><small>قدرت خریدار</small><b><span class="badge '+pressureClass(t)+'">'+(fl.buyerPower==null?'—':Number(fl.buyerPower)+'%')+'</span></b></div>'+
+  '<div class="cell hide-md"><small>حجم</small><b><span class="badge '+volumeClass(fl.volumeLabel)+'">'+esc(faVolume(fl.volumeLabel))+'</span></b></div>'+
   '<div class="actions"><a class="action" target="_blank" rel="noopener" href="'+esc(dexUrl(t.mint,t.dexUrl))+'">📈 چارت</a><button class="detail-btn" data-mint="'+esc(t.mint)+'">جزئیات</button></div></div>';
 }
-
 
 function beginnerDecision(t,overallScore){
   if(!t)return {label:'صبر کن',cls:'decision-wait',reason:'فعلاً سیگنال کامل و امنی وجود ندارد'};
   var sec=t.security||{},gate=t.securityGate||{},sg=t.signals||{},wh=whaleFor(t.mint);
   if(gate.blocked||sec.tier==='REJECT'||exitFor(t.mint).length)return {label:'ورود نکن',cls:'decision-stop',reason:'ریسک امنیتی یا هشدار خروج فعال است'};
   var strongWindows=[sg.short,sg.medium,sg.long].filter(function(x){return Number(x?.score||0)>=75&&x?.label!=='BLOCKED'&&x?.label!=='AVOID'}).length;
+  var flow=t.flow||{};
   var safe=(sec.tier==='MAX SECURITY'||sec.tier==='HIGH')&&Number(t.liquidity||0)>=10000&&t.activity?.label!=='BOT RISK';
-  if(safe&&strongWindows>=2&&Number(overallScore||0)>=78)return {label:'شرایط ورود قوی',cls:'decision-buy',reason:'امنیت بالا + حداقل دو بازه زمانی قوی + بدون هشدار خروج'};
+  var flowOk=(flow.volumeLabel==='STRONG'||flow.volumeLabel==='GOOD')&&flow.buyerDominant===true;
+  if(safe&&flowOk&&strongWindows>=2&&Number(overallScore||0)>=78)return {label:'شرایط ورود قوی',cls:'decision-buy',reason:'امنیت بالا + حجم خوب + قدرت خریدار غالب + حداقل دو بازه زمانی قوی + بدون هشدار خروج'};
   return {label:'صبر کن',cls:'decision-wait',reason:'برای مبتدی بهتر است تا تکمیل تأییدها صبر شود'};
 }
 function overallCandidates(){
@@ -1307,6 +1355,8 @@ function overallCandidates(){
     if(t.security&&t.security.holderStrong)score+=6;
     if(t.activity&&t.activity.label==='PROBABLE ORGANIC')score+=5;
     if(t.marketQuality&&t.marketQuality.score>=80)score+=5;
+    if(t.flow?.volumeLabel==='STRONG')score+=7; else if(t.flow?.volumeLabel==='GOOD')score+=4;
+    if(t.flow?.buyerDominant)score+=8; else if(t.flow?.sellerDominant)score-=10;
     score+=Math.min(8,Number(t.socialHeat?.score||0)*0.10);
     var sm=smartFor(t.mint),wh=whaleFor(t.mint),tr=findTracked(t.mint);
     if(sm)score+=4;if(wh.count)score+=4;if(tr&&tr.uniqueBuyers>=2&&tr.netFlowUsd>0)score+=5;
@@ -1322,7 +1372,7 @@ function renderChampion(){
     '<div><small class="muted">امتیاز کل</small><div class="score">'+x.score+'/100</div></div>'+
     '<div class="cell"><small>کوتاه</small><b>'+Number(sg.short?.score||0)+'</b></div>'+
     '<div class="cell"><small>میان</small><b>'+Number(sg.medium?.score||0)+'</b></div>'+
-    '<div class="cell"><small>بلند</small><b>'+Number(sg.long?.score||0)+'</b></div><div class="cell"><small>Social Heat</small><b><span class="badge '+socialHeatClass(t.socialHeat?.label)+'">'+esc(faSocialHeat(t.socialHeat?.label))+' '+Number(t.socialHeat?.score||0)+'</span></b></div>'+
+    '<div class="cell"><small>بلند</small><b>'+Number(sg.long?.score||0)+'</b></div><div class="cell"><small>قدرت خریدار</small><b><span class="badge '+pressureClass(t)+'">'+Number(t.flow?.buyerPower||0)+'%</span></b></div><div class="cell"><small>حجم</small><b><span class="badge '+volumeClass(t.flow?.volumeLabel)+'">'+esc(faVolume(t.flow?.volumeLabel))+'</span></b></div><div class="cell"><small>Social Heat</small><b><span class="badge '+socialHeatClass(t.socialHeat?.label)+'">'+esc(faSocialHeat(t.socialHeat?.label))+' '+Number(t.socialHeat?.score||0)+'</span></b></div>'+
     '<div class="actions"><a class="action" target="_blank" rel="noopener" href="'+esc(dexUrl(t.mint,t.dexUrl))+'">📈 چارت</a><button class="detail-btn" data-mint="'+esc(t.mint)+'">جزئیات</button></div>'+
   '</div></div>';
 }
@@ -1336,7 +1386,7 @@ function renderFeatured(){
     '<div class="cell"><small>نهنگ</small><b>'+money(x.whale.usd)+'</b></div>'+
     '<div class="cell"><small>اسمارت</small><b>'+(x.smart?Number(x.smart.smartMoneyCount||0):0)+'</b></div>'+
     '<div class="cell hide-sm"><small>کیف‌پول برتر</small><b>'+(x.tracked?Number(x.tracked.uniqueBuyers||0):0)+'</b></div>'+
-    '<div class="cell hide-md"><small>Vol 5m</small><b>'+money(t.volume5m)+'</b></div>'+
+    '<div class="cell hide-md"><small>خریدار / حجم</small><b>'+Number(t.flow?.buyerPower||0)+'% · '+esc(faVolume(t.flow?.volumeLabel))+'</b></div>'+
     '<div class="actions"><a class="action" target="_blank" rel="noopener" href="'+esc(dexUrl(t.mint,t.dexUrl))+'">📈 چارت</a><button class="detail-btn" data-mint="'+esc(t.mint)+'">جزئیات</button></div></div>';
   }).join(''):'<div class="empty">فعلاً هیچ توکنی معیار سخت‌گیرانه ۹۰/۱۰۰ را رد نکرده.</div>';
 }
