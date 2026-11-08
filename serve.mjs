@@ -244,7 +244,54 @@ async function xSignal(t){
   if(!key)return {configured:false,posts2h:0,engagement2h:0};
   const ck='x:'+t.mint,c=socialQueryCache.get(ck);
   if(c&&Date.now()-c.at<SOCIAL_QUERY_CACHE_MS)return c.data;
-  const q='('+t.mint+(t.symbol&&String(t.symbol).length>=2?' OR 
+  const symbolPart=t.symbol&&String(t.symbol).length>=2?(' OR $'+String(t.symbol)+' OR "'+String(t.symbol)+' solana"'):'';
+  const q='('+t.mint+symbolPart+') -is:retweet';
+  const startTime=new Date(Date.now()-2*60*60*1000).toISOString();
+  let d=null;
+  const headers={authorization:'Bearer '+key};
+  const path='?query='+encodeURIComponent(q)+'&max_results=10&start_time='+encodeURIComponent(startTime)+'&tweet.fields=public_metrics,created_at';
+  try{d=await jfetch('https://api.x.com/2/tweets/search/recent'+path,{headers},12000)}
+  catch{
+    try{d=await jfetch('https://api.twitter.com/2/tweets/search/recent'+path,{headers},12000)}catch{}
+  }
+  const rows=Array.isArray(d?.data)?d.data:[];
+  let engagement=0;
+  for(const p of rows){
+    const m=p?.public_metrics||{};
+    engagement+=num(m.like_count)+num(m.retweet_count)*2+num(m.reply_count)+num(m.quote_count)*2;
+  }
+  const data={configured:true,posts2h:num(d?.meta?.result_count,rows.length),engagement2h:engagement};
+  socialQueryCache.set(ck,{at:Date.now(),data});return data;
+}
+async function youtubeSignal(t){
+  const key=process.env.YOUTUBE_API_KEY;
+  if(!key)return {configured:false,videos24h:0};
+  const ck='yt:'+t.mint,c=socialQueryCache.get(ck);
+  if(c&&Date.now()-c.at<SOCIAL_QUERY_CACHE_MS)return c.data;
+  const publishedAfter=new Date(Date.now()-24*60*60*1000).toISOString();
+  const q=[t.symbol&&String(t.symbol).length>=2?t.symbol:'',t.name||'',t.mint,'solana'].filter(Boolean).join(' ');
+  let d=null;
+  try{
+    d=await jfetch('https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&order=date&maxResults=10&publishedAfter='+encodeURIComponent(publishedAfter)+'&q='+encodeURIComponent(q)+'&key='+encodeURIComponent(key),{},12000);
+  }catch{}
+  const data={configured:true,videos24h:Array.isArray(d?.items)?d.items.length:0,totalApprox:num(d?.pageInfo?.totalResults)};
+  socialQueryCache.set(ck,{at:Date.now(),data});return data;
+}
+function socialHeatScore(t){
+  const names=new Set((t.socialSources||[]).map(x=>x.name).filter(x=>x!=='Website'));
+  const b=t.bluesky||{},x=t.xSocial||{},y=t.youtubeSocial||{};
+  let score=Math.min(22,names.size*4),reasons=[];
+  if(names.size>=3)reasons.push(names.size+' شبکه رسمی');
+  if(num(b.mentions2h)>0){score+=Math.min(20,num(b.mentions2h)*3);reasons.push('Bluesky '+num(b.mentions2h)+' mention / 2h')}
+  if(num(b.engagement2h)>0)score+=Math.min(5,Math.log10(1+num(b.engagement2h))*3);
+  if(num(x.posts2h)>0){score+=Math.min(30,num(x.posts2h)*4);reasons.push('X '+num(x.posts2h)+' پست / 2h')}
+  if(num(x.engagement2h)>0)score+=Math.min(8,Math.log10(1+num(x.engagement2h))*4);
+  if(num(y.videos24h)>0){score+=Math.min(20,num(y.videos24h)*4);reasons.push('YouTube '+num(y.videos24h)+' ویدیو / 24h')}
+  score=clamp(Math.round(score));
+  const label=score>=75?'VIRAL':score>=55?'HOT':score>=35?'WARM':'LOW';
+  return {score,label,reasons,sources:[...names],xPosts2h:num(x.posts2h),youtubeVideos24h:num(y.videos24h),blueskyMentions2h:num(b.mentions2h)};
+}
+function trendScore(t,seed){
   const sources=t.socialSources||[];
   const socialNames=new Set(sources.map(x=>x.name));
   let score=0; const reasons=[];
@@ -257,15 +304,16 @@ async function xSignal(t){
   if(seed.boostSeen){score+=Math.min(16,4+Math.log10(1+seed.boostTotal)*4);reasons.push('DEX Boost فعال')}
   const socialCount=[...socialNames].filter(x=>x!=='Website').length;
   score+=Math.min(12,socialCount*3);
-  if(socialCount>=2)reasons.push(`${socialCount} شبکه اجتماعی لینک‌شده`);
+  if(socialCount>=2)reasons.push(socialCount+' شبکه اجتماعی لینک‌شده');
   if(socialNames.has('X'))score+=3;
   if(socialNames.has('Telegram'))score+=2;
-  if(socialNames.has('YouTube')||socialNames.has('Instagram')||socialNames.has('TikTok'))score+=2;
+  if(socialNames.has('YouTube')||socialNames.has('Instagram')||socialNames.has('TikTok')||socialNames.has('Facebook'))score+=2;
   if(seed.profileSeen)score+=3;
   if(t.ageMinutes<=10)score+=6;
   else if(t.ageMinutes<=30)score+=3;
   return {score:clamp(Math.round(score)),reasons,boostAmount:seed.boostAmount,boostTotal:seed.boostTotal,socialCount,sources:[...socialNames]};
 }
+
 function activityScore(t){
   const tx=t.txns5m||0;
   const buys=t.buys5m||0, sells=t.sells5m||0;
