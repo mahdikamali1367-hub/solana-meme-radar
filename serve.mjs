@@ -1618,58 +1618,6 @@ dialog{width:min(720px,94vw);max-height:88vh;border:1px solid #36506e;border-rad
   </details>
 </section>
 
-<details class="accordion highlight" open>
-  <summary>🏆 بهترین سیگنال کل رادار</summary>
-  <div class="accordion-body" id="championBox"></div>
-</details>
-
-  <details class="accordion highlight" open>
-    <summary>📈 بازده واقعی ۲۴ساعته سیگنال‌های رادار</summary>
-    <div class="accordion-body">
-      <p class="muted" style="font-size:11px">بازدهی بازار در ۲۴ ساعت اخیر برای توکن‌های امن و امتیازبالای فعلی رادار. برای توکن جوان‌تر از ۲۴ ساعت، تغییر از زمان ساخت تا اکنون نمایش داده می‌شود.</p>
-      <div id="performance24Summary"></div>
-      <div class="list" id="performance24List"></div>
-    </div>
-  </details>
-
-<details class="accordion" open>
-  <summary>📊 خلاصه رادار</summary>
-  <div class="accordion-body"><section class="kpis">
-    <div class="kpi"><small>توکن‌ها</small><b id="kTokens">—</b></div>
-    <div class="kpi"><small>پیشنهاد ۹۰+</small><b id="kFeatured">—</b></div>
-    <div class="kpi"><small>خرید نهنگ</small><b id="kWhales">—</b></div>
-    <div class="kpi"><small>خروج همزمان</small><b id="kExits">—</b></div>
-  </section></div>
-</details>
-
-<details class="accordion">
-  <summary>🚨 هشدارهای خروج و فروش</summary>
-  <div class="accordion-body"><div class="alerts" id="alerts"></div></div>
-</details>
-
-
-
-<details class="accordion">
-  <summary>🔎 جستجو و فیلترها</summary>
-  <div class="accordion-body"><div class="toolbar">
-    <input id="search" placeholder="جستجو نام، نماد یا آدرس">
-    <select id="securityFilter"><option value="">همه امنیت‌ها</option><option value="MAX SECURITY">امنیت خیلی بالا</option><option value="HIGH">امنیت بالا</option></select>
-    <select id="activityFilter"><option value="">همه فعالیت‌ها</option><option value="PROBABLE ORGANIC">فعالیت طبیعی</option><option value="BOT RISK">ریسک ربات</option></select>
-  </div></div>
-</details>
-
-<section class="panel active" id="featuredPanel">
-  <details class="accordion" open>
-    <summary>🔥 پیشنهادهای اولویت‌دار</summary>
-    <div class="accordion-body"><p class="muted" style="font-size:11px">فقط توکن‌های بدون هشدار خروج/رد امنیتی که نقطه ورود فعال دارند. ورود قوی و ورود قابل‌بررسی جدا نمایش داده می‌شوند؛ هیچ‌کدام تضمین سود نیست.</p><div class="subfilters">
-<label>کوتاه‌مدت<select class="signal-filter" data-filter="short"><option value="">همه</option><option value="STRONG">قوی</option><option value="POSITIVE">مثبت</option><option value="NEUTRAL">خنثی</option><option value="WAIT_DATA">داده ناکافی</option><option value="AVOID">ورود نکن</option><option value="BLOCKED">مسدود امنیتی</option></select></label>
-<label>میان‌مدت<select class="signal-filter" data-filter="medium"><option value="">همه</option><option value="STRONG">قوی</option><option value="POSITIVE">مثبت</option><option value="NEUTRAL">خنثی</option><option value="WAIT_DATA">داده ناکافی</option><option value="AVOID">ورود نکن</option><option value="BLOCKED">مسدود امنیتی</option></select></label>
-<label>بلندمدت<select class="signal-filter" data-filter="long"><option value="">همه</option><option value="STRONG">قوی</option><option value="POSITIVE">مثبت</option><option value="NEUTRAL">خنثی</option><option value="WAIT_DATA">داده ناکافی</option><option value="AVOID">ورود نکن</option><option value="BLOCKED">مسدود امنیتی</option></select></label>
-<label>امنیت<select class="signal-filter" data-filter="security"><option value="">همه</option><option value="MAX SECURITY">خیلی بالا</option><option value="HIGH">بالا</option><option value="REVIEW">نیاز به بررسی</option><option value="REJECT">رد</option></select></label>
-</div><div class="list" id="featuredList"></div></div>
-  </details>
-</section>
-
 <section class="panel" id="whalesPanel">
   <details class="accordion" open>
     <summary>🐋 خریدهای نهنگ</summary>
@@ -1757,6 +1705,60 @@ dialog{width:min(720px,94vw);max-height:88vh;border:1px solid #36506e;border-rad
     <div class="accordion-body"><div id="weekBest"></div><div class="list" id="weekTokenList"></div><div class="note">دامنه کشف فعلی رادار تا حدود ۳۰ روز است؛ اگر منابع کشف، توکن قدیمی‌تر را برنگردانند در این بخش ظاهر نمی‌شود.</div></div>
   </details>
 </section>
+
+
+<!-- Secondary sections moved below primary radar content -->
+<section class="panel active" id="featuredPanel">
+  <details class="accordion" open>
+    <summary>🔥 پیشنهادهای اولویت‌دار</summary>
+    <div class="accordion-body"><p class="muted" style="font-size:11px">فقط توکن‌های بدون هشدار خروج/رد امنیتی که نقطه ورود فعال دارند. ورود قوی و ورود قابل‌بررسی جدا نمایش داده می‌شوند؛ هیچ‌کدام تضمین سود نیست.</p><div class="subfilters">
+<label>کوتاه‌مدت<select class="signal-filter" data-filter="short"><option value="">همه</option><option value="STRONG">قوی</option><option value="POSITIVE">مثبت</option><option value="NEUTRAL">خنثی</option><option value="WAIT_DATA">داده ناکافی</option><option value="AVOID">ورود نکن</option><option value="BLOCKED">مسدود امنیتی</option></select></label>
+<label>میان‌مدت<select class="signal-filter" data-filter="medium"><option value="">همه</option><option value="STRONG">قوی</option><option value="POSITIVE">مثبت</option><option value="NEUTRAL">خنثی</option><option value="WAIT_DATA">داده ناکافی</option><option value="AVOID">ورود نکن</option><option value="BLOCKED">مسدود امنیتی</option></select></label>
+<label>بلندمدت<select class="signal-filter" data-filter="long"><option value="">همه</option><option value="STRONG">قوی</option><option value="POSITIVE">مثبت</option><option value="NEUTRAL">خنثی</option><option value="WAIT_DATA">داده ناکافی</option><option value="AVOID">ورود نکن</option><option value="BLOCKED">مسدود امنیتی</option></select></label>
+<label>امنیت<select class="signal-filter" data-filter="security"><option value="">همه</option><option value="MAX SECURITY">خیلی بالا</option><option value="HIGH">بالا</option><option value="REVIEW">نیاز به بررسی</option><option value="REJECT">رد</option></select></label>
+</div><div class="list" id="featuredList"></div></div>
+  </details>
+</section>
+
+<details class="accordion highlight" open>
+  <summary>🏆 بهترین سیگنال کل رادار</summary>
+  <div class="accordion-body" id="championBox"></div>
+</details>
+
+  <details class="accordion highlight" open>
+    <summary>📈 بازده واقعی ۲۴ساعته سیگنال‌های رادار</summary>
+    <div class="accordion-body">
+      <p class="muted" style="font-size:11px">بازدهی بازار در ۲۴ ساعت اخیر برای توکن‌های امن و امتیازبالای فعلی رادار. برای توکن جوان‌تر از ۲۴ ساعت، تغییر از زمان ساخت تا اکنون نمایش داده می‌شود.</p>
+      <div id="performance24Summary"></div>
+      <div class="list" id="performance24List"></div>
+    </div>
+  </details>
+
+<details class="accordion" open>
+  <summary>📊 خلاصه رادار</summary>
+  <div class="accordion-body"><section class="kpis">
+    <div class="kpi"><small>توکن‌ها</small><b id="kTokens">—</b></div>
+    <div class="kpi"><small>پیشنهاد ۹۰+</small><b id="kFeatured">—</b></div>
+    <div class="kpi"><small>خرید نهنگ</small><b id="kWhales">—</b></div>
+    <div class="kpi"><small>خروج همزمان</small><b id="kExits">—</b></div>
+  </section></div>
+</details>
+
+<details class="accordion">
+  <summary>🚨 هشدارهای خروج و فروش</summary>
+  <div class="accordion-body"><div class="alerts" id="alerts"></div></div>
+</details>
+
+
+
+<details class="accordion">
+  <summary>🔎 جستجو و فیلترها</summary>
+  <div class="accordion-body"><div class="toolbar">
+    <input id="search" placeholder="جستجو نام، نماد یا آدرس">
+    <select id="securityFilter"><option value="">همه امنیت‌ها</option><option value="MAX SECURITY">امنیت خیلی بالا</option><option value="HIGH">امنیت بالا</option></select>
+    <select id="activityFilter"><option value="">همه فعالیت‌ها</option><option value="PROBABLE ORGANIC">فعالیت طبیعی</option><option value="BOT RISK">ریسک ربات</option></select>
+  </div></div>
+</details>
 </main>
 
 <dialog id="detailDialog">
