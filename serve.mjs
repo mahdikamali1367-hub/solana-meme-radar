@@ -803,6 +803,22 @@ async function buildTrackedWallets(){
     for(const e of a.events){e.symbol=a.symbol;e.name=a.name;e.dexUrl=p?.url||''}
     a.dexUrl=p?.url||'';a.priceUsd=price;a.liquidity=num(p?.liquidity?.usd);a.marketCap=num(p?.marketCap||p?.fdv);
     a.currentHoldingUsd=currentHoldingUsd;a.holders=holders;a.holdingWallets=holders.length;
+    const holderFlow=new Map();
+    for(const e of a.events){
+      const k=e.walletAddress||e.wallet||'unknown';
+      const x=holderFlow.get(k)||{wallet:e.wallet||'نامشخص',address:e.walletAddress||'',buyUsd:0,sellUsd:0,buyCount:0,sellCount:0};
+      if(e.side==='BUY'){x.buyUsd+=num(e.approxUsd);x.buyCount++}
+      else if(e.side==='SELL'){x.sellUsd+=num(e.approxUsd);x.sellCount++}
+      holderFlow.set(k,x);
+    }
+    a.convictionHolders=[...holderFlow.values()].map(x=>{
+      const h=holders.find(v=>v.address===x.address);
+      return {...x,currentHoldingUsd:num(h?.valueUsd),netBuyUsd:x.buyUsd-x.sellUsd,sellBuyRatio:x.buyUsd>0?x.sellUsd/x.buyUsd:null};
+    }).filter(x=>x.buyUsd>=1000&&x.sellUsd<x.buyUsd&&x.currentHoldingUsd>0)
+      .sort((x,y)=>y.netBuyUsd-x.netBuyUsd);
+    a.convictionHolderCount=a.convictionHolders.length;
+    a.convictionBuyUsd=a.convictionHolders.reduce((n,x)=>n+x.buyUsd,0);
+    a.convictionSellUsd=a.convictionHolders.reduce((n,x)=>n+x.sellUsd,0);
     a.uniqueBuyers=a.buyers.size;a.uniqueSellers=a.sellers.size;a.buyers=[...a.buyers];a.sellers=[...a.sellers];
     a.netFlowUsd=a.buyUsd-a.sellUsd;
     a.consensus=a.uniqueBuyers>=2&&a.netFlowUsd>0;
@@ -1090,7 +1106,7 @@ button,input,select,a.action{border:1px solid var(--line);background:#101d31;col
 .kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:11px}.kpi{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:10px}.kpi small{color:var(--muted);font-size:11px}.kpi b{display:block;font-size:21px;margin-top:3px}
 .champion{background:linear-gradient(135deg,#102b27,#101f35);border:1px solid #34745e;border-radius:14px;padding:12px;margin-bottom:10px}.champion h2{font-size:15px;margin:0 0 6px}.champion .score{font-size:24px;font-weight:900;color:var(--good)}.champion-grid{display:grid;grid-template-columns:1.4fr repeat(4,.7fr) auto;gap:8px;align-items:center}.decision-banner{border-radius:11px;padding:10px 12px;margin-bottom:10px;font-weight:900;font-size:16px}.decision-buy{background:#123a2d;color:var(--good);border:1px solid #34745e}.decision-wait{background:#3b3317;color:var(--warn);border:1px solid #6d5d24}.decision-stop{background:#421a24;color:var(--bad);border:1px solid #743040}.beginner-note{font-size:11px;color:var(--muted);margin-top:4px;line-height:1.55}.whale-summary{display:grid;grid-template-columns:repeat(3,1fr);gap:7px;margin:7px 0 10px}.whale-stat{background:#101d31;border:1px solid var(--line);border-radius:10px;padding:9px}.whale-stat small{display:block;color:var(--muted);font-size:10px}.whale-stat b{display:block;margin-top:3px;font-size:14px}.alerts{display:grid;gap:6px;margin-bottom:9px}.alert{padding:8px 10px;border:1px solid #703343;background:#25151d;color:#ffb0bd;border-radius:10px;font-size:12px}
 .tabs{display:flex;gap:6px;overflow:auto;scrollbar-width:none;margin-bottom:10px}.tab{white-space:nowrap}.tab.active{background:#193759;border-color:#3d709f;color:#c0e1ff}
-.toolbar{display:flex;gap:7px;flex-wrap:wrap;margin-bottom:10px}.toolbar input{flex:1;min-width:220px}.toolbar select{min-width:140px}.subfilters{display:grid;grid-template-columns:repeat(4,minmax(130px,1fr));gap:7px;margin:8px 0 11px}.subfilters label{font-size:12px;color:var(--muted);font-weight:800}.subfilters select{width:100%;margin-top:4px;padding:8px}.social-actions{display:flex;gap:5px;flex-wrap:wrap;margin-top:5px}.social-actions a{font-size:11px;text-decoration:none;padding:5px 7px;border:1px solid var(--line);border-radius:8px;color:#b5ddff;background:#10243b}
+.toolbar{display:flex;gap:7px;flex-wrap:wrap;margin-bottom:10px}.toolbar input{flex:1;min-width:220px}.toolbar select{min-width:140px}.subfilters{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:7px;margin:8px 0 11px}.subfilters label{font-size:12px;color:var(--muted);font-weight:800}.subfilters select{width:100%;margin-top:4px;padding:8px}.social-actions{display:flex;gap:5px;flex-wrap:wrap;margin-top:5px}.social-actions a{font-size:11px;text-decoration:none;padding:5px 7px;border:1px solid var(--line);border-radius:8px;color:#b5ddff;background:#10243b}
 .accordion{background:var(--panel);border:1px solid var(--line);border-radius:12px;margin-bottom:9px;overflow:hidden}
 .accordion>summary{list-style:none;cursor:pointer;padding:14px 15px;font-weight:900;font-size:16px;display:flex;align-items:center;justify-content:space-between;gap:8px;user-select:none}
 .accordion>summary::-webkit-details-marker{display:none}.accordion>summary:after{content:'⌄';color:var(--muted);transition:transform .15s ease}.accordion[open]>summary:after{transform:rotate(180deg)}
@@ -1229,7 +1245,8 @@ dialog{width:min(720px,94vw);max-height:88vh;border:1px solid #36506e;border-rad
 <label>میان‌مدت<select class="signal-filter" data-filter="medium"><option value="">همه</option><option value="STRONG">قوی</option><option value="POSITIVE">مثبت</option><option value="NEUTRAL">خنثی</option><option value="WAIT_DATA">داده ناکافی</option><option value="AVOID">ورود نکن</option><option value="BLOCKED">مسدود امنیتی</option></select></label>
 <label>بلندمدت<select class="signal-filter" data-filter="long"><option value="">همه</option><option value="STRONG">قوی</option><option value="POSITIVE">مثبت</option><option value="NEUTRAL">خنثی</option><option value="WAIT_DATA">داده ناکافی</option><option value="AVOID">ورود نکن</option><option value="BLOCKED">مسدود امنیتی</option></select></label>
 <label>امنیت<select class="signal-filter" data-filter="security"><option value="">همه</option><option value="MAX SECURITY">خیلی بالا</option><option value="HIGH">بالا</option><option value="REVIEW">نیاز به بررسی</option><option value="REJECT">رد</option></select></label>
-</div><p class="muted" style="font-size:11px">رتبه هر گروه با مدل امتیاز مخصوص همان سن محاسبه می‌شود.</p></div>
+<label>هولدر ردیابی‌شده ۱۰۰۰$+<select class="signal-filter" data-filter="holders"><option value="">همه</option><option value="1">حداقل ۱ هولدر</option><option value="2">حداقل ۲ هولدر</option><option value="3">حداقل ۳ هولدر</option></select></label>
+</div><p class="muted" style="font-size:11px">رتبه هر گروه با مدل امتیاز مخصوص همان سن محاسبه می‌شود. فیلتر هولدر ۱۰۰۰$+ فقط کیف‌پول‌های تحت ردیابی و تراکنش‌های قابل‌تشخیص ۴۸ ساعت اخیر را بررسی می‌کند؛ خرید باید حداقل ۱۰۰۰ دلار، فروش کمتر از خرید و موجودی فعلی مثبت باشد.</p></div>
   </details>
   <details class="accordion" open>
     <summary>⚡ توکن‌های تازه و ترند — کمتر از ۲۴ ساعت</summary>
@@ -1252,7 +1269,7 @@ dialog{width:min(720px,94vw);max-height:88vh;border:1px solid #36506e;border-rad
 </dialog>
 
 <script>
-var tokens=[],smart=null,live=null,tracked=null,conviction=null,activeTab='featured',signalFilters={short:'',medium:'',long:'',security:''};
+var tokens=[],smart=null,live=null,tracked=null,conviction=null,activeTab='featured',signalFilters={short:'',medium:'',long:'',security:'',holders:''};
 function esc(v){return String(v==null?'':v).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]})}
 function money(v){var n=Number(v||0);if(!Number.isFinite(n))return '—';return '$'+n.toLocaleString(undefined,{maximumFractionDigits:n<1?4:0})}
 function pct(v){return v==null?'—':Number(v).toFixed(1)+'%'}
@@ -1300,7 +1317,7 @@ function bucketScore(t,bucket){
   else if(bucket==='day')score=security*.22+sh*.10+md*.18+lg*.15+buyer*.12+volume*.12+social*.06+market*.05;
   else score=security*.28+sh*.05+md*.13+lg*.22+buyer*.10+volume*.08+social*.04+market*.10;
   var wh=whaleFor(t.mint),tr=findTracked(t.mint),sm=smartFor(t.mint);
-  if(wh.count)score+=3;if(tr&&Number(tr.uniqueBuyers||0)>=2&&Number(tr.netFlowUsd||0)>0)score+=3;if(sm)score+=2;
+  if(wh.count)score+=3;if(tr&&Number(tr.uniqueBuyers||0)>=2&&Number(tr.netFlowUsd||0)>0)score+=3;if(tr&&Number(tr.convictionHolderCount||0)>=1)score+=Math.min(5,Number(tr.convictionHolderCount||0)*2);if(sm)score+=2;
   if(exitFor(t.mint).length)score-=18;
   if(fl.sellerDominant)score-=8;
   if(fl.volumeLabel==='SUSPICIOUS')score-=12;
@@ -1319,14 +1336,19 @@ function bucketSignalClass(score,t){
   return score>=75?'good':score>=50?'mid':'bad';
 }
 
+function qualifyingTrackedHolders(t){
+  var tr=t?findTracked(t.mint):null;
+  return tr&&Array.isArray(tr.convictionHolders)?tr.convictionHolders:[];
+}
 function passesSignalFilters(t){
-  var any=signalFilters.short||signalFilters.medium||signalFilters.long||signalFilters.security;
+  var any=signalFilters.short||signalFilters.medium||signalFilters.long||signalFilters.security||signalFilters.holders;
   if(!t)return !any;
   var sg=t.signals||{},sec=t.security||{};
   if(signalFilters.short&&sg.short?.label!==signalFilters.short)return false;
   if(signalFilters.medium&&sg.medium?.label!==signalFilters.medium)return false;
   if(signalFilters.long&&sg.long?.label!==signalFilters.long)return false;
   if(signalFilters.security&&sec.tier!==signalFilters.security)return false;
+  if(signalFilters.holders&&qualifyingTrackedHolders(t).length<Number(signalFilters.holders))return false;
   return true;
 }
 function socialButtons(t){
@@ -1383,7 +1405,7 @@ function tokenRow(t,bucket){
   '<div class="cell"><small>کوتاه / میان / بلند</small><b>'+Number(sh.score||0)+' / '+Number(md.score||0)+' / '+Number(lg.score||0)+'</b></div>'+
   '<div class="cell"><small>قدرت خریدار</small><b><span class="badge '+pressureClass(t)+'">'+(fl.buyerPower==null?'—':Number(fl.buyerPower)+'%')+'</span></b></div>'+
   '<div class="cell hide-sm"><small>امنیت</small><b><span class="badge '+secClass(s.tier)+'">'+esc(faSec(s.tier))+'</span></b></div>'+
-  '<div class="cell hide-md"><small>حجم</small><b><span class="badge '+volumeClass(fl.volumeLabel)+'">'+esc(faVolume(fl.volumeLabel))+'</span></b></div>'+
+  '<div class="cell hide-md"><small>حجم / هولدر $1k+</small><b><span class="badge '+volumeClass(fl.volumeLabel)+'">'+esc(faVolume(fl.volumeLabel))+'</span> · '+qualifyingTrackedHolders(t).length+'</b></div>'+
   '<div class="actions"><a class="action" target="_blank" rel="noopener" href="'+esc(dexUrl(t.mint,t.dexUrl))+'">📈 چارت</a><button class="detail-btn" data-mint="'+esc(t.mint)+'">جزئیات</button></div></div>';
 }
 
@@ -1566,7 +1588,7 @@ function renderBucketBest(id,rows,bucket,title){
     '<div><small class="muted">امتیاز نهایی</small><div class="bucket-score">'+bs+'/100</div></div>'+
     '<div class="cell"><small>قدرت خریدار</small><b>'+Number(fl.buyerPower||0)+'%</b></div>'+
     '<div class="cell"><small>حجم</small><b>'+esc(faVolume(fl.volumeLabel))+'</b></div>'+
-    '<div class="cell"><small>امنیت</small><b>'+esc(faSec(t.security?.tier))+'</b></div>'+
+    '<div class="cell"><small>امنیت</small><b>'+esc(faSec(t.security?.tier))+'</b></div><div class="cell"><small>هولدر $1k+</small><b>'+qualifyingTrackedHolders(t).length+'</b></div>'+
     '<div class="actions"><a class="action" target="_blank" rel="noopener" href="'+esc(dexUrl(t.mint,t.dexUrl))+'">📈 چارت</a><button class="detail-btn" data-mint="'+esc(t.mint)+'">جزئیات</button></div>'+
   '</div></div>';
 }
@@ -1598,6 +1620,7 @@ function openDetail(m){
     if(ac.checks&&ac.checks.length)h+='<details class="accordion"><summary>🛡 چک‌لیست امنیتی</summary><div class="accordion-body">'+ac.checks.map(function(c){return '<div class="check"><span>'+esc(c.name)+'</span>'+stateLabel(c.state)+'</div>'}).join('')+'</div></details>';
   }
   if(tr)h+='<div class="note"><b>کیف‌پول‌های برتر:</b> '+Number(tr.uniqueBuyers||0)+' خریدار، '+Number(tr.uniqueSellers||0)+' فروشنده، جریان خالص '+money(tr.netFlowUsd)+'، هولدینگ '+money(tr.currentHoldingUsd)+'</div>';
+  if(tr&&tr.convictionHolders&&tr.convictionHolders.length)h+='<details class="accordion"><summary>💎 هولدرهای ردیابی‌شده با خرید ۱۰۰۰$+ و فروش کمتر</summary><div class="accordion-body">'+tr.convictionHolders.map(function(x){return '<div class="check"><span>'+esc(x.wallet)+' · خرید '+money(x.buyUsd)+' · فروش '+money(x.sellUsd)+'</span><span class="pass">هولد فعلی '+money(x.currentHoldingUsd)+'</span></div>'}).join('')+'<div class="note">بر اساس Swapهای قابل‌تشخیص ۴۸ ساعت اخیر کیف‌پول‌های تحت ردیابی؛ پوشش کل بازار نیست.</div></div></details>';
   if(sm)h+='<div class="note"><b>اسمارت‌مانی:</b> '+Number(sm.smartMoneyCount||0)+' کیف‌پول · '+money(sm.totalValueUsd)+' پوزیشن</div>';
   if(wh.count)h+='<div class="note"><b>نهنگ:</b> '+wh.count+' خرید بزرگ · '+money(wh.usd)+'</div>';if(t)h+=socialButtons(t);
   h+='<div class="links"><a target="_blank" rel="noopener" href="'+esc(dexUrl(m,t&&t.dexUrl))+'">📈 DexScreener</a><a target="_blank" rel="noopener" href="https://solscan.io/token/'+encodeURIComponent(m)+'">Solscan</a><a target="_blank" rel="noopener" href="https://gmgn.ai/sol/token/'+encodeURIComponent(m)+'">GMGN</a><a target="_blank" rel="noopener" href="https://v2.bubblemaps.io/map?address='+encodeURIComponent(m)+'&chain=solana&partnerId=regular">Bubblemaps</a><a target="_blank" rel="noopener" href="https://www.solanatracker.io/rugcheck/'+encodeURIComponent(m)+'">Rugcheck</a></div><div class="note">این رادار ابزار تحقیق است؛ هیچ امتیازی تضمین سود یا نبود کلاهبرداری نیست.</div>';
