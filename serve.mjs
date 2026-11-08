@@ -1599,6 +1599,21 @@ function liveSmartMoneyPayload(){
   );
 
   const totalWhaleBuyUsd=whaleByToken.reduce((a,x)=>a+x.totalBuyUsd,0);
+
+  const fifteenCutoff=Date.now()-15*60*1000;
+  const coordinatedMap=new Map();
+  for(const w of whaleWalletBuys.filter(x=>Number(x.latestTs||0)>=fifteenCutoff&&Number(x.totalBuyUsd||0)>=5000)){
+    const k=w.tokenAddress||w.token||'unknown';
+    const a=coordinatedMap.get(k)||{token:w.token||'',tokenAddress:w.tokenAddress||'',wallets:new Set(),totalBuyUsd:0,latestTs:0};
+    if(w.trader)a.wallets.add(String(w.trader));
+    a.totalBuyUsd+=Number(w.totalBuyUsd||0);
+    a.latestTs=Math.max(a.latestTs,Number(w.latestTs||0));
+    coordinatedMap.set(k,a);
+  }
+  const coordinatedBuys=[...coordinatedMap.values()].map(x=>({...x,wallets:[...x.wallets],walletCount:x.wallets.size}))
+    .filter(x=>x.walletCount>=3)
+    .sort((a,b)=>b.walletCount-a.walletCount||b.totalBuyUsd-a.totalBuyUsd);
+
   return {
     ok:true,
     connected:liveFomoState.connected,
@@ -1614,6 +1629,7 @@ function liveSmartMoneyPayload(){
     whaleWalletBuys:whaleWalletBuys.slice(0,100),
     whaleSells,
     whaleByToken,
+    coordinatedBuys,
     totalWhaleBuyUsd,
     exitClusters,
     whalePolicy:{
@@ -1676,7 +1692,7 @@ async function buildSmartMoney(){
     }
 
     const traders=(tw?.wallets||[]).filter(function(w){
-      return Number(w.seedPnl30d||0)>0||Number(w.portfolioValueUsd||0)>0;
+      return (Number(w.seedPnl30d||0)>=10000&&Number(w.seedWinRate||0)>=55&&w.highFrequencyRisk!==true)||Number(w.portfolioValueUsd||0)>0;
     }).sort(function(a,b){
       return Number(b.seedPnl30d||0)-Number(a.seedPnl30d||0);
     }).slice(0,10).map(function(w){
@@ -1689,7 +1705,7 @@ async function buildSmartMoney(){
         pnl7d:0,
         pnl30d:Number(w.seedPnl30d||0),
         smartScore:Number(w.seedPnl30d||0)>0?Math.log10(1+Number(w.seedPnl30d||0))*20:0,
-        source:w.source||'tracked-wallet'
+        source:w.source||'tracked-wallet',quality:(Number(w.seedPnl30d||0)>=10000&&Number(w.seedWinRate||0)>=55&&w.highFrequencyRisk!==true)?'PROFITABLE_SCREEN_PASS':'PORTFOLIO_ONLY'
       };
     });
 
@@ -2491,6 +2507,25 @@ function renderFeatured(){
     '<div class="actions"><a class="action" target="_blank" rel="noopener" href="'+esc(dexUrl(t.mint,t.dexUrl))+'">📈 چارت</a><button class="detail-btn" data-mint="'+esc(t.mint)+'">جزئیات</button></div></div>';
   }).join(''):'<div class="empty">فعلاً هیچ توکنی معیار سخت‌گیرانه ۹۰/۱۰۰ را رد نکرده.</div>';
 }
+function whaleVerification(t){
+  if(!t)return {score:0,passed:0,total:6,checks:[]};
+  var s=t.security||{},act=t.activity||{},tr=findTracked(t.mint),wh=whaleFor(t.mint);
+  var checks=[
+    {name:'خرید واقعی/قابل رهگیری',ok:!!t.dexUrl||wh.count>0},
+    {name:'کیف‌پول سودآور/ردیابی‌شده',ok:!!tr&&((Number(tr.netFlowUsd||0)>0)||(Number(tr.convictionHolderCount||0)>0))},
+    {name:'اندازه خرید نسبت به نقدینگی معقول',ok:Number(t.liquidity||0)>0&&Number(wh.usd||0)<=Number(t.liquidity||0)*0.35},
+    {name:'تمرکز هولدر قابل قبول',ok:holderPolicyOk(t)},
+    {name:'Mint/Freeze امن',ok:s.mintDisabled===true&&s.freezeDisabled===true},
+    {name:'بدون الگوی ربات/Wash',ok:act.label==='PROBABLE ORGANIC'}
+  ];
+  var passed=checks.filter(function(x){return x.ok}).length;
+  return {score:Math.round(passed/checks.length*100),passed,total:checks.length,checks};
+}
+function whaleVerifyChip(t){
+  var v=whaleVerification(t);
+  var cls=v.passed>=5?'good':v.passed>=3?'mid':'bad';
+  return '<span class="badge '+cls+'">تأیید نهنگ '+v.passed+'/'+v.total+'</span>';
+}
 function renderWhales(){
   var agg=live&&live.whaleByToken?live.whaleByToken:[];
   var total=live?Number(live.totalWhaleBuyUsd||0):0;
@@ -2502,14 +2537,14 @@ function renderWhales(){
     return '<div class="whale-summary">'+
       '<div class="whale-stat"><small>کل حجم خرید نهنگ‌ها · ۳۰ دقیقه</small><b>'+money(total)+'</b></div>'+
       '<div class="whale-stat"><small>بیشترین خرید روی</small><b>'+(top?esc(top.token||short(top.tokenAddress)):'—')+'</b></div>'+
-      '<div class="whale-stat"><small>تعداد خریدهای نهنگ</small><b>'+r.length+'</b></div>'+
+      '<div class="whale-stat"><small>خرید هماهنگ 3+ کیف‌پول / 15m</small><b>'+Number(live&&live.coordinatedBuys?live.coordinatedBuys.length:0)+'</b></div>'+
     '</div>';
   })();
 
   var rankedHtml=agg.length?'<div class="list">'+agg.slice(0,12).map(function(a,i){
     var t=findToken(a.tokenAddress),sec=t&&t.security?t.security:{},tp=t?tradePlan(t):null;
     var strength=t?Math.round(tokenStrength(t)):0;
-    return '<div class="row"><div class="asset"><b>#'+(i+1)+' 🐋 '+esc(a.token||t&&t.symbol||'?')+'</b>'+whaleTrendBadge(t)+socialTrendBadges(t)+(t?tradePlanChips(t):'')+
+    return '<div class="row"><div class="asset"><b>#'+(i+1)+' 🐋 '+esc(a.token||t&&t.symbol||'?')+'</b>'+whaleTrendBadge(t)+socialTrendBadges(t)+(t?whaleVerifyChip(t)+tradePlanChips(t):'')+
       '<small>'+Number(a.uniqueTraders||0)+' نهنگ · '+Number(a.buyCount||0)+' خرید · '+(Number(a.splitBuyerCount||0)?Number(a.splitBuyerCount||0)+' خریدار با خرید خردشده · ':'')+'منبع: Live whale API</small>'+socialButtons(t)+'</div>'+
       '<div class="cell"><small>کل خرید</small><b>'+money(a.totalBuyUsd)+'</b></div>'+
       '<div class="cell"><small>نهنگ یکتا</small><b>'+Number(a.uniqueTraders||0)+'</b></div>'+
@@ -2531,7 +2566,7 @@ function renderWhales(){
   var filtered=r.filter(function(e){return passesSignalFilters(findToken(e.tokenAddress))});
   document.getElementById('whaleList').innerHTML=filtered.length?filtered.map(function(e){
     var t=findToken(e.tokenAddress),sec=t&&t.security?t.security:{};
-    return '<div class="row"><div class="asset"><b>🐋 '+esc(e.token||t&&t.symbol||'?')+'</b><small>'+esc(short(e.tokenAddress))+' · '+esc(e.trader||'نامشخص')+' · Live whale API</small>'+socialButtons(t)+'</div>'+
+    return '<div class="row"><div class="asset"><b>🐋 '+esc(e.token||t&&t.symbol||'?')+'</b>'+(t?whaleVerifyChip(t):'')+'<small>'+esc(short(e.tokenAddress))+' · '+esc(e.trader||'نامشخص')+' · Live whale API</small>'+socialButtons(t)+'</div>'+
     '<div class="cell"><small>خرید</small><b>'+money(e.tradeUsd)+'</b></div><div class="cell"><small>پوزیشن</small><b>'+money(e.positionValueUsd)+'</b></div>'+
     '<div class="cell"><small>امنیت</small><b><span class="badge '+secClass(sec.tier)+'">'+esc(faSec(sec.tier))+'</span></b></div>'+
     '<div class="cell hide-sm"><small>زمان</small><b>'+new Date(Number(e.ts||Date.now())).toLocaleTimeString('fa-IR')+'</b></div>'+
@@ -2738,8 +2773,15 @@ function openDetail(m){
   if(tr){var bf=largeBuyerFlow(t);h+='<div class="note"><b>خریدارهای ردیابی‌شده ۵۰۰$+:</b> '+bf.buyers+' کیف‌پول ('+money(bf.buyerUsd)+') · <b>فروشنده خالص:</b> '+bf.sellers+' کیف‌پول ('+money(bf.sellerUsd)+') · '+(bf.dominant?'<span class="pass">✓ خریدارها بیشترند</span>':'<span class="manual">خریدارها بیشتر نیستند</span>')+'</div>';}
   if(tr&&tr.convictionHolders&&tr.convictionHolders.length)h+='<details class="accordion"><summary>💎 هولدرهای ردیابی‌شده با خرید ۱۰۰۰$+ و فروش کمتر</summary><div class="accordion-body">'+tr.convictionHolders.map(function(x){return '<div class="check"><span>'+esc(x.wallet)+' · خرید '+money(x.buyUsd)+' · فروش '+money(x.sellUsd)+'</span><span class="pass">هولد فعلی '+money(x.currentHoldingUsd)+'</span></div>'}).join('')+'<div class="note">بر اساس Swapهای قابل‌تشخیص ۴۸ ساعت اخیر کیف‌پول‌های تحت ردیابی؛ پوشش کل بازار نیست.</div></div></details>';
   if(sm)h+='<div class="note"><b>اسمارت‌مانی:</b> '+Number(sm.smartMoneyCount||0)+' کیف‌پول · '+money(sm.totalValueUsd)+' پوزیشن</div>';
-  if(wh.count)h+='<div class="note"><b>نهنگ:</b> '+wh.count+' خرید بزرگ · '+money(wh.usd)+'</div>';if(t)h+=socialButtons(t);
-  h+='<div class="links"><a target="_blank" rel="noopener" href="'+esc(dexUrl(m,t&&t.dexUrl))+'">📈 DexScreener</a><a target="_blank" rel="noopener" href="https://solscan.io/token/'+encodeURIComponent(m)+'">Solscan</a><a target="_blank" rel="noopener" href="https://gmgn.ai/sol/token/'+encodeURIComponent(m)+'">GMGN</a><a target="_blank" rel="noopener" href="https://v2.bubblemaps.io/map?address='+encodeURIComponent(m)+'&chain=solana&partnerId=regular">Bubblemaps</a><a target="_blank" rel="noopener" href="https://www.solanatracker.io/rugcheck/'+encodeURIComponent(m)+'">Rugcheck</a></div><div class="note">این رادار ابزار تحقیق است؛ هیچ امتیازی تضمین سود یا نبود کلاهبرداری نیست.</div>';
+  if(wh.count)h+='<div class="note"><b>نهنگ:</b> '+wh.count+' خرید بزرگ · '+money(wh.usd)+'</div>';
+  if(t){
+    var wv=whaleVerification(t);
+    h+='<details class="accordion"><summary>🐋 چک‌لیست تأیید هشدار نهنگ · '+wv.passed+'/'+wv.total+'</summary><div class="accordion-body">'+
+      wv.checks.map(function(x){return '<div class="check"><span>'+esc(x.name)+'</span><span class="'+(x.ok?'pass':'fail')+'">'+(x.ok?'✓ پاس':'✕ رد/نامشخص')+'</span></div>'}).join('')+
+      '<div class="note">این چک‌لیست برای تأیید چندمنبعی است و به‌تنهایی تضمین سود نیست.</div></div></details>';
+    h+=socialButtons(t);
+  }
+  h+='<div class="links"><a target="_blank" rel="noopener" href="'+esc(dexUrl(m,t&&t.dexUrl))+'">📈 DexScreener</a><a target="_blank" rel="noopener" href="https://solscan.io/token/'+encodeURIComponent(m)+'">Solscan</a><a target="_blank" rel="noopener" href="https://gmgn.ai/sol/token/'+encodeURIComponent(m)+'">GMGN</a><a target="_blank" rel="noopener" href="https://v2.bubblemaps.io/map?address='+encodeURIComponent(m)+'&chain=solana&partnerId=regular">Bubblemaps</a><a target="_blank" rel="noopener" href="https://rugcheck.xyz/tokens/'+encodeURIComponent(m)+'">Rugcheck</a><a target="_blank" rel="noopener" href="https://www.solanatracker.io/tokens/'+encodeURIComponent(m)+'">Solana Tracker</a></div><div class="note">این رادار ابزار تحقیق است؛ هیچ امتیازی تضمین سود یا نبود کلاهبرداری نیست.</div>';
   document.getElementById('detailBody').innerHTML=h;document.getElementById('detailDialog').showModal();
 }
 var loadAllBusy=false,marketLiveBusy=false,marketLiveTimer=null;
