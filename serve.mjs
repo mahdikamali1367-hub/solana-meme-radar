@@ -5,9 +5,10 @@ const RPC=process.env.SOLANA_RPC_URL||'https://api.mainnet.solana.com';
 const CACHE_MS=55_000;
 const SOCIAL_QUERY_CACHE_MS=2*60*60*1000;
 const socialQueryCache=new Map();
-const SECURITY_CACHE_MS=5*60*1000;
+const SECURITY_CACHE_MS=2*60*1000;
 const EXTERNAL_SECURITY_CACHE_MS=10*60*1000;
 let cache={at:0,data:null};
+let buildInFlight=null;
 const securityCache=new Map();
 const externalSecurityCache=new Map();
 const holderBehaviorState=new Map();
@@ -995,14 +996,15 @@ function verdict(t){
   if(sec.tier==='MAX SECURITY'||sec.tier==='HIGH')return t.trend.score>=35?'WATCH':'LOW SIGNAL';
   return 'REVIEW';
 }
-async function build(){
+async function buildFresh(){
   if(cache.data&&Date.now()-cache.at<CACHE_MS)return cache.data;
   const seeds=await discovery();
   const out=[];
   for(const s of seeds.slice(0,45)){
     const p=await pairFor(s.mint); if(!p)continue;
     const created=num(p.pairCreatedAt);
-    const ageMinutes=created?Math.max(0,(Date.now()-created)/60000):9999;
+    if(!created)continue;
+    const ageMinutes=Math.max(0,(Date.now()-created)/60000);
     if(ageMinutes>43200)continue;
     const sec=await security(s.mint);
     const buys5m=num(p.txns?.m5?.buys),sells5m=num(p.txns?.m5?.sells);
@@ -1076,8 +1078,15 @@ async function build(){
     entryExitPolicy:{entry:'only STRONG volume + HIGH/MAX security + buyer dominance + Trust Guard CONFIRMED + anti-FOMO price condition',exit:'live exit/whale sell/seller dominance/Trust Guard block; price invalidation is a risk reference, not guaranteed execution'},
     trustGuard:{strongSignalRequires:'2+ holder snapshots, 3 consecutive good scans, >=2 minutes stable confirmation, buyer dominance, healthy volume, no holder-outflow risk',downgrade:'holder movement, seller dominance, whale/tracked exits or pump cooldown immediately remove strong status'},
     signalWindows:{short:'5m-1h',medium:'1h-6h',long:'6h-24h',securityGate:'HIGH/MAX requires zero manual, zero unknown and zero failed automated security checks; unknown evidence cannot receive strong approval'},
-    disclaimer:'قانون هولدرها: هولدر شماره 1 حداکثر 10% و هرکدام از هولدرهای شماره 2 تا 10 حداکثر 5% می‌توانند داشته باشند. مجموع Top10 فقط جهت اطلاع نمایش داده می‌شود و شرط رد نیست. Organic Activity یک تخمین ضدربات/ضدواش است. هیچ فیلتر آن‌چین کلاهبرداری را 100% رد نمی‌کند.'};
+    disclaimer:'قانون هولدرها: هولدر شماره 1 باید کمتر از 10% و هرکدام از هولدرهای شماره 2 تا 10 باید کمتر از 5% داشته باشند. مجموع Top10 فقط جهت اطلاع نمایش داده می‌شود و شرط رد نیست. Organic Activity یک تخمین ضدربات/ضدواش است. هیچ فیلتر آن‌چین کلاهبرداری را 100% رد نمی‌کند.'};
   cache={at:Date.now(),data};return data;
+}
+async function build(){
+  if(cache.data&&Date.now()-cache.at<CACHE_MS)return cache.data;
+  if(buildInFlight)return buildInFlight;
+  buildInFlight=buildFresh();
+  try{return await buildInFlight}
+  finally{buildInFlight=null}
 }
 
 
@@ -1330,6 +1339,10 @@ async function buildConvictionWallets(){
   convictionCache={at:Date.now(),data};return data;
 }
 
+function normalizeTs(v){
+  const n=num(v,Date.now());
+  return n>0&&n<1e12?n*1000:n;
+}
 function liveEventSeverity(e){
   if(e.alertType!=='sell')return e.alertType==='buy'?'BUY':'INFO';
   const now=e.ts||Date.now();
@@ -1371,7 +1384,7 @@ function pushLiveFomoEvent(m){
     tradeUsd:m.tradeUsd==null?null:num(m.tradeUsd),
     positionValueUsd:m.positionValueUsd==null?null:num(m.positionValueUsd),
     text:m.text||'',
-    ts:num(m.execTs||m.ts,Date.now()),
+    ts:normalizeTs(m.execTs||m.ts||Date.now()),
     txHash:m.txHash||null,
     trackedSmart:smartTraderHandles.has(String(m.trader||'').toLowerCase()),
     positionVerified:false
@@ -1427,10 +1440,12 @@ startLiveFomoStream();
 
 function liveSmartMoneyPayload(){
   const events=liveFomoState.events.slice(0,50);
-  const exits=events.filter(x=>x.alertType==='sell');
-  const buys=events.filter(x=>x.alertType==='buy');
+  const cutoff=Date.now()-30*60*1000;
+  const recentEvents=events.filter(x=>normalizeTs(x.ts)>=cutoff);
+  const exits=recentEvents.filter(x=>x.alertType==='sell');
+  const buys=recentEvents.filter(x=>x.alertType==='buy');
   const byToken=new Map();
-  for(const e of exits.filter(x=>(Date.now()-(x.ts||0))<=30*60*1000)){
+  for(const e of exits){
     const k=e.tokenAddress||e.token;
     const x=byToken.get(k)||{token:e.token,tokenAddress:e.tokenAddress,sellers:new Set(),sellEvents:0,knownSellUsd:0,severity:'SELL STARTED',latestTs:0};
     x.sellers.add(e.trader);x.sellEvents++;x.knownSellUsd+=num(e.tradeUsd);x.latestTs=Math.max(x.latestTs,e.ts||0);
@@ -1922,7 +1937,7 @@ function socialTrendBadges(t){
   return rows.join('');
 }
 
-function exitFor(m){return live&&live.exits?live.exits.filter(function(x){return x.tokenAddress===m}):[]}
+function exitFor(m){var cut=Date.now()-30*60*1000;return live&&live.exits?live.exits.filter(function(x){var ts=Number(x.ts||0);if(ts>0&&ts<1e12)ts*=1000;return x.tokenAddress===m&&ts>=cut}):[]}
 async function safeJson(u){try{var r=await fetch(u,{cache:'no-store'});if(!r.ok)throw 0;return await r.json()}catch(e){return null}}
 
 function featuredRows(){
@@ -2248,11 +2263,25 @@ function openDetail(m){
   h+='<div class="links"><a target="_blank" rel="noopener" href="'+esc(dexUrl(m,t&&t.dexUrl))+'">📈 DexScreener</a><a target="_blank" rel="noopener" href="https://solscan.io/token/'+encodeURIComponent(m)+'">Solscan</a><a target="_blank" rel="noopener" href="https://gmgn.ai/sol/token/'+encodeURIComponent(m)+'">GMGN</a><a target="_blank" rel="noopener" href="https://v2.bubblemaps.io/map?address='+encodeURIComponent(m)+'&chain=solana&partnerId=regular">Bubblemaps</a><a target="_blank" rel="noopener" href="https://www.solanatracker.io/rugcheck/'+encodeURIComponent(m)+'">Rugcheck</a></div><div class="note">این رادار ابزار تحقیق است؛ هیچ امتیازی تضمین سود یا نبود کلاهبرداری نیست.</div>';
   document.getElementById('detailBody').innerHTML=h;document.getElementById('detailDialog').showModal();
 }
+var loadAllBusy=false;
 async function loadAll(){
-  var b=document.getElementById('refresh');b.disabled=true;b.textContent='در حال دریافت…';
-  var r=await Promise.all([safeJson('/api/v1/tokens'),safeJson('/api/v1/smart-money'),safeJson('/api/v1/smart-money-live'),safeJson('/api/v1/tracked-wallets'),safeJson('/api/v1/conviction-wallets')]);
-  tokens=r[0]&&r[0].tokens?r[0].tokens:[];smart=r[1];live=r[2];tracked=r[3];conviction=r[4];
-  document.getElementById('updated').textContent='آخرین بروزرسانی: '+new Date().toLocaleTimeString('fa-IR');b.disabled=false;b.textContent='↻ بروزرسانی';renderAll();
+  if(loadAllBusy)return;
+  loadAllBusy=true;
+  var b=document.getElementById('refresh');
+  if(b){b.disabled=true;b.textContent='در حال دریافت…'}
+  try{
+    var r=await Promise.all([safeJson('/api/v1/tokens'),safeJson('/api/v1/smart-money'),safeJson('/api/v1/smart-money-live'),safeJson('/api/v1/tracked-wallets'),safeJson('/api/v1/conviction-wallets')]);
+    if(r[0]&&Array.isArray(r[0].tokens))tokens=r[0].tokens;
+    if(r[1])smart=r[1];
+    if(r[2])live=r[2];
+    if(r[3])tracked=r[3];
+    if(r[4])conviction=r[4];
+    document.getElementById('updated').textContent='آخرین بروزرسانی سالم: '+new Date().toLocaleTimeString('fa-IR');
+    renderAll();
+  }finally{
+    loadAllBusy=false;
+    if(b){b.disabled=false;b.textContent='↻ بروزرسانی'}
+  }
 }
 var liveStream=null,liveStreamConnected=false,liveFallbackTimer=null;
 function applyLivePayload(x,label){
@@ -2275,7 +2304,7 @@ function startLivePush(){
     liveStream.addEventListener('market',handler);
     liveStream.addEventListener('position',handler);
     liveStream.addEventListener('status',handler);
-    liveStream.onopen=function(){liveStreamConnected=true;document.getElementById('updated').textContent='اتصال زنده برقرار'};
+    liveStream.onopen=function(){liveStreamConnected=true;if(liveFallbackTimer){clearInterval(liveFallbackTimer);liveFallbackTimer=null}document.getElementById('updated').textContent='اتصال Push زنده برقرار'};
     liveStream.onerror=function(){
       liveStreamConnected=false;
       if(!liveFallbackTimer)liveFallbackTimer=setInterval(pollLiveFallback,1000);
