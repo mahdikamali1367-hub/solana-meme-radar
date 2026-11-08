@@ -484,6 +484,7 @@ const faActivity=v=>({'PROBABLE ORGANIC':'فعالیت احتمالاً طبیع
 const faSeverity=v=>({'BUY':'خرید','SELL STARTED':'فروش شروع شد','HEAVY SELL':'فروش سنگین','MULTI-WALLET EXIT':'خروج همزمان چند کیف‌پول','INFO':'اطلاعات'}[v]||v);
 const faSide=v=>v==='buy'?'خرید':v==='sell'?'فروش':v;
 const dexSearch=a=>'https://dexscreener.com/search?q='+encodeURIComponent(a||'');
+const dexForAddress=a=>{const t=(data||[]).find(x=>x.mint===a);return t&&t.dexUrl?t.dexUrl:dexSearch(a)};
 const money=n=>'$'+Number(n||0).toLocaleString(undefined,{maximumFractionDigits:0});
 const pct=n=>n==null?'نامشخص':Number(n).toFixed(1)+'%';
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -622,7 +623,7 @@ async function loadLiveSmart(){
   liveExitBanner.innerHTML=clusters.filter(x=>x.severity==='MULTI-WALLET EXIT').map(x=>'<div class="warn" style="border-color:#a43848;color:#ff9bad">🚨 خروج همزمان چند کیف‌پول: '+esc(x.token)+' — '+x.uniqueSellers+' تریدر در ۳۰ دقیقه اخیر شروع به فروش کرده‌اند.</div>').join('');
   const whales=(d.whaleBuys||[]).slice(0,12);
   whaleStatus.textContent='خرید نهنگ = معامله ≥ ۵٬۰۰۰ دلار یا پوزیشن ≥ ۲۵٬۰۰۰ دلار | '+whales.length+' خرید بزرگ اخیر';
-  whaleGrid.innerHTML=whales.map(e=>'<div class="card"><div class="top"><div><div class="name">🐋 '+esc(e.token)+'</div><div class="mint">'+esc(e.tokenAddress||'')+'</div></div><span class="badge strong">خرید نهنگ</span></div><div class="stats"><div class="stat"><div class="k">تریدر</div><div class="v">'+esc(e.trader)+'</div></div><div class="stat"><div class="k">اندازه خرید</div><div class="v">'+(e.tradeUsd!=null?money(e.tradeUsd):'نامشخص')+'</div></div><div class="stat"><div class="k">ارزش پوزیشن</div><div class="v">'+(e.positionValueUsd!=null?money(e.positionValueUsd):'نامشخص')+'</div></div></div><div class="links" style="margin-top:10px"><a target="_blank" rel="noopener" href="https://solscan.io/token/'+esc(e.tokenAddress||'')+'">سول‌اسکن</a></div></div>').join('')||'<p>فعلاً خرید نهنگ تازه‌ای ثبت نشده.</p>';
+  whaleGrid.innerHTML=whales.map(e=>'<div class="card"><div class="top"><div><div class="name">🐋 '+esc(e.token)+'</div><div class="mint">'+esc(e.tokenAddress||'')+'</div></div><span class="badge strong">خرید نهنگ</span></div><div class="stats"><div class="stat"><div class="k">تریدر</div><div class="v">'+esc(e.trader)+'</div></div><div class="stat"><div class="k">اندازه خرید</div><div class="v">'+(e.tradeUsd!=null?money(e.tradeUsd):'نامشخص')+'</div></div><div class="stat"><div class="k">ارزش پوزیشن</div><div class="v">'+(e.positionValueUsd!=null?money(e.positionValueUsd):'نامشخص')+'</div></div></div><div class="links" style="margin-top:10px"><a target="_blank" rel="noopener" href="'+esc(dexForAddress(e.tokenAddress||''))+'">📈 چارت DexScreener</a><a target="_blank" rel="noopener" href="https://solscan.io/token/'+esc(e.tokenAddress||'')+'">سول‌اسکن</a></div></div>').join('')||'<p>فعلاً خرید نهنگ تازه‌ای ثبت نشده.</p>';
   renderFeatured();renderUnified();
   const events=(d.events||[]).slice(0,18);
   liveSmartGrid.innerHTML=events.map(e=>{
