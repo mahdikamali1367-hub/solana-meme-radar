@@ -1574,6 +1574,8 @@ button,input,select,a.action{border:1px solid var(--line);background:#101d31;col
 dialog{width:min(720px,94vw);max-height:88vh;border:1px solid #36506e;border-radius:15px;background:#091426;color:var(--text);padding:0;box-shadow:0 30px 90px #0009}dialog::backdrop{background:#000a}.modal-head{position:sticky;top:0;background:#091426;border-bottom:1px solid var(--line);padding:12px 14px;display:flex;justify-content:space-between;align-items:center}.modal-body{padding:13px}.modal-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:7px}.box{background:#0f1d31;border:1px solid var(--line);border-radius:10px;padding:8px}.box small{display:block;color:var(--muted);font-size:9px}.box b{display:block;margin-top:3px;font-size:12px}.holders{margin-top:11px}.holder,.check{display:flex;justify-content:space-between;gap:7px;padding:6px 0;border-top:1px solid var(--line);font-size:11px}.holder a{color:var(--blue);text-decoration:none}.links{display:flex;flex-wrap:wrap;gap:5px;margin-top:11px}.links a{color:#b5ddff;text-decoration:none;border:1px solid #315071;background:#10243b;padding:6px 8px;border-radius:8px;font-size:11px}.note{margin-top:10px;color:var(--muted);font-size:11px;line-height:1.65}.pass{color:var(--good)}.fail{color:var(--bad)}.manual{color:var(--warn)}
 @media(max-width:900px){.bucket-best-main{grid-template-columns:1fr 1fr}.bucket-best-main .asset,.bucket-best-main .actions{grid-column:1/-1}.champion-grid{grid-template-columns:1fr 1fr}.champion-grid .asset,.champion-grid .actions{grid-column:1/-1}.row{grid-template-columns:1.5fr repeat(3,.8fr) auto}.hide-md{display:none}.three{grid-template-columns:1fr}.kpis{grid-template-columns:repeat(2,1fr)}}
 @media(max-width:620px){.perf-summary{grid-template-columns:1fr 1fr}.whale-summary{grid-template-columns:1fr}.subfilters{grid-template-columns:1fr 1fr}.head{padding:9px 10px}.shell{padding:10px}.brand small,.status{display:none}.row{grid-template-columns:1fr 1fr}.asset,.actions{grid-column:1/-1}.hide-sm{display:none}.modal-grid{grid-template-columns:repeat(2,1fr)}}
+
+.panel{display:none!important}.panel.active{display:block!important}
 </style>
 </head>
 <body>
@@ -1602,21 +1604,8 @@ dialog{width:min(720px,94vw);max-height:88vh;border:1px solid #36506e;border-rad
       <div class="list" id="topFeaturedQuick"></div>
     </div>
   </details>
-  <details class="accordion highlight" open>
-  <summary>🐋 پیشنهادهای نهنگ‌ها و همه خریدهای زنده</summary>
-  <div class="accordion-body">
-    <p class="muted" style="font-size:11px">خریدهای نهنگ از جریان زنده API جمع می‌شوند و فقط رویدادهای تازه در پنجره ۳۰ دقیقه‌ای لحاظ می‌شوند. «اولویت بررسی» تضمین رشد یا سود نیست.</p>
-    <div id="whaleTopSummary"></div>
-    <div class="list" id="whaleTopList"></div>
-  </div>
-</details>
-  <details class="accordion highlight" open>
-    <summary>🪙 توکن‌های برتر رادار</summary>
-    <div class="accordion-body">
-      <p class="muted" style="font-size:11px">توکن‌های دارای بالاترین امتیاز فعلی رادار با امنیت، جریان خرید، حجم و وضعیت ورود.</p>
-      <div class="list" id="topTokenQuick"></div>
-    </div>
-  </details>
+
+
 </section>
 <details class="accordion" open>
     <summary>🔥 پیشنهادهای اولویت‌دار</summary>
@@ -1673,6 +1662,14 @@ dialog{width:min(720px,94vw);max-height:88vh;border:1px solid #36506e;border-rad
 
 
 <section class="panel" id="whalesPanel">
+  <details class="accordion highlight" open>
+  <summary>🐋 پیشنهادهای نهنگ‌ها و همه خریدهای زنده</summary>
+  <div class="accordion-body">
+    <p class="muted" style="font-size:11px">خریدهای نهنگ از جریان زنده API جمع می‌شوند و فقط رویدادهای تازه در پنجره ۳۰ دقیقه‌ای لحاظ می‌شوند. «اولویت بررسی» تضمین رشد یا سود نیست.</p>
+    <div id="whaleTopSummary"></div>
+    <div class="list" id="whaleTopList"></div>
+  </div>
+</details>
   <details class="accordion" open>
     <summary>🐋 خریدهای نهنگ</summary>
     <div class="accordion-body"><p class="muted" style="font-size:11px">خرید بزرگ اخیر و هشدار خروج.</p><div id="whaleSummary"></div><div class="subfilters">
@@ -1731,6 +1728,13 @@ dialog{width:min(720px,94vw);max-height:88vh;border:1px solid #36506e;border-rad
 </section>
 
 <section class="panel" id="tokensPanel">
+  <details class="accordion highlight" open>
+    <summary>🪙 توکن‌های برتر رادار</summary>
+    <div class="accordion-body">
+      <p class="muted" style="font-size:11px">توکن‌های دارای بالاترین امتیاز فعلی رادار با امنیت، جریان خرید، حجم و وضعیت ورود.</p>
+      <div class="list" id="topTokenQuick"></div>
+    </div>
+  </details>
   <details class="accordion highlight" open>
     <summary>👑 ترند KOL — فقط بالاترین امنیت</summary>
     <div class="accordion-body"><p class="muted" id="kolTrendStatus" style="font-size:11px">توکن‌هایی که همین KOLهای منتخب در پوزیشن/معامله اخیر داشته‌اند یا مستقیماً در X اشاره کرده‌اند؛ فقط امنیت HIGH/MAX نمایش داده می‌شود.</p><div class="list" id="kolTrendList"></div></div>
