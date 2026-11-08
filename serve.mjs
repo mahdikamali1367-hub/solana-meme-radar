@@ -3,7 +3,9 @@ import {createServer} from 'node:http';
 const PORT=Number(process.env.PORT||4173);
 const RPC=process.env.SOLANA_RPC_URL||'https://api.mainnet.solana.com';
 const CACHE_MS=55_000;
+const SECURITY_CACHE_MS=5*60*1000;
 let cache={at:0,data:null};
+const securityCache=new Map();
 let smartMoneyCache={at:0,data:null};
 const SMART_MONEY_CACHE_MS=6*60*60*1000;
 let smartTraderHandles=new Set();
@@ -48,7 +50,16 @@ async function jfetch(url,opt={},timeout=10000){
   try{const r=await fetch(url,{...opt,signal:c.signal});if(!r.ok)throw new Error(`${r.status} ${r.statusText}`);return await r.json()}finally{clearTimeout(t)}
 }
 async function rpc(method,params){
-  return jfetch(RPC,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({jsonrpc:'2.0',id:1,method,params})});
+  let last;
+  for(let i=0;i<3;i++){
+    try{
+      return await jfetch(RPC,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({jsonrpc:'2.0',id:1,method,params})});
+    }catch(e){
+      last=e;
+      if(i<2)await sleep(180*(i+1));
+    }
+  }
+  throw last;
 }
 async function discovery(){
   const urls=['https://api.dexscreener.com/token-profiles/latest/v1','https://api.dexscreener.com/token-boosts/latest/v1','https://api.dexscreener.com/token-boosts/top/v1'];
@@ -77,7 +88,9 @@ async function pairFor(mint){
   }catch{return null}
 }
 async function security(mint){
-  let mintDisabled=null,freezeDisabled=null,top5=null,top10=null,largestHolder=null,maxOtherHolder=null,holderGrade='UNKNOWN',flags=[],score=50,coverage=0,topHolders=[];
+  const cached=securityCache.get(mint);
+  if(cached&&Date.now()-cached.at<SECURITY_CACHE_MS)return cached.data;
+  let mintDisabled=null,freezeDisabled=null,top5=null,top10=null,largestHolder=null,maxOtherHolder=null,holderGrade='UNKNOWN',flags=[],score=50,coverage=0,topHolders=[],ownerAggregationComplete=false;
   try{
     const d=await rpc('getAccountInfo',[mint,{encoding:'jsonParsed',commitment:'confirmed'}]);
     const info=d?.result?.value?.data?.parsed?.info;
@@ -102,6 +115,7 @@ async function security(mint){
       try{
         const ma=await rpc('getMultipleAccounts',[rows.map(x=>x.address),{encoding:'jsonParsed',commitment:'confirmed'}]);
         parsed=ma?.result?.value||[];
+        ownerAggregationComplete=parsed.length>=Math.min(rows.length,10)&&parsed.slice(0,Math.min(rows.length,10)).every(Boolean);
       }catch{}
       const owners=new Map();
       rows.forEach((x,i)=>{
@@ -126,10 +140,18 @@ async function security(mint){
       if(maxOtherHolder>5)flags.push('یکی از هولدرهای شماره 2 تا 10 بیش از 5% عرضه دارد');
     }
   }catch{}
-  const holderPolicyPassed=['A','B','C'].includes(holderGrade);
-  const holderStrong=['A','B'].includes(holderGrade);
-  if(top10==null){holderGrade='UNKNOWN';flags.push('داده هولدرها نامشخص')}
-  return {score:clamp(score),coverage,mintDisabled,freezeDisabled,top5,top10,largestHolder,maxOtherHolder,holderGrade,holderPolicyPassed,holderStrong,topHolders,flags};
+  let holderPolicyPassed=null,holderStrong=null;
+  if(top10==null){
+    holderGrade='UNKNOWN';flags.push('داده هولدرها نامشخص');
+  }else if(!ownerAggregationComplete){
+    holderGrade='UNKNOWN';flags.push('تجمیع مالک هولدرها ناقص؛ نتیجه قطعی نیست');
+  }else{
+    holderPolicyPassed=['A','B','C'].includes(holderGrade);
+    holderStrong=['A','B'].includes(holderGrade);
+  }
+  const result={score:clamp(score),coverage,mintDisabled,freezeDisabled,top5,top10,largestHolder,maxOtherHolder,holderGrade,holderPolicyPassed,holderStrong,ownerAggregationComplete,topHolders,flags};
+  securityCache.set(mint,{at:Date.now(),data:result});
+  return result;
 }
 
 async function blueskySignal(t){
@@ -303,17 +325,21 @@ function academyGuard(t){
 
 function securityGate(t){
   const sec=t.security||{},mq=t.marketQuality||{},act=t.activity||{},chart=t.chart||{},academy=t.academy||{};
-  const hard=[];
-  if(sec.mintDisabled!==true)hard.push('Mint authority امن نیست/نامشخص');
-  if(sec.freezeDisabled!==true)hard.push('Freeze authority امن نیست/نامشخص');
-  if(sec.holderPolicyPassed!==true)hard.push('توزیع هولدرها رد/نامشخص');
+  const hard=[],cautions=[];
+  if(sec.mintDisabled===false)hard.push('Mint authority فعال');
+  else if(sec.mintDisabled!==true)cautions.push('Mint authority نامشخص');
+  if(sec.freezeDisabled===false)hard.push('Freeze authority فعال');
+  else if(sec.freezeDisabled!==true)cautions.push('Freeze authority نامشخص');
+  if(sec.holderPolicyPassed===false)hard.push('توزیع هولدرها رد شده');
+  else if(sec.holderPolicyPassed!==true)cautions.push('توزیع هولدرها نیازمند داده کامل‌تر');
   if(act.label==='BOT RISK')hard.push('ریسک ربات/Wash');
+  else if(!act.label)cautions.push('فعالیت معاملاتی نامشخص');
   if(chart.pumpDumpRisk==='HIGH')hard.push('ریسک Pump/Dump بالا');
   if(academy.blocked)hard.push('Academy Guard مسدود');
-  if(num(t.liquidity)<3000)hard.push('نقدینگی خیلی کم');
-  const cautions=[];
+  if(num(t.liquidity)>0&&num(t.liquidity)<3000)hard.push('نقدینگی خیلی کم');
+  else if(num(t.liquidity)<=0)cautions.push('نقدینگی نامشخص');
   if(num(mq.score)<65)cautions.push('کیفیت بازار/داده متوسط یا پایین');
-  if(sec.tier==='REVIEW')cautions.push('امنیت نیازمند بررسی');
+  if(sec.tier==='REVIEW')cautions.push('امنیت هنوز کامل تأیید نشده');
   if(chart.fomoRisk==='HIGH')cautions.push('ریسک FOMO بالا');
   const blocked=hard.length>0;
   const level=blocked?'BLOCK':cautions.length?'CAUTION':'PASS';
@@ -368,8 +394,9 @@ function horizonScore(t,h){
   }
   if(t.chart?.fomoRisk==='HIGH')score-=12;
   if(t.chart?.pumpDumpRisk==='HIGH')score-=25;
+  if(gate.level==='CAUTION')score=Math.min(score,74);
   score=clamp(Math.round(score));
-  let confidence='HIGH';
+  let confidence=gate.level==='CAUTION'?'MEDIUM':'HIGH';
   if(h==='short'&&t.ageMinutes<15)confidence='LOW';
   if(h==='medium'&&t.ageMinutes<60)confidence='LOW';
   if(h==='long'&&t.ageMinutes<360)confidence='LOW';
@@ -386,15 +413,25 @@ function multiHorizonSignals(t){
 }
 
 function assessSecurity(t){
-  const s=t.security;
-  const coreOk=s.mintDisabled===true&&s.freezeDisabled===true&&s.holderPolicyPassed;
+  const s=t.security||{};
+  const explicitFail=
+    s.mintDisabled===false||
+    s.freezeDisabled===false||
+    s.holderPolicyPassed===false||
+    t.activity?.label==='BOT RISK'||
+    t.chart?.pumpDumpRisk==='HIGH'||
+    t.academy?.blocked===true||
+    (num(t.liquidity)>0&&num(t.liquidity)<3000);
+
+  const verifiedCore=s.mintDisabled===true&&s.freezeDisabled===true&&s.holderPolicyPassed===true;
   const organicOk=t.activity&&t.activity.score>=72&&t.activity.label==='PROBABLE ORGANIC';
   const organicHigh=t.activity&&t.activity.score>=58&&t.activity.label!=='BOT RISK';
-  const knowledgeOk=(!t.academy||!t.academy.blocked)&&(t.marketQuality?.score??0)>=65&&t.chart?.pumpDumpRisk!=='HIGH';
-  const maxOk=coreOk&&organicOk&&knowledgeOk&&s.holderStrong&&s.score>=85&&t.liquidity>=10000;
-  const highOk=coreOk&&organicHigh&&(!t.academy||!t.academy.blocked)&&s.score>=75&&t.liquidity>=5000;
-  const tier=maxOk?'MAX SECURITY':highOk?'HIGH':coreOk&&s.score>=60?'REVIEW':'REJECT';
-  return {tier,maxOk,highOk};
+  const knowledgeOk=t.academy?.blocked!==true&&(t.marketQuality?.score??0)>=65&&t.chart?.pumpDumpRisk!=='HIGH';
+
+  const maxOk=!explicitFail&&verifiedCore&&organicOk&&knowledgeOk&&s.holderStrong===true&&s.score>=85&&t.liquidity>=10000;
+  const highOk=!explicitFail&&verifiedCore&&organicHigh&&s.score>=75&&t.liquidity>=5000;
+  const tier=explicitFail?'REJECT':maxOk?'MAX SECURITY':highOk?'HIGH':'REVIEW';
+  return {tier,maxOk,highOk,explicitFail,verifiedCore};
 }
 function verdict(t){
   const sec=assessSecurity(t);
@@ -461,7 +498,7 @@ async function build(){
     holderPolicy:{hardRules:{holder1MaxPct:10,holders2to10EachMaxPct:5},gradeA:{holder1MaxPct:5,holders2to10EachMaxPct:2.5},gradeB:{holder1MaxPct:7.5,holders2to10EachMaxPct:4},gradeC:{holder1MaxPct:10,holders2to10EachMaxPct:5},unknownFailsStrong:true},
     activityPolicy:{probableOrganicMin:72,highSecurityMin:58,method:'aggregate heuristics; not proof of human identity'},
     knowledgeEngine:{marketQuality:'transparency + liquidity + data coverage',chartDiscipline:'trend + FOMO + pump/dump guard',academy:'rug/honeypot/MEV/sniper/risk checklist; unknown checks stay manual'},
-    signalWindows:{short:'5m-1h',medium:'1h-6h',long:'6h-24h',securityGate:'required for all three; insufficient history lowers confidence'},
+    signalWindows:{short:'5m-1h',medium:'1h-6h',long:'6h-24h',securityGate:'explicit failures block; unknown security data becomes CAUTION and caps confidence instead of auto-reject'},
     disclaimer:'قانون هولدرها: هولدر شماره 1 حداکثر 10% و هرکدام از هولدرهای شماره 2 تا 10 حداکثر 5% می‌توانند داشته باشند. مجموع Top10 فقط جهت اطلاع نمایش داده می‌شود و شرط رد نیست. Organic Activity یک تخمین ضدربات/ضدواش است. هیچ فیلتر آن‌چین کلاهبرداری را 100% رد نمی‌کند.'};
   cache={at:Date.now(),data};return data;
 }
