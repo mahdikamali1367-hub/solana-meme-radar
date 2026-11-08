@@ -17,7 +17,7 @@ let liveFomoState={connected:false,realtime:false,delaySeconds:null,updatedAt:nu
 let liveFomoSocket=null;
 
 const SPL_TOKEN_PROGRAM='TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA';
-const TOKEN_2022_PROGRAM='TokenzQdBNbLqP5VEhdkAS6EPFLC1PHn4m9bqN6Arh';
+const TOKEN_2022_PROGRAM='TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb';
 const WSOL_MINT='So11111111111111111111111111111111111111112';
 const STABLE_MINTS=new Set([
   'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v',
@@ -238,9 +238,12 @@ async function security(mint){
   const cached=securityCache.get(mint);
   if(cached&&Date.now()-cached.at<SECURITY_CACHE_MS)return cached.data;
   let mintDisabled=null,freezeDisabled=null,top5=null,top10=null,largestHolder=null,maxOtherHolder=null,holderGrade='UNKNOWN',flags=[],score=50,coverage=0,topHolders=[],ownerAggregationComplete=false;
+  let tokenProgram=null,tokenExtensions={isToken2022:false,names:[],permanentDelegate:false,nonTransferable:false,defaultFrozen:false,transferHook:false,transferFeeBps:null,hardFail:false,warnings:[]};
   try{
     const d=await rpc('getAccountInfo',[mint,{encoding:'jsonParsed',commitment:'confirmed'}]);
-    const info=d?.result?.value?.data?.parsed?.info;
+    const account=d?.result?.value;
+    const info=account?.data?.parsed?.info;
+    tokenProgram=account?.owner||null;
     if(info){
       mintDisabled=info.mintAuthority==null;
       freezeDisabled=info.freezeAuthority==null;
@@ -248,8 +251,33 @@ async function security(mint){
       score+=(mintDisabled?15:-30)+(freezeDisabled?15:-25);
       if(!mintDisabled)flags.push('Mint authority فعال');
       if(!freezeDisabled)flags.push('Freeze authority فعال');
+
+      tokenExtensions.isToken2022=tokenProgram===TOKEN_2022_PROGRAM;
+      const ext=Array.isArray(info.extensions)?info.extensions:[];
+      tokenExtensions.names=ext.map(e=>String(e?.extension||e?.type||e?.name||'')).filter(Boolean);
+      const extText=ext.map(e=>JSON.stringify(e)).join(' ').toLowerCase();
+      tokenExtensions.permanentDelegate=/permanentdelegate|permanent_delegate/.test(extText);
+      tokenExtensions.nonTransferable=/nontransferable|non_transferable/.test(extText);
+      tokenExtensions.transferHook=/transferhook|transfer_hook/.test(extText);
+      tokenExtensions.defaultFrozen=/defaultaccountstate[^}]*frozen|default_account_state[^}]*frozen/.test(extText);
+
+      const feeExt=ext.find(e=>/transferfeeconfig|transfer_fee_config/i.test(String(e?.extension||e?.type||e?.name||'')));
+      if(feeExt){
+        const raw=feeExt?.state||feeExt;
+        const newer=raw?.newerTransferFee||raw?.newer_transfer_fee||raw?.transferFee||raw?.transfer_fee||raw;
+        const bps=pick(newer,'transferFeeBasisPoints','transfer_fee_basis_points','basisPoints','basis_points');
+        if(Number.isFinite(Number(bps)))tokenExtensions.transferFeeBps=num(bps);
+      }
+
+      if(tokenExtensions.permanentDelegate){tokenExtensions.hardFail=true;flags.push('Token-2022 Permanent Delegate فعال');score-=35}
+      if(tokenExtensions.nonTransferable){tokenExtensions.hardFail=true;flags.push('Token-2022 Non-Transferable فعال');score-=40}
+      if(tokenExtensions.defaultFrozen){tokenExtensions.hardFail=true;flags.push('Token-2022 Default Frozen فعال');score-=35}
+      if(tokenExtensions.transferFeeBps!=null&&tokenExtensions.transferFeeBps>=500){tokenExtensions.hardFail=true;flags.push('Transfer Fee حداقل 5%');score-=30}
+      else if(tokenExtensions.transferFeeBps!=null&&tokenExtensions.transferFeeBps>200){tokenExtensions.warnings.push('Transfer Fee بالاتر از 2%');score-=10}
+      if(tokenExtensions.transferHook){tokenExtensions.warnings.push('Transfer Hook فعال؛ منطق سفارشی انتقال');score-=8}
     }
   }catch{}
+
   try{
     const [la,sp]=await Promise.all([
       rpc('getTokenLargestAccounts',[mint,{commitment:'confirmed'}]),
@@ -281,12 +309,13 @@ async function security(mint){
       coverage+=35;
       if(largestHolder<=5&&maxOtherHolder<=2.5){holderGrade='A';score+=20}
       else if(largestHolder<=7.5&&maxOtherHolder<=4){holderGrade='B';score+=12}
-      else if(largestHolder<=10&&maxOtherHolder<=5){holderGrade='C';score+=2}
+      else if(largestHolder<10&&maxOtherHolder<5){holderGrade='C';score+=2}
       else {holderGrade='F';score-=35}
-      if(largestHolder>10)flags.push('هولدر شماره 1 بیش از 10% عرضه دارد');
-      if(maxOtherHolder>5)flags.push('یکی از هولدرهای شماره 2 تا 10 بیش از 5% عرضه دارد');
+      if(largestHolder>=10)flags.push('هولدر شماره 1 باید کمتر از 10% عرضه داشته باشد');
+      if(maxOtherHolder>=5)flags.push('هر هولدر شماره 2 تا 10 باید کمتر از 5% عرضه داشته باشد');
     }
   }catch{}
+
   let holderPolicyPassed=null,holderStrong=null;
   if(top10==null){
     holderGrade='UNKNOWN';flags.push('داده هولدرها نامشخص');
@@ -296,7 +325,7 @@ async function security(mint){
     holderPolicyPassed=['A','B','C'].includes(holderGrade);
     holderStrong=['A','B'].includes(holderGrade);
   }
-  const result={score:clamp(score),coverage,mintDisabled,freezeDisabled,top5,top10,largestHolder,maxOtherHolder,holderGrade,holderPolicyPassed,holderStrong,ownerAggregationComplete,topHolders,flags};
+  const result={score:clamp(score),coverage,mintDisabled,freezeDisabled,top5,top10,largestHolder,maxOtherHolder,holderGrade,holderPolicyPassed,holderStrong,ownerAggregationComplete,topHolders,tokenProgram,tokenExtensions,flags};
   securityCache.set(mint,{at:Date.now(),data:result});
   return result;
 }
@@ -544,37 +573,39 @@ function textRisk(r){return ((r?.name||'')+' '+(r?.description||'')+' '+(r?.valu
 async function externalSecurityAudit(t){
   const mint=t.mint,old=externalSecurityCache.get(mint);
   if(old&&Date.now()-old.at<EXTERNAL_SECURITY_CACHE_MS)return old.data;
-  let report=null,error=null;
-  try{report=await jfetch('https://api.rugcheck.xyz/v1/tokens/'+encodeURIComponent(mint)+'/report',{},12000)}
-  catch(e){error=String(e?.message||e)}
-  if(!report){
-    const data={
-      available:false,error,
-      lp:auditState('unknown','RugCheck در دسترس نبود','RugCheck'),
-      dev:auditState('unknown','داده سازنده در دسترس نبود','RugCheck'),
-      insider:auditState('unknown','گراف Insider در دسترس نبود','RugCheck'),
-      sell:auditState('unknown','بررسی مسیر فروش انجام نشد','RugCheck/Jupiter'),
-      overall:auditState('unknown','امتیاز RugCheck در دسترس نبود','RugCheck')
-    };
-    externalSecurityCache.set(mint,{at:Date.now(),data});return data;
-  }
 
-  const risks=Array.isArray(report.risks)?report.risks:[];
-  const riskTexts=risks.map(textRisk);
+  const [fullR,summaryR]=await Promise.allSettled([
+    jfetch('https://api.rugcheck.xyz/v1/tokens/'+encodeURIComponent(mint)+'/report',{},12000),
+    jfetch('https://api.rugcheck.xyz/v1/tokens/'+encodeURIComponent(mint)+'/report/summary',{},12000)
+  ]);
+  const report=fullR.status==='fulfilled'?fullR.value:null;
+  const summary=summaryR.status==='fulfilled'?summaryR.value:null;
+  const sourceObj=report||summary||{};
+  const risks=Array.isArray(report?.risks)?report.risks:Array.isArray(summary?.risks)?summary.risks:[];
   const risky=(re)=>risks.filter(r=>re.test(textRisk(r)));
-  const markets=Array.isArray(report.markets)?report.markets:[];
-  const lockPcts=markets.map(m=>num(pick(m?.lp,'lpLockedPct','lp_locked_pct'),NaN)).filter(Number.isFinite);
-  let lpLockedPct=lockPcts.length?Math.max(...lockPcts):num(pick(report,'lpLockedPct','lp_locked_pct'),NaN);
+
+  // LP lock: summary endpoint is the most direct RugCheck field.
+  let lpLockedPct=num(pick(summary,'lpLockedPct','lp_locked_pct'),NaN);
+  if(!Number.isFinite(lpLockedPct))lpLockedPct=num(pick(report,'lpLockedPct','lp_locked_pct'),NaN);
+  if(!Number.isFinite(lpLockedPct)){
+    const markets=Array.isArray(report?.markets)?report.markets:[];
+    const vals=markets.flatMap(m=>[
+      pick(m,'lpLockedPct','lp_locked_pct'),
+      pick(m?.lp,'lpLockedPct','lp_locked_pct','lockedPct','locked_pct')
+    ]).map(v=>num(v,NaN)).filter(Number.isFinite);
+    if(vals.length)lpLockedPct=Math.max(...vals);
+  }
   let lp;
   if(Number.isFinite(lpLockedPct)){
-    if(lpLockedPct>=80)lp=auditState('pass','LP قفل/سوخته: '+lpLockedPct.toFixed(1)+'%','RugCheck');
-    else if(lpLockedPct<50)lp=auditState('fail','LP قفل‌شده فقط '+lpLockedPct.toFixed(1)+'%','RugCheck');
-    else lp=auditState('warn','LP قفل‌شده '+lpLockedPct.toFixed(1)+'%؛ بهتر است بالاتر باشد','RugCheck');
+    if(lpLockedPct>=90)lp=auditState('pass','LP قفل/سوخته: '+lpLockedPct.toFixed(1)+'%','RugCheck summary');
+    else if(lpLockedPct<50)lp=auditState('fail','LP قفل‌شده فقط '+lpLockedPct.toFixed(1)+'%','RugCheck summary');
+    else lp=auditState('warn','LP قفل‌شده '+lpLockedPct.toFixed(1)+'%؛ برای سطح امن بالا حداقل 90% ترجیح داده می‌شود','RugCheck summary');
   }else{
     const lpRisks=risky(/liquidity.*lock|lp.*lock|unlocked liquidity|liquidity.*unlocked/);
-    lp=lpRisks.length?auditState('fail',lpRisks[0].name||'ریسک LP','RugCheck'):auditState('unknown','درصد LP Lock گزارش نشده','RugCheck');
+    lp=lpRisks.length?auditState('fail',lpRisks[0].name||'ریسک LP','RugCheck'):auditState('unknown','RugCheck درصد LP Lock برنگرداند','RugCheck');
   }
 
+  // Creator/dev holding: RugCheck top holders first, then direct Solana RPC fallback.
   const creator=String(pick(report,'creator')||'');
   const top=Array.isArray(pick(report,'topHolders','top_holders'))?pick(report,'topHolders','top_holders'):[];
   let creatorPct=null,creatorBound=null;
@@ -586,36 +617,65 @@ async function externalSecurityAudit(t){
       if(vals.length>=10)creatorBound=vals[9];
     }
   }
+  if(creator&&creatorPct==null){
+    try{
+      const [sp,acc]=await Promise.all([
+        rpc('getTokenSupply',[mint,{commitment:'confirmed'}]),
+        rpc('getTokenAccountsByOwner',[creator,{mint},{encoding:'jsonParsed',commitment:'confirmed'}])
+      ]);
+      const supply=num(sp?.result?.value?.uiAmount);
+      const held=(acc?.result?.value||[]).reduce((n,x)=>n+num(x?.account?.data?.parsed?.info?.tokenAmount?.uiAmountString??x?.account?.data?.parsed?.info?.tokenAmount?.uiAmount),0);
+      if(supply>0)creatorPct=held/supply*100;
+    }catch{}
+  }
   const devRisks=risky(/creator|developer|dev wallet|dev holding/);
   let dev;
   if(creatorPct!=null){
-    dev=creatorPct<5?auditState('pass','Dev holding '+creatorPct.toFixed(2)+'%','RugCheck'):
-        creatorPct>=10?auditState('fail','Dev holding بالا: '+creatorPct.toFixed(2)+'%','RugCheck'):
-        auditState('warn','Dev holding '+creatorPct.toFixed(2)+'%','RugCheck');
+    dev=creatorPct<5?auditState('pass','Dev holding '+creatorPct.toFixed(2)+'%','RugCheck + Solana RPC'):
+        creatorPct>=10?auditState('fail','Dev holding بالا: '+creatorPct.toFixed(2)+'%','RugCheck + Solana RPC'):
+        auditState('warn','Dev holding '+creatorPct.toFixed(2)+'%','RugCheck + Solana RPC');
   }else if(creator&&creatorBound!=null&&creatorBound<5){
     dev=auditState('pass','کیف‌پول سازنده خارج Top10 است؛ سقف تقریبی <'+creatorBound.toFixed(2)+'%','RugCheck');
   }else if(devRisks.some(r=>/danger|critical|high/i.test(String(r.level||'')))){
     dev=auditState('fail',devRisks[0].name||'ریسک سازنده','RugCheck');
   }else{
-    dev=auditState('unknown',creator?'درصد دقیق Dev holding قابل اثبات نیست':'Creator مشخص نیست','RugCheck');
+    dev=auditState('unknown',creator?'درصد Dev با RPC هم قابل محاسبه نبود':'Creator در گزارش مشخص نیست','RugCheck + Solana RPC');
   }
 
-  const graphCount=num(pick(report,'graphInsidersDetected','graph_insiders_detected'),NaN);
+  // Insider/sniper/bundle graph.
+  const networks=Array.isArray(report?.insiderNetworks)?report.insiderNetworks:[];
+  const graphRaw=pick(report,'graphInsidersDetected','graph_insiders_detected');
+  const graphCount=graphRaw==null?NaN:num(graphRaw,NaN);
   const insiderTop=top.filter(x=>x?.insider===true).length;
   const insiderRisks=risky(/insider|sniper|bundle|bundled|connected wallet/);
   const severeInsider=insiderRisks.some(r=>/danger|critical|high/i.test(String(r.level||'')));
   let insider;
-  if(severeInsider||insiderTop>=2||(Number.isFinite(graphCount)&&graphCount>=2)){
-    insider=auditState('fail','Insider/Sniper مشکوک: '+(Number.isFinite(graphCount)?graphCount:insiderTop)+' مورد','RugCheck');
-  }else if(insiderTop===1||(Number.isFinite(graphCount)&&graphCount===1)||insiderRisks.length){
-    insider=auditState('warn','یک سیگنال Insider/Sniper نیازمند احتیاط','RugCheck');
-  }else if(Number.isFinite(graphCount)){
-    insider=auditState('pass','Insider graph: موردی شناسایی نشد','RugCheck');
+  if(severeInsider||insiderTop>=2||(Number.isFinite(graphCount)&&graphCount>=2)||networks.length>=2){
+    insider=auditState('fail','Insider/Sniper/Bundle مشکوک: '+Math.max(Number.isFinite(graphCount)?graphCount:0,insiderTop,networks.length)+' مورد','RugCheck graph');
+  }else if(insiderTop===1||(Number.isFinite(graphCount)&&graphCount===1)||networks.length===1||insiderRisks.length){
+    insider=auditState('warn','یک سیگنال Insider/Sniper/Bundle دیده شد','RugCheck graph');
+  }else if(Number.isFinite(graphCount)||Array.isArray(report?.insiderNetworks)){
+    insider=auditState('pass','گراف RugCheck مورد Insider/Sniper فعال نشان نداد','RugCheck graph');
   }else{
-    insider=auditState('unknown','گراف Insider نتیجه قطعی نداده','RugCheck');
+    insider=auditState('unknown','گراف Insider نتیجه قابل اتکا برنگرداند','RugCheck');
   }
 
-  const rugScore=num(pick(report,'score_normalised','scoreNormalised'),NaN);
+  // Creator history / metadata are additional automatic checks.
+  const creatorHistoryRisks=risky(/creator history|rugged tokens|previous rug|deployer history/);
+  const creatorTokens=Array.isArray(report?.creatorTokens)?report.creatorTokens:[];
+  let creatorHistory;
+  if(creatorHistoryRisks.some(r=>/danger|critical|high/i.test(String(r.level||''))))creatorHistory=auditState('fail',creatorHistoryRisks[0].name||'سابقه Rug سازنده','RugCheck');
+  else if(creatorTokens.length)creatorHistory=auditState('pass','سابقه سازنده بررسی شد؛ پرچم Rug شدید دیده نشد','RugCheck');
+  else creatorHistory=auditState('unknown','تاریخچه سازنده برنگشت','RugCheck');
+
+  const mutable=pick(report?.tokenMeta,'mutable');
+  const metadata=mutable===false?auditState('pass','Metadata immutable','RugCheck'):
+    mutable===true?auditState('warn','Metadata هنوز قابل تغییر است','RugCheck'):
+    auditState('unknown','وضعیت mutable metadata گزارش نشد','RugCheck');
+
+  // RugCheck overall score.
+  let rugScore=num(pick(report,'score_normalised','scoreNormalised'),NaN);
+  if(!Number.isFinite(rugScore))rugScore=num(pick(summary,'score_normalised','scoreNormalised'),NaN);
   const rugged=pick(report,'rugged')===true;
   let overall;
   if(rugged)overall=auditState('fail','RugCheck: rugged=true','RugCheck');
@@ -624,30 +684,47 @@ async function externalSecurityAudit(t){
        auditState('warn','RugCheck risk '+rugScore+'/100','RugCheck');
   else overall=auditState('unknown','امتیاز نرمال RugCheck گزارش نشده','RugCheck');
 
+  // Sellability: reject dangerous RugCheck/Token-2022 flags, otherwise try Jupiter quote.
   const sellRisks=risky(/honeypot|cannot sell|unable to sell|sell restriction|transfer fee|permanent delegate|non-transferable/);
   const severeSell=sellRisks.some(r=>/danger|critical|high/i.test(String(r.level||'')));
   let sell=severeSell?auditState('fail',sellRisks[0].name||'ریسک فروش','RugCheck'):null;
+  if(t.security?.tokenExtensions?.hardFail){
+    sell=auditState('fail','Token-2022 extension پرریسک می‌تواند انتقال/فروش را محدود کند','Solana RPC');
+  }
   if(!sell){
-    const key=process.env.JUPITER_API_KEY;
-    const decimals=Math.max(0,Math.min(12,num(pick(report?.token,'decimals'),6)));
-    if(key){
-      try{
-        const amount=(1000n*(10n**BigInt(decimals))).toString();
-        const u='https://api.jup.ag/swap/v1/quote?inputMint='+encodeURIComponent(mint)+'&outputMint='+encodeURIComponent(WSOL_MINT)+'&amount='+amount+'&slippageBps=500&instructionVersion=V2';
-        const q=await jfetch(u,{headers:{'x-api-key':key}},10000);
-        const impact=Math.abs(num(q?.priceImpactPct))*100;
-        if(q?.outAmount&&num(q.outAmount)>0){
-          sell=impact<=10?auditState('pass','مسیر فروش Jupiter موجود؛ impact تقریبی '+impact.toFixed(2)+'%','Jupiter quote'):
-               auditState('warn','مسیر فروش موجود ولی impact '+impact.toFixed(2)+'%','Jupiter quote');
-        }else sell=auditState('fail','Jupiter مسیر فروش پیدا نکرد','Jupiter quote');
-      }catch(e){sell=auditState('unknown','Jupiter quote ناموفق؛ معامله‌ای انجام نشد','Jupiter quote')}
+    const decimals=Math.max(0,Math.min(9,num(pick(report?.token,'decimals'),6)));
+    const desiredTokens=t.priceUsd>0?Math.max(1,Math.min(1e9,50/t.priceUsd)):1000;
+    const units=(BigInt(Math.max(1,Math.floor(desiredTokens)))*(10n**BigInt(decimals))).toString();
+    const query='?inputMint='+encodeURIComponent(mint)+'&outputMint='+encodeURIComponent(WSOL_MINT)+'&amount='+units+'&slippageBps=500&instructionVersion=V2';
+    const urls=[];
+    if(process.env.JUPITER_API_KEY)urls.push({u:'https://api.jup.ag/swap/v1/quote'+query,h:{'x-api-key':process.env.JUPITER_API_KEY}});
+    urls.push({u:'https://lite-api.jup.ag/swap/v1/quote'+query,h:{}});
+    let quote=null;
+    for(const x of urls){
+      try{quote=await jfetch(x.u,{headers:x.h},9000);if(quote?.outAmount&&num(quote.outAmount)>0)break}catch{}
+    }
+    if(quote?.outAmount&&num(quote.outAmount)>0){
+      const impact=Math.abs(num(quote?.priceImpactPct))*100;
+      sell=impact<=10?auditState('pass','مسیر فروش Jupiter موجود؛ impact تقریبی '+impact.toFixed(2)+'%','Jupiter quote'):
+           auditState('warn','مسیر فروش موجود ولی impact '+impact.toFixed(2)+'%','Jupiter quote');
+    }else if(num(t.sells5m)>=3||num(t.sells1h)>=10){
+      sell=auditState('warn','فروش واقعی اخیر در DEX مشاهده شده، ولی quote مستقل Jupiter تأیید نشد','DexScreener');
+    }else if(sellRisks.length){
+      sell=auditState('warn','RugCheck ریسک فروش/fee گزارش کرده: '+(sellRisks[0].name||''),'RugCheck');
     }else{
-      sell=sellRisks.length?auditState('warn','RugCheck ریسک فروش/fee گزارش کرده: '+(sellRisks[0].name||''),'RugCheck'):
-        auditState('unknown','RugCheck ریسک Honeypot شدید ندارد؛ برای quote فروش، JUPITER_API_KEY لازم است','RugCheck');
+      sell=auditState('unknown','نه quote فروش و نه فروش اخیر کافی برای تأیید پیدا شد','Jupiter + DexScreener');
     }
   }
 
-  const data={available:true,lp,dev,insider,sell,overall,rugcheckScore:Number.isFinite(rugScore)?rugScore:null,creator,rawRiskCount:risks.length};
+  // Token-2022 extension audit from direct mint parsing.
+  const te=t.security?.tokenExtensions||{};
+  let extensions=auditState('pass','Token program استاندارد یا extension پرریسک شناسایی نشد','Solana RPC');
+  if(te.hardFail)extensions=auditState('fail',(te.names||[]).join(', ')||'Token-2022 extension پرریسک','Solana RPC');
+  else if(te.transferHook||(te.transferFeeBps!=null&&te.transferFeeBps>200))extensions=auditState('warn',(te.warnings||[]).join('؛ ')||'Token-2022 نیازمند احتیاط','Solana RPC');
+  else if(te.isToken2022)extensions=auditState('pass','Token-2022 بررسی شد؛ extension بحرانی شناسایی نشد','Solana RPC');
+
+  const available=!!(report||summary||t.security);
+  const data={available,lp,dev,insider,sell,overall,creatorHistory,metadata,extensions,rugcheckScore:Number.isFinite(rugScore)?rugScore:null,lpLockedPct:Number.isFinite(lpLockedPct)?lpLockedPct:null,creator,creatorPct,rawRiskCount:risks.length,tokenProgram:pick(summary,'tokenProgram')||pick(report,'tokenProgram')||t.security?.tokenProgram||null};
   externalSecurityCache.set(mint,{at:Date.now(),data});return data;
 }
 
@@ -657,6 +734,7 @@ function academyGuard(t){
   checks.push({name:'Mint authority لغو شده',state:state(sec.mintDisabled===true,sec.mintDisabled===false),detail:'Solana RPC'});
   checks.push({name:'Freeze authority غیرفعال',state:state(sec.freezeDisabled===true,sec.freezeDisabled===false),detail:'Solana RPC'});
   checks.push({name:'هولدر #1 <10% و هر هولدر #2 تا #10 <5%',state:state(sec.holderPolicyPassed===true,sec.holderPolicyPassed===false),detail:'Owner-aggregated holders'});
+  checks.push({name:'Token-2022 extensionهای پرریسک',state:ext.extensions?.state||'unknown',detail:ext.extensions?.detail||'داده ناکافی'});
   checks.push({name:'نقدینگی سالم نسبت به Market Cap',state:mq.liqRatio>=0.05?'pass':mq.liqRatio>0&&mq.liqRatio<0.02?'fail':'warn',detail:'Liq/MC '+(mq.liqRatio*100).toFixed(1)+'%'});
   checks.push({name:'حجم در حال رشد، نه محو شدن',state:chart.volumeTrend==='RISING'?'pass':chart.volumeTrend==='FADING'?'fail':'warn',detail:'Volume trend '+chart.volumeTrend});
   checks.push({name:'فعالیت غیررباتی',state:t.activity?.label==='PROBABLE ORGANIC'?'pass':t.activity?.label==='BOT RISK'?'fail':'warn',detail:t.activity?.label||'UNKNOWN'});
@@ -665,6 +743,8 @@ function academyGuard(t){
   checks.push({name:'شبکه اجتماعی/جامعه قابل مشاهده',state:(t.socialSources||[]).length>=2&&t.trend?.score>=40?'pass':'warn',detail:(t.socialSources||[]).length+' شبکه'});
   checks.push({name:'Liquidity Lock/Burn خودکار',state:ext.lp?.state||'unknown',detail:ext.lp?.detail||'داده ناکافی'});
   checks.push({name:'Dev holding خودکار',state:ext.dev?.state||'unknown',detail:ext.dev?.detail||'داده ناکافی'});
+  checks.push({name:'سابقه سازنده / Rug history',state:ext.creatorHistory?.state||'unknown',detail:ext.creatorHistory?.detail||'داده ناکافی'});
+  checks.push({name:'Metadata تغییرناپذیر',state:ext.metadata?.state||'unknown',detail:ext.metadata?.detail||'داده ناکافی'});
   checks.push({name:'Bundle/Sniper/Insider خودکار',state:ext.insider?.state||'unknown',detail:ext.insider?.detail||'داده ناکافی'});
   checks.push({name:'Sellability / Honeypot خودکار',state:ext.sell?.state||'unknown',detail:ext.sell?.detail||'داده ناکافی'});
   checks.push({name:'RugCheck ریسک کلی',state:ext.overall?.state||'unknown',detail:ext.overall?.detail||'داده ناکافی'});
@@ -672,15 +752,15 @@ function academyGuard(t){
   const fail=checks.filter(x=>x.state==='fail').length;
   const warn=checks.filter(x=>x.state==='warn').length;
   const unknown=checks.filter(x=>x.state==='unknown').length;
-  const externalCritical=['lp','dev','insider','sell','overall'].some(k=>ext[k]?.state==='fail');
+  const externalCritical=['lp','dev','insider','sell','overall','extensions','creatorHistory'].some(k=>ext[k]?.state==='fail');
   const criticalFail=
-    sec.mintDisabled===false||sec.freezeDisabled===false||sec.holderPolicyPassed===false||
+    sec.mintDisabled===false||sec.freezeDisabled===false||sec.holderPolicyPassed===false||sec.tokenExtensions?.hardFail===true||
     t.activity?.label==='BOT RISK'||chart.pumpDumpRisk==='HIGH'||t.flow?.volumeLabel==='SUSPICIOUS'||
     (mq.liqRatio>0&&mq.liqRatio<0.02)||externalCritical;
   const blocked=criticalFail||fail>=2;
-  const score=Math.round((pass+warn*0.45)/checks.length*100);
+  const score=Math.round((pass+warn*0.4)/checks.length*100);
   const label=blocked?'BLOCK':fail===0&&warn<=2&&unknown===0?'AUTO PASS':fail===0?'NEEDS REVIEW':'CAUTION';
-  return {score,label,pass,fail,warn,unknown,manual:0,blocked,checks,source:'automated on-chain + RugCheck + optional Jupiter quote; unknown stays unknown, never auto-passes'};
+  return {score,label,pass,fail,warn,unknown,manual:0,blocked,checks,source:'fully automated evidence pipeline: Solana RPC + RugCheck full/summary + Jupiter quote + DexScreener; missing evidence stays UNKNOWN'};
 }
 
 function securityGate(t){
@@ -692,6 +772,8 @@ function securityGate(t){
   else if(sec.freezeDisabled!==true)cautions.push('Freeze authority نامشخص');
   if(sec.holderPolicyPassed===false)hard.push('قانون هولدر رد: #1 باید <10% و #2 تا #10 هرکدام <5% باشند');
   else if(sec.holderPolicyPassed!==true)cautions.push('توزیع هولدرها نیازمند داده کامل‌تر');
+  if(sec.tokenExtensions?.hardFail)hard.push('Token-2022 extension پرریسک شناسایی شد');
+  else if(sec.tokenExtensions?.warnings?.length)cautions.push(...sec.tokenExtensions.warnings);
   if(act.label==='BOT RISK')hard.push('ریسک ربات/Wash');
   else if(!act.label)cautions.push('فعالیت معاملاتی نامشخص');
   if(chart.pumpDumpRisk==='HIGH')hard.push('ریسک Pump/Dump بالا');
@@ -783,6 +865,7 @@ function assessSecurity(t){
     s.mintDisabled===false||
     s.freezeDisabled===false||
     s.holderPolicyPassed===false||
+    s.tokenExtensions?.hardFail===true||
     t.activity?.label==='BOT RISK'||
     t.chart?.pumpDumpRisk==='HIGH'||
     t.academy?.blocked===true||
@@ -880,7 +963,7 @@ async function build(){
     holderPolicy:{hardRules:{holder1MustBeBelowPct:10,holders2to10EachMustBeBelowPct:5,exclusive:true},gradeA:{holder1MaxPct:5,holders2to10EachMaxPct:2.5},gradeB:{holder1MaxPct:7.5,holders2to10EachMaxPct:4},gradeC:{holder1MaxPct:10,holders2to10EachMaxPct:5},unknownFailsStrong:true},
     activityPolicy:{probableOrganicMin:72,highSecurityMin:58,method:'aggregate heuristics; not proof of human identity'},
     orderFlowPolicy:{buyerPower:'buy transaction count / total buy+sell transactions; not dollar buy volume',strongBuyer:'5m >=55% and 1h >=51% when available',volumeQuality:'absolute volume + tx count + volume/liquidity sanity check'},
-    knowledgeEngine:{marketQuality:'transparency + liquidity + data coverage',chartDiscipline:'trend + FOMO + pump/dump guard',academy:'automated on-chain + RugCheck + optional Jupiter sell-route quote; unavailable evidence stays UNKNOWN, never PASS'},
+    knowledgeEngine:{marketQuality:'transparency + liquidity + data coverage',chartDiscipline:'trend + FOMO + pump/dump guard',academy:'automated Solana RPC + Token-2022 extension audit + RugCheck full/summary + Jupiter sell-route quote + DexScreener sell evidence; unavailable evidence stays UNKNOWN'},
     ageBuckets:{fresh:'0-24h',day:'24h-7d',week:'7d-30d discovery horizon'},
     signalWindows:{short:'5m-1h',medium:'1h-6h',long:'6h-24h',securityGate:'explicit failures block; unknown security data becomes CAUTION and caps confidence instead of auto-reject'},
     disclaimer:'قانون هولدرها: هولدر شماره 1 حداکثر 10% و هرکدام از هولدرهای شماره 2 تا 10 حداکثر 5% می‌توانند داشته باشند. مجموع Top10 فقط جهت اطلاع نمایش داده می‌شود و شرط رد نیست. Organic Activity یک تخمین ضدربات/ضدواش است. هیچ فیلتر آن‌چین کلاهبرداری را 100% رد نمی‌کند.'};
