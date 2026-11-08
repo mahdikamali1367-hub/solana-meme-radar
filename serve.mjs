@@ -1593,11 +1593,15 @@ dialog{width:min(720px,94vw);max-height:88vh;border:1px solid #36506e;border-rad
   <button class="tab" data-tab="social">📣 ترند اجتماعی</button>
   <button class="tab" data-tab="wallets">🏆 کیف‌پول‌ها</button>
 </nav>
-<details class="accordion highlight" open>
-  <summary>🏆 بهترین سیگنال کل رادار</summary>
-  <div class="accordion-body" id="championBox"></div>
-</details>
-<details class="accordion highlight" open>
+<section class="top-dashboard">
+  <details class="accordion highlight" open>
+    <summary>🔥 پیشنهادهای ورود برتر</summary>
+    <div class="accordion-body">
+      <p class="muted" style="font-size:11px">بهترین گزینه‌های فعلی که نقطه ورود فعال دارند؛ ورود قوی و ورود قابل‌بررسی جدا نمایش داده می‌شوند.</p>
+      <div class="list" id="topFeaturedQuick"></div>
+    </div>
+  </details>
+  <details class="accordion highlight" open>
   <summary>🐋 پیشنهادهای نهنگ‌ها و همه خریدهای زنده</summary>
   <div class="accordion-body">
     <p class="muted" style="font-size:11px">خریدهای نهنگ از جریان زنده API جمع می‌شوند و فقط رویدادهای تازه در پنجره ۳۰ دقیقه‌ای لحاظ می‌شوند. «اولویت بررسی» تضمین رشد یا سود نیست.</p>
@@ -1605,6 +1609,20 @@ dialog{width:min(720px,94vw);max-height:88vh;border:1px solid #36506e;border-rad
     <div class="list" id="whaleTopList"></div>
   </div>
 </details>
+  <details class="accordion highlight" open>
+    <summary>🪙 توکن‌های برتر رادار</summary>
+    <div class="accordion-body">
+      <p class="muted" style="font-size:11px">توکن‌های دارای بالاترین امتیاز فعلی رادار با امنیت، جریان خرید، حجم و وضعیت ورود.</p>
+      <div class="list" id="topTokenQuick"></div>
+    </div>
+  </details>
+</section>
+
+<details class="accordion highlight" open>
+  <summary>🏆 بهترین سیگنال کل رادار</summary>
+  <div class="accordion-body" id="championBox"></div>
+</details>
+
   <details class="accordion highlight" open>
     <summary>📈 بازده واقعی ۲۴ساعته سیگنال‌های رادار</summary>
     <div class="accordion-body">
@@ -2086,6 +2104,38 @@ function renderChampion(){
   '</div></div>';
 }
 
+function renderTopQuick(){
+  var f=document.getElementById('topFeaturedQuick');
+  if(f){
+    var rows=featuredRows().filter(function(x){return passesSignalFilters(x.token)}).slice(0,6);
+    f.innerHTML=rows.length?rows.map(function(x,i){
+      var t=x.token,tp=tradePlan(t),sec=t.security||{};
+      return '<div class="row"><div class="asset"><b>#'+(i+1)+' 🔥 '+esc(t.symbol||'?')+' · '+esc(t.name||'')+'</b>'+whaleTrendBadge(t)+socialTrendBadges(t)+tradePlanChips(t)+'<small>'+esc(x.why.slice(0,3).join(' • '))+'</small></div>'+
+      '<div class="cell"><small>امتیاز</small><b>'+x.score+'/100</b></div>'+
+      '<div class="cell"><small>امنیت</small><b><span class="badge '+secClass(sec.tier)+'">'+esc(faSec(sec.tier))+'</span></b></div>'+
+      '<div class="cell"><small>خریدار</small><b>'+Number(t.flow?.buyerPower||0)+'%</b></div>'+
+      '<div class="cell hide-sm"><small>حجم</small><b>'+esc(faVolume(t.flow?.volumeLabel))+'</b></div>'+
+      '<div class="cell hide-md"><small>ورود</small><b>'+(tp.status==='ENTRY'?(tp.confidence==='HIGH'?'قوی':'قابل‌بررسی'):'صبر')+'</b></div>'+
+      '<div class="actions"><a class="action" target="_blank" rel="noopener" href="'+esc(dexUrl(t.mint,t.dexUrl))+'">📈 چارت</a><button class="detail-btn" data-mint="'+esc(t.mint)+'">جزئیات</button></div></div>';
+    }).join(''):'<div class="empty">فعلاً نقطه ورود تأییدشده‌ای پیدا نشده؛ توکن‌های پرریسک عمداً بالا نمی‌آیند.</div>';
+  }
+
+  var q=document.getElementById('topTokenQuick');
+  if(q){
+    var rows2=tokens.slice().sort(function(a,b){return bucketScore(b,ageBucket(b))-bucketScore(a,ageBucket(a))}).slice(0,8);
+    q.innerHTML=rows2.length?rows2.map(function(t,i){
+      var sec=t.security||{},score=bucketScore(t,ageBucket(t));
+      return '<div class="row"><div class="asset"><b>#'+(i+1)+' 🪙 '+esc(t.symbol||'?')+' · '+esc(t.name||'')+'</b>'+whaleTrendBadge(t)+socialTrendBadges(t)+tradePlanChips(t)+'<small>'+esc(ageText(t))+' · '+esc(bucketSignalLabel(score,t))+'</small></div>'+
+      '<div class="cell"><small>امتیاز</small><b>'+score+'/100</b></div>'+
+      '<div class="cell"><small>امنیت</small><b><span class="badge '+secClass(sec.tier)+'">'+esc(faSec(sec.tier))+'</span></b></div>'+
+      '<div class="cell"><small>خریدار</small><b>'+Number(t.flow?.buyerPower||0)+'%</b></div>'+
+      '<div class="cell hide-sm"><small>حجم</small><b>'+esc(faVolume(t.flow?.volumeLabel))+'</b></div>'+
+      '<div class="cell hide-md"><small>نهنگ</small><b>'+whaleFor(t.mint).count+'</b></div>'+
+      '<div class="actions"><a class="action" target="_blank" rel="noopener" href="'+esc(dexUrl(t.mint,t.dexUrl))+'">📈 چارت</a><button class="detail-btn" data-mint="'+esc(t.mint)+'">جزئیات</button></div></div>';
+    }).join(''):'<div class="empty">هنوز توکنی دریافت نشده.</div>';
+  }
+}
+
 function renderFeatured(){
   var r=featuredRows().filter(function(x){return passesSignalFilters(x.token)}).sort(function(a,b){return (b.score-a.score)||(tokenStrength(b.token)-tokenStrength(a.token))});document.getElementById('kFeatured').textContent=r.length;
   document.getElementById('featuredList').innerHTML=r.length?r.map(function(x){
@@ -2306,7 +2356,7 @@ function renderAlerts(){
   var c=live&&live.exitClusters?live.exitClusters.filter(function(x){return x.severity==='MULTI-WALLET EXIT'}).slice(0,3):[];
   document.getElementById('kExits').textContent=c.length;document.getElementById('alerts').innerHTML=c.map(function(x){return '<div class="alert">🚨 خروج همزمان چند کیف‌پول از <b>'+esc(x.token||short(x.tokenAddress))+'</b> · '+Number(x.uniqueSellers||0)+' فروشنده</div>'}).join('');
 }
-function renderAll(){document.getElementById('kTokens').textContent=tokens.length;renderChampion();renderAlerts();renderFeatured();renderWhales();renderSmart();renderSocialTrends();renderWallets();renderConviction();renderPerformance24();renderKolTrends();renderTokens()}
+function renderAll(){document.getElementById('kTokens').textContent=tokens.length;renderTopQuick();renderChampion();renderAlerts();renderFeatured();renderWhales();renderSmart();renderSocialTrends();renderWallets();renderConviction();renderPerformance24();renderKolTrends();renderTokens()}
 function stateLabel(v){return v==='pass'?'<span class="pass">✓ تأیید خودکار</span>':v==='fail'?'<span class="fail">✕ رد خودکار</span>':v==='warn'?'<span class="manual">△ هشدار خودکار</span>':'<span class="manual">? تأیید نشده — داده ناکافی</span>'}
 function openDetail(m){
   var t=findToken(m),tr=findTracked(m),sm=smartFor(m),wh=whaleFor(m),name=t?(t.symbol+' · '+t.name):(tr?(tr.symbol+' · '+tr.name):short(m)),h='';
@@ -2354,7 +2404,7 @@ var liveStream=null,liveStreamConnected=false,liveFallbackTimer=null;
 function applyLivePayload(x,label){
   if(!x)return;
   live=x;
-  renderAlerts();renderWhales();renderChampion();renderFeatured();renderSocialTrends();renderPerformance24();renderKolTrends();renderTokens();
+  renderTopQuick();renderAlerts();renderWhales();renderChampion();renderFeatured();renderSocialTrends();renderPerformance24();renderKolTrends();renderTokens();
   document.getElementById('updated').textContent=(label||'زنده')+': '+new Date().toLocaleTimeString('fa-IR');
 }
 async function pollLiveFallback(){
