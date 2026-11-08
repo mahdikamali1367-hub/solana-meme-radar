@@ -655,6 +655,23 @@ async function buildTrackedWallets(){
   const marketTopHoldings=[...portfolioAgg.values()].filter(x=>num(x.currentHoldingUsd)>0)
     .sort((a,b)=>b.currentHoldingUsd-a.currentHoldingUsd).slice(0,20);
 
+  const walletPortfolioMap=new Map();
+  for(const w of walletRows)walletPortfolioMap.set(w.address,[]);
+  for(const a of portfolioAgg.values()){
+    if(!num(a.currentHoldingUsd))continue;
+    for(const h of a.holders||[]){
+      if(!num(h.valueUsd))continue;
+      const rows=walletPortfolioMap.get(h.address)||[];
+      rows.push({
+        mint:a.mint,symbol:a.symbol,name:a.name,amount:h.amount,valueUsd:h.valueUsd,
+        priceUsd:a.priceUsd,dexUrl:a.dexUrl,liquidity:a.liquidity,marketCap:a.marketCap
+      });
+      walletPortfolioMap.set(h.address,rows);
+    }
+  }
+  for(const rows of walletPortfolioMap.values())rows.sort((a,b)=>b.valueUsd-a.valueUsd);
+
+
   const rankedAgg=[...agg.values()].sort((a,b)=>(b.buyers.size-a.buyers.size)||(b.buyUsd-b.sellUsd)-(a.buyUsd-a.sellUsd)).slice(0,20);
   for(const a of rankedAgg){
     let p=null;
@@ -685,7 +702,11 @@ async function buildTrackedWallets(){
   const publicWallets=walletRows.map(w=>{
     const { _balances,...rest}=w;
     const speed=w.highFrequencyRisk?'ربات/فرکانس بسیار بالا محتمل':w.medianHoldSec!=null&&w.medianHoldSec<60?'اسکالپر بسیار سریع':w.medianHoldSec!=null&&w.medianHoldSec<=180?'اسکالپر سریع':'نامشخص';
-    return {...rest,speed,solscanUrl:'https://solscan.io/account/'+w.address,gmgnUrl:'https://gmgn.ai/sol/address/'+w.address};
+    const portfolio=walletPortfolioMap.get(w.address)||[];
+    const portfolioValueUsd=portfolio.reduce((a,x)=>a+num(x.valueUsd),0);
+    const topPosition=portfolio[0]?{...portfolio[0],sharePct:portfolioValueUsd>0?portfolio[0].valueUsd/portfolioValueUsd*100:null}:null;
+    const topPortfolio=portfolio.slice(0,8).map(x=>({...x,sharePct:portfolioValueUsd>0?x.valueUsd/portfolioValueUsd*100:null}));
+    return {...rest,speed,portfolioValueUsd,topPosition,portfolio:topPortfolio,solscanUrl:'https://solscan.io/account/'+w.address,gmgnUrl:'https://gmgn.ai/sol/address/'+w.address};
   });
   const data={ok:true,generatedAt:new Date().toISOString(),refreshSeconds:300,source:'Solana RPC live + seed rankings from KOL Explorer/Solana Tracker',solPrice,wallets:publicWallets,tokens,topHoldings,marketTopHoldings,topNetBuys,consensus,
     disclaimer:'خرید/فروش از تغییر موجودی توکن همراه با خروج/ورود SOL یا استیبل‌کوین استنباط می‌شود. انتقال ساده حذف می‌شود اما تشخیص Swap صددرصد نیست. رتبه/سود تاریخی Seed است و تصمیم خرید نیست.'};
@@ -953,7 +974,7 @@ button,input,select,a.action{border:1px solid var(--line);background:#101d31;col
 .list{display:grid;gap:7px}.row{display:grid;grid-template-columns:minmax(175px,1.6fr) repeat(5,minmax(80px,.7fr)) auto;gap:7px;align-items:center;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:9px}.asset{min-width:0}.asset b{font-size:14px}.asset small{display:block;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:3px;font-size:10px}.cell small{display:block;color:var(--muted);font-size:9px}.cell b{font-size:13px}.actions{display:flex;gap:4px}.actions a,.actions button{font-size:11px;padding:6px 7px;text-decoration:none}
 .badge{display:inline-flex;padding:3px 6px;border-radius:999px;font-size:10px;font-weight:700}.good{background:#123a2d;color:var(--good)}.mid{background:#3b3317;color:var(--warn)}.bad{background:#421a24;color:var(--bad)}.blue{background:#152d49;color:var(--blue)}
 .empty{background:var(--panel);border:1px dashed var(--line);border-radius:12px;padding:22px;text-align:center;color:var(--muted);font-size:12px}
-.three{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}.mini{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:10px}.mini h3{font-size:15px;margin:0 0 9px;font-weight:900}.mini-row{display:flex;justify-content:space-between;gap:8px;padding:6px 0;border-top:1px solid #182b45;font-size:11px}.mini-row:first-of-type{border-top:0}.mini-row span{color:var(--muted)}
+.three{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}.mini{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:10px}.mini h3{font-size:15px;margin:0 0 9px;font-weight:900}.mini-row{display:flex;justify-content:space-between;gap:8px;padding:6px 0;border-top:1px solid #182b45;font-size:11px}.mini-row:first-of-type{border-top:0}.mini-row span{color:var(--muted)}.portfolio-item{padding:8px 0;border-top:1px solid #1b304b}.portfolio-item:first-child{border-top:0}.portfolio-top{display:flex;justify-content:space-between;gap:8px;font-size:12px}.portfolio-bar{height:6px;background:#15263d;border-radius:999px;overflow:hidden;margin-top:5px}.portfolio-fill{height:100%;background:#3d8f72;border-radius:999px}.portfolio-meta{display:flex;justify-content:space-between;gap:8px;color:var(--muted);font-size:10px;margin-top:4px}
 dialog{width:min(720px,94vw);max-height:88vh;border:1px solid #36506e;border-radius:15px;background:#091426;color:var(--text);padding:0;box-shadow:0 30px 90px #0009}dialog::backdrop{background:#000a}.modal-head{position:sticky;top:0;background:#091426;border-bottom:1px solid var(--line);padding:12px 14px;display:flex;justify-content:space-between;align-items:center}.modal-body{padding:13px}.modal-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:7px}.box{background:#0f1d31;border:1px solid var(--line);border-radius:10px;padding:8px}.box small{display:block;color:var(--muted);font-size:9px}.box b{display:block;margin-top:3px;font-size:12px}.holders{margin-top:11px}.holder,.check{display:flex;justify-content:space-between;gap:7px;padding:6px 0;border-top:1px solid var(--line);font-size:11px}.holder a{color:var(--blue);text-decoration:none}.links{display:flex;flex-wrap:wrap;gap:5px;margin-top:11px}.links a{color:#b5ddff;text-decoration:none;border:1px solid #315071;background:#10243b;padding:6px 8px;border-radius:8px;font-size:11px}.note{margin-top:10px;color:var(--muted);font-size:11px;line-height:1.65}.pass{color:var(--good)}.fail{color:var(--bad)}.manual{color:var(--warn)}
 @media(max-width:900px){.champion-grid{grid-template-columns:1fr 1fr}.champion-grid .asset,.champion-grid .actions{grid-column:1/-1}.row{grid-template-columns:1.5fr repeat(3,.8fr) auto}.hide-md{display:none}.three{grid-template-columns:1fr}.kpis{grid-template-columns:repeat(2,1fr)}}
 @media(max-width:620px){.subfilters{grid-template-columns:1fr 1fr}.head{padding:9px 10px}.shell{padding:10px}.brand small,.status{display:none}.row{grid-template-columns:1fr 1fr}.asset,.actions{grid-column:1/-1}.hide-sm{display:none}.modal-grid{grid-template-columns:repeat(2,1fr)}}
@@ -1264,16 +1285,27 @@ function renderConviction(){
 function renderWallets(){
   if(!tracked){document.getElementById('walletStatus').textContent='داده در دسترس نیست';return}
   document.getElementById('walletStatus').textContent='آخرین اسکن: '+new Date(tracked.generatedAt||Date.now()).toLocaleTimeString('fa-IR')+' · '+(tracked.wallets?tracked.wallets.length:0)+' کیف‌پول';
-  document.getElementById('topHoldings').innerHTML=miniRows(tracked.marketTopHoldings||tracked.topHoldings,'hold');document.getElementById('topBuys').innerHTML=miniRows(tracked.topNetBuys,'buy');document.getElementById('consensus').innerHTML=miniRows(tracked.consensus,'consensus');
-  var r=tracked.wallets||[];
+  document.getElementById('topHoldings').innerHTML=miniRows(tracked.marketTopHoldings||tracked.topHoldings,'hold');
+  document.getElementById('topBuys').innerHTML=miniRows(tracked.topNetBuys,'buy');
+  document.getElementById('consensus').innerHTML=miniRows(tracked.consensus,'consensus');
+  var r=(tracked.wallets||[]).slice().sort(function(a,b){return Number(b.portfolioValueUsd||0)-Number(a.portfolioValueUsd||0)});
   document.getElementById('walletList').innerHTML=r.length?r.map(function(w){
-    var e=w.events&&w.events[0]?w.events[0]:null;
+    var e=w.events&&w.events[0]?w.events[0]:null,tp=w.topPosition||null,portfolio=w.portfolio||[];
+    var portfolioHtml=portfolio.length?portfolio.map(function(p,i){
+      var width=Math.max(2,Math.min(100,Number(p.sharePct||0)));
+      return '<div class="portfolio-item"><div class="portfolio-top"><b>#'+(i+1)+' '+esc(p.symbol||'?')+'</b><b>'+money(p.valueUsd)+'</b></div>'+
+        '<div class="portfolio-bar"><div class="portfolio-fill" style="width:'+width+'%"></div></div>'+
+        '<div class="portfolio-meta"><span>'+pct(p.sharePct)+' از پورتفولیوی قابل قیمت‌گذاری</span><span>'+money(p.marketCap)+' MC</span></div>'+
+        '<div class="links"><a target="_blank" rel="noopener" href="'+esc(p.dexUrl||dexUrl(p.mint,''))+'">📈 چارت</a><a target="_blank" rel="noopener" href="https://solscan.io/token/'+esc(p.mint)+'">Solscan</a></div></div>';
+    }).join(''):'<div class="note">فعلاً پوزیشن قابل قیمت‌گذاری پیدا نشد.</div>';
     return '<div class="row"><div class="asset"><b>'+esc(w.name)+'</b><small>'+esc(short(w.address))+' · '+esc(w.speed||'')+'</small></div>'+
-    '<div class="cell"><small>PnL Seed</small><b>'+money(w.seedPnl30d)+'</b></div><div class="cell"><small>Win Rate</small><b>'+pct(w.seedWinRate)+'</b></div>'+
-    '<div class="cell"><small>آخرین حرکت</small><b>'+(e?(e.side==='BUY'?'🟢 خرید ':'🔴 فروش ')+money(e.approxUsd):'—')+'</b></div>'+
-    '<div class="cell hide-sm"><small>توکن</small><b>'+(e?esc(e.symbol||short(e.mint)):'—')+'</b></div>'+
-    '<div class="cell hide-md"><small>Median Hold</small><b>'+(w.medianHoldSec==null?'—':w.medianHoldSec+'s')+'</b></div>'+
-    '<div class="actions"><a class="action" target="_blank" rel="noopener" href="'+esc(w.solscanUrl)+'">Solscan</a><a class="action" target="_blank" rel="noopener" href="'+esc(w.gmgnUrl)+'">GMGN</a></div></div>';
+      '<div class="cell"><small>ارزش پورتفولیو</small><b>'+money(w.portfolioValueUsd)+'</b></div>'+
+      '<div class="cell"><small>بیشترین سرمایه روی</small><b>'+(tp?esc(tp.symbol||'?'):'—')+'</b></div>'+
+      '<div class="cell"><small>ارزش پوزیشن اول</small><b>'+(tp?money(tp.valueUsd):'—')+'</b></div>'+
+      '<div class="cell hide-sm"><small>تمرکز پوزیشن اول</small><b>'+(tp?pct(tp.sharePct):'—')+'</b></div>'+
+      '<div class="cell hide-md"><small>آخرین حرکت</small><b>'+(e?(e.side==='BUY'?'🟢 خرید ':'🔴 فروش ')+money(e.approxUsd):'—')+'</b></div>'+
+      '<div class="actions"><a class="action" target="_blank" rel="noopener" href="'+esc(w.solscanUrl)+'">Solscan</a><a class="action" target="_blank" rel="noopener" href="'+esc(w.gmgnUrl)+'">GMGN</a></div>'+
+      '<div style="grid-column:1/-1"><details class="accordion"><summary>💼 پورتفولیو — بیشترین پول روی '+(tp?esc(tp.symbol||'?'):'نامشخص')+'</summary><div class="accordion-body">'+portfolioHtml+'</div></details></div></div>';
   }).join(''):'<div class="empty">کیف‌پولی برای نمایش نیست.</div>';
 }
 function filteredTokens(){
