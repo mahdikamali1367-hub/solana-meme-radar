@@ -1444,7 +1444,7 @@ button,input,select,a.action{border:1px solid var(--line);background:#101d31;col
 .panel{display:none}.panel.active{display:block}.section-title{display:flex;justify-content:space-between;gap:10px;align-items:end;margin:6px 0 9px}.section-title h2{margin:0;font-size:18px}.section-title p{margin:3px 0 0;color:var(--muted);font-size:11px}
 .list{display:grid;gap:7px}.row{display:grid;grid-template-columns:minmax(175px,1.6fr) repeat(5,minmax(80px,.7fr)) auto;gap:7px;align-items:center;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:9px}.asset{min-width:0}.asset b{font-size:14px}.asset small{display:block;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:3px;font-size:10px}.cell small{display:block;color:var(--muted);font-size:9px}.cell b{font-size:13px}.actions{display:flex;gap:4px}.actions a,.actions button{font-size:11px;padding:6px 7px;text-decoration:none}
 .badge{display:inline-flex;padding:3px 6px;border-radius:999px;font-size:10px;font-weight:700}.good{background:#123a2d;color:var(--good)}.mid{background:#3b3317;color:var(--warn)}.bad{background:#421a24;color:var(--bad)}.blue{background:#152d49;color:var(--blue)}
-.empty{background:var(--panel);border:1px dashed var(--line);border-radius:12px;padding:22px;text-align:center;color:var(--muted);font-size:12px}.bucket-best{border:1px solid #34745e;background:linear-gradient(135deg,#102b27,#101f35);border-radius:12px;padding:10px;margin-bottom:10px}.bucket-best-title{font-size:12px;color:var(--muted);font-weight:800}.bucket-best-main{display:grid;grid-template-columns:1.5fr repeat(4,.7fr) auto;gap:8px;align-items:center;margin-top:7px}.bucket-score{font-size:22px;font-weight:900;color:var(--good)}.age-chip{display:inline-flex;padding:3px 7px;border-radius:999px;background:#152d49;color:var(--blue);font-size:10px;font-weight:800;margin-top:5px}.whale-buy-chip{display:inline-flex;align-items:center;padding:4px 8px;border-radius:999px;background:#123a2d;color:var(--good);border:1px solid #34745e;font-size:10px;font-weight:900;margin:5px 4px 0 0}.return-pos{color:var(--good)}.return-neg{color:var(--bad)}.return-flat{color:var(--muted)}.perf-summary{display:grid;grid-template-columns:repeat(4,1fr);gap:7px;margin-bottom:10px}.perf-stat{background:#101d31;border:1px solid var(--line);border-radius:10px;padding:9px}.perf-stat small{display:block;color:var(--muted);font-size:10px}.perf-stat b{display:block;font-size:15px;margin-top:3px}
+.empty{background:var(--panel);border:1px dashed var(--line);border-radius:12px;padding:22px;text-align:center;color:var(--muted);font-size:12px}.bucket-best{border:1px solid #34745e;background:linear-gradient(135deg,#102b27,#101f35);border-radius:12px;padding:10px;margin-bottom:10px}.bucket-best-title{font-size:12px;color:var(--muted);font-weight:800}.bucket-best-main{display:grid;grid-template-columns:1.5fr repeat(4,.7fr) auto;gap:8px;align-items:center;margin-top:7px}.bucket-score{font-size:22px;font-weight:900;color:var(--good)}.age-chip{display:inline-flex;padding:3px 7px;border-radius:999px;background:#152d49;color:var(--blue);font-size:10px;font-weight:800;margin-top:5px}.whale-buy-chip{display:inline-flex;align-items:center;padding:4px 8px;border-radius:999px;background:#123a2d;color:var(--good);border:1px solid #34745e;font-size:10px;font-weight:900;margin:5px 4px 0 0}.social-trend-chip{display:inline-flex;align-items:center;padding:4px 8px;border-radius:999px;background:#172a45;color:#b9dcff;border:1px solid #31547a;font-size:10px;font-weight:900;margin:5px 4px 0 0}.social-trend-hot{background:#3a2415;color:#ffd28c;border-color:#76502b}.social-trend-viral{background:#40203d;color:#ffb8f4;border-color:#794671}.return-pos{color:var(--good)}.return-neg{color:var(--bad)}.return-flat{color:var(--muted)}.perf-summary{display:grid;grid-template-columns:repeat(4,1fr);gap:7px;margin-bottom:10px}.perf-stat{background:#101d31;border:1px solid var(--line);border-radius:10px;padding:9px}.perf-stat small{display:block;color:var(--muted);font-size:10px}.perf-stat b{display:block;font-size:15px;margin-top:3px}
 .three{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}.mini{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:10px}.mini h3{font-size:15px;margin:0 0 9px;font-weight:900}.mini-row{display:flex;justify-content:space-between;gap:8px;padding:6px 0;border-top:1px solid #182b45;font-size:11px}.mini-row:first-of-type{border-top:0}.mini-row span{color:var(--muted)}.portfolio-item{padding:8px 0;border-top:1px solid #1b304b}.portfolio-item:first-child{border-top:0}.portfolio-top{display:flex;justify-content:space-between;gap:8px;font-size:12px}.portfolio-bar{height:6px;background:#15263d;border-radius:999px;overflow:hidden;margin-top:5px}.portfolio-fill{height:100%;background:#3d8f72;border-radius:999px}.portfolio-meta{display:flex;justify-content:space-between;gap:8px;color:var(--muted);font-size:10px;margin-top:4px}
 dialog{width:min(720px,94vw);max-height:88vh;border:1px solid #36506e;border-radius:15px;background:#091426;color:var(--text);padding:0;box-shadow:0 30px 90px #0009}dialog::backdrop{background:#000a}.modal-head{position:sticky;top:0;background:#091426;border-bottom:1px solid var(--line);padding:12px 14px;display:flex;justify-content:space-between;align-items:center}.modal-body{padding:13px}.modal-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:7px}.box{background:#0f1d31;border:1px solid var(--line);border-radius:10px;padding:8px}.box small{display:block;color:var(--muted);font-size:9px}.box b{display:block;margin-top:3px;font-size:12px}.holders{margin-top:11px}.holder,.check{display:flex;justify-content:space-between;gap:7px;padding:6px 0;border-top:1px solid var(--line);font-size:11px}.holder a{color:var(--blue);text-decoration:none}.links{display:flex;flex-wrap:wrap;gap:5px;margin-top:11px}.links a{color:#b5ddff;text-decoration:none;border:1px solid #315071;background:#10243b;padding:6px 8px;border-radius:8px;font-size:11px}.note{margin-top:10px;color:var(--muted);font-size:11px;line-height:1.65}.pass{color:var(--good)}.fail{color:var(--bad)}.manual{color:var(--warn)}
 @media(max-width:900px){.bucket-best-main{grid-template-columns:1fr 1fr}.bucket-best-main .asset,.bucket-best-main .actions{grid-column:1/-1}.champion-grid{grid-template-columns:1fr 1fr}.champion-grid .asset,.champion-grid .actions{grid-column:1/-1}.row{grid-template-columns:1.5fr repeat(3,.8fr) auto}.hide-md{display:none}.three{grid-template-columns:1fr}.kpis{grid-template-columns:repeat(2,1fr)}}
@@ -1746,6 +1746,18 @@ function whaleTrendBadge(t){
   return '<span class="whale-buy-chip">🐋 نهنگ‌ها در حال خرید · '+w.count+' خرید · '+money(w.usd)+'</span>';
 }
 
+function socialTrendBadges(t){
+  if(!t)return '';
+  var h=t.socialHeat||{},x=t.xSocial||{},y=t.youtubeSocial||{},b=t.bluesky||{},k=t.kolTrend||{},rows=[];
+  if(Number(x.posts2h||0)>=3)rows.push('<span class="social-trend-chip '+(Number(x.posts2h)>=8?'social-trend-viral':'social-trend-hot')+'">𝕏 ترند · '+Number(x.posts2h)+' پست/2h</span>');
+  if(Number(y.videos24h||0)>=2)rows.push('<span class="social-trend-chip '+(Number(y.videos24h)>=5?'social-trend-viral':'social-trend-hot')+'">▶ YouTube ترند · '+Number(y.videos24h)+' ویدیو/24h</span>');
+  if(Number(b.mentions2h||0)>=2)rows.push('<span class="social-trend-chip '+(Number(b.mentions2h)>=6?'social-trend-viral':'social-trend-hot')+'">🦋 Bluesky ترند · '+Number(b.mentions2h)+' mention/2h</span>');
+  if(Number(k.xMentionCount||0)>=1)rows.push('<span class="social-trend-chip social-trend-viral">👑 X توسط KOL · '+Number(k.xMentionCount)+' اشاره</span>');
+  if(!rows.length&&Number(h.score||0)>=75)rows.push('<span class="social-trend-chip social-trend-viral">📣 وایرال چندشبکه‌ای · '+Number(h.score)+'/100</span>');
+  else if(!rows.length&&Number(h.score||0)>=55)rows.push('<span class="social-trend-chip social-trend-hot">📣 ترند چندشبکه‌ای · '+Number(h.score)+'/100</span>');
+  return rows.join('');
+}
+
 function exitFor(m){return live&&live.exits?live.exits.filter(function(x){return x.tokenAddress===m}):[]}
 async function safeJson(u){try{var r=await fetch(u,{cache:'no-store'});if(!r.ok)throw 0;return await r.json()}catch(e){return null}}
 
@@ -1783,7 +1795,7 @@ function featuredRows(){
 function tokenRow(t,bucket){
   var s=t.security||{},sg=t.signals||{},sh=sg.short||{},md=sg.medium||{},lg=sg.long||{},fl=t.flow||{},bs=bucketScore(t,bucket||ageBucket(t));
   return '<div class="row">'+
-  '<div class="asset"><b>'+esc(t.symbol||'?')+' · '+esc(t.name||'')+'</b><span class="age-chip">'+esc(ageText(t))+'</span>'+(t.kolTrend?'<span class="age-chip">👑 '+Number(t.kolTrend.kolCount||0)+' KOL</span>':'')+whaleTrendBadge(t)+'<small>'+esc(short(t.mint))+'</small>'+socialButtons(t)+'</div>'+
+  '<div class="asset"><b>'+esc(t.symbol||'?')+' · '+esc(t.name||'')+'</b><span class="age-chip">'+esc(ageText(t))+'</span>'+(t.kolTrend?'<span class="age-chip">👑 '+Number(t.kolTrend.kolCount||0)+' KOL</span>':'')+whaleTrendBadge(t)+socialTrendBadges(t)+'<small>'+esc(short(t.mint))+'</small>'+socialButtons(t)+'</div>'+
   '<div class="cell"><small>امتیاز گروه</small><b><span class="badge '+bucketSignalClass(bs,t)+'">'+bs+'/100</span></b></div>'+
   '<div class="cell"><small>کوتاه / میان / بلند</small><b>'+Number(sh.score||0)+' / '+Number(md.score||0)+' / '+Number(lg.score||0)+'</b></div>'+
   '<div class="cell"><small>قدرت خریدار</small><b><span class="badge '+pressureClass(t)+'">'+(fl.buyerPower==null?'—':Number(fl.buyerPower)+'%')+'</span></b></div>'+
@@ -1831,7 +1843,7 @@ function renderChampion(){
   if(!x){el.innerHTML='<div class="muted">فعلاً توکنی نیست که هم امنیت بالا و هم حداقل دو بازه زمانی قوی را همزمان پاس کند.</div>';return}
   var t=x.t,sg=t.signals||{},d=beginnerDecision(t,x.score);
   el.innerHTML='<div class="decision-banner '+d.cls+'">'+esc(d.label)+'<div class="beginner-note">'+esc(d.reason)+' · تضمین سود نیست و اندازه پوزیشن باید کوچک بماند.</div></div><div class="champion-grid">'+
-    '<div class="asset"><b>'+esc(t.symbol||'?')+' · '+esc(t.name||'')+'</b>'+whaleTrendBadge(t)+'<small>بدون هشدار خروج · امنیت '+esc(faSec(t.security?.tier))+'</small>'+socialButtons(t)+'</div>'+
+    '<div class="asset"><b>'+esc(t.symbol||'?')+' · '+esc(t.name||'')+'</b>'+whaleTrendBadge(t)+socialTrendBadges(t)+'<small>بدون هشدار خروج · امنیت '+esc(faSec(t.security?.tier))+'</small>'+socialButtons(t)+'</div>'+
     '<div><small class="muted">امتیاز کل</small><div class="score">'+x.score+'/100</div></div>'+
     '<div class="cell"><small>کوتاه</small><b>'+Number(sg.short?.score||0)+'</b></div>'+
     '<div class="cell"><small>میان</small><b>'+Number(sg.medium?.score||0)+'</b></div>'+
@@ -1844,7 +1856,7 @@ function renderFeatured(){
   var r=featuredRows().filter(function(x){return passesSignalFilters(x.token)}).sort(function(a,b){return (b.score-a.score)||(tokenStrength(b.token)-tokenStrength(a.token))});document.getElementById('kFeatured').textContent=r.length;
   document.getElementById('featuredList').innerHTML=r.length?r.map(function(x){
     var t=x.token;
-    return '<div class="row"><div class="asset"><b>🔥 '+esc(t.symbol||'?')+' · '+esc(t.name||'')+'</b>'+whaleTrendBadge(t)+'<small>'+esc(x.why.slice(0,3).join(' • '))+'</small>'+socialButtons(t)+'</div>'+
+    return '<div class="row"><div class="asset"><b>🔥 '+esc(t.symbol||'?')+' · '+esc(t.name||'')+'</b>'+whaleTrendBadge(t)+socialTrendBadges(t)+'<small>'+esc(x.why.slice(0,3).join(' • '))+'</small>'+socialButtons(t)+'</div>'+
     '<div class="cell"><small>امتیاز</small><b><span class="badge good">'+x.score+'/100</span></b></div>'+
     '<div class="cell"><small>نهنگ</small><b>'+money(x.whale.usd)+'</b></div>'+
     '<div class="cell"><small>اسمارت</small><b>'+(x.smart?Number(x.smart.smartMoneyCount||0):0)+'</b></div>'+
@@ -1925,7 +1937,7 @@ function renderSocialTrends(){
   var r=tokens.slice().filter(function(t){return Number(t.socialHeat?.score||0)>0}).sort(function(a,b){return Number(b.socialHeat?.score||0)-Number(a.socialHeat?.score||0)||tokenStrength(b)-tokenStrength(a)}).slice(0,20);
   el.innerHTML=r.length?r.map(function(t,i){
     var h=t.socialHeat||{},s=t.security||{};
-    return '<div class="row"><div class="asset"><b>#'+(i+1)+' 📣 '+esc(t.symbol||'?')+' · '+esc(t.name||'')+'</b>'+whaleTrendBadge(t)+'<small>'+esc((h.reasons||[]).slice(0,3).join(' • '))+'</small>'+socialButtons(t)+'</div>'+
+    return '<div class="row"><div class="asset"><b>#'+(i+1)+' 📣 '+esc(t.symbol||'?')+' · '+esc(t.name||'')+'</b>'+whaleTrendBadge(t)+socialTrendBadges(t)+'<small>'+esc((h.reasons||[]).slice(0,3).join(' • '))+'</small>'+socialButtons(t)+'</div>'+
       '<div class="cell"><small>Social Heat</small><b><span class="badge '+socialHeatClass(h.label)+'">'+esc(faSocialHeat(h.label))+' '+Number(h.score||0)+'</span></b></div>'+
       '<div class="cell"><small>X / 2h</small><b>'+Number(h.xPosts2h||0)+'</b></div>'+
       '<div class="cell"><small>YouTube / 24h</small><b>'+Number(h.youtubeVideos24h||0)+'</b></div>'+
@@ -1970,7 +1982,7 @@ function renderBucketBest(id,rows,bucket,title){
   if(!rows.length){el.innerHTML='<div class="empty">فعلاً توکنی در این بازه پیدا نشده.</div>';return}
   var t=rows[0],bs=bucketScore(t,bucket),sg=t.signals||{},fl=t.flow||{};
   el.innerHTML='<div class="bucket-best"><div class="bucket-best-title">🏆 بهترین توکن '+esc(title)+' — رتبه ۱ این گروه</div><div class="bucket-best-main">'+
-    '<div class="asset"><b>'+esc(t.symbol||'?')+' · '+esc(t.name||'')+'</b><span class="age-chip">'+esc(ageText(t))+'</span>'+whaleTrendBadge(t)+'<small>'+esc(bucketSignalLabel(bs,t))+'</small>'+socialButtons(t)+'</div>'+
+    '<div class="asset"><b>'+esc(t.symbol||'?')+' · '+esc(t.name||'')+'</b><span class="age-chip">'+esc(ageText(t))+'</span>'+whaleTrendBadge(t)+socialTrendBadges(t)+'<small>'+esc(bucketSignalLabel(bs,t))+'</small>'+socialButtons(t)+'</div>'+
     '<div><small class="muted">امتیاز نهایی</small><div class="bucket-score">'+bs+'/100</div></div>'+
     '<div class="cell"><small>قدرت خریدار</small><b>'+Number(fl.buyerPower||0)+'%</b></div>'+
     '<div class="cell"><small>حجم</small><b>'+esc(faVolume(fl.volumeLabel))+'</b></div>'+
@@ -2001,7 +2013,7 @@ function renderPerformance24(){
   (safeRows.length?'':'<div class="note">فعلاً هیچ توکنی همه شروط سخت‌گیرانه امنیتی HIGH/MAX را کامل پاس نکرده؛ پایین‌تر بهترین توکن‌های فعلی برای بررسی نمایش داده می‌شوند، نه به‌عنوان سیگنال قطعی.</div>');
   list.innerHTML=r.length?r.map(function(x,i){
     var t=x.t,sec=t.security||{},sg=t.signals||{};
-    return '<div class="row"><div class="asset"><b>#'+(i+1)+' '+(x.safe?'🏅':'🔎')+' '+esc(t.symbol||'?')+' · '+esc(t.name||'')+'</b>'+whaleTrendBadge(t)+'<small>'+esc(ageText(t))+' · '+(x.safe?'امن کامل':'نیازمند بررسی امنیت')+'</small>'+socialButtons(t)+'</div>'+
+    return '<div class="row"><div class="asset"><b>#'+(i+1)+' '+(x.safe?'🏅':'🔎')+' '+esc(t.symbol||'?')+' · '+esc(t.name||'')+'</b>'+whaleTrendBadge(t)+socialTrendBadges(t)+'<small>'+esc(ageText(t))+' · '+(x.safe?'امن کامل':'نیازمند بررسی امنیت')+'</small>'+socialButtons(t)+'</div>'+
       '<div class="cell"><small>امتیاز رادار</small><b><span class="badge '+bucketSignalClass(x.score,t)+'">'+x.score+'/100</span></b></div>'+
       '<div class="cell"><small>'+esc(return24Period(t))+'</small><b class="'+return24Class(t)+'">'+esc(return24Text(t))+'</b></div>'+
       '<div class="cell"><small>کوتاه / میان / بلند</small><b>'+Number(sg.short?.score||0)+' / '+Number(sg.medium?.score||0)+' / '+Number(sg.long?.score||0)+'</b></div>'+
@@ -2020,7 +2032,7 @@ function renderKolTrends(){
   }
   el.innerHTML=r.length?r.map(function(t,i){
     var k=t.kolTrend||{},score=kolTrendScore(t),names=(k.kolNames||[]).slice(0,5).join('، ');
-    return '<div class="row"><div class="asset"><b>#'+(i+1)+' 👑 '+esc(t.symbol||'?')+' · '+esc(t.name||'')+'</b>'+whaleTrendBadge(t)+'<small>'+esc(names||'KOL')+' · '+Number(k.recentCount||0)+' معامله اخیر · '+Number(k.holdingCount||0)+' هولد · '+Number(k.xMentionCount||0)+' اشاره X</small>'+socialButtons(t)+'</div>'+
+    return '<div class="row"><div class="asset"><b>#'+(i+1)+' 👑 '+esc(t.symbol||'?')+' · '+esc(t.name||'')+'</b>'+whaleTrendBadge(t)+socialTrendBadges(t)+'<small>'+esc(names||'KOL')+' · '+Number(k.recentCount||0)+' معامله اخیر · '+Number(k.holdingCount||0)+' هولد · '+Number(k.xMentionCount||0)+' اشاره X</small>'+socialButtons(t)+'</div>'+
       '<div class="cell"><small>امتیاز KOL+امنیت</small><b><span class="badge good">'+score+'/100</span></b></div>'+
       '<div class="cell"><small>KOLها</small><b>'+Number(k.kolCount||0)+'</b></div>'+
       '<div class="cell"><small>امنیت</small><b><span class="badge '+secClass(t.security?.tier)+'">'+esc(faSec(t.security?.tier))+'</span></b></div>'+
@@ -2060,6 +2072,7 @@ function openDetail(m){
   }
   if(tr)h+='<div class="note"><b>کیف‌پول‌های برتر:</b> '+Number(tr.uniqueBuyers||0)+' خریدار، '+Number(tr.uniqueSellers||0)+' فروشنده، جریان خالص '+money(tr.netFlowUsd)+'، هولدینگ '+money(tr.currentHoldingUsd)+'</div>';
   if(t&&isTrendingToken(t)&&wh.count)h+='<div class="note"><span class="pass"><b>🐋 ترند + خرید نهنگ:</b></span> '+wh.count+' خرید نهنگ با مجموع '+money(wh.usd)+'</div>';
+  if(t&&socialTrendBadges(t))h+='<div class="note"><b>📣 شبکه‌های ترند تأییدشده:</b><div>'+socialTrendBadges(t)+'</div></div>';
   if(t.kolTrend){var k=t.kolTrend;h+='<details class="accordion" open><summary>👑 شواهد KOL</summary><div class="accordion-body"><div class="note"><b>KOLها:</b> '+esc((k.kolNames||[]).join('، ')||'—')+' · معامله اخیر '+Number(k.recentCount||0)+' · هولد '+Number(k.holdingCount||0)+' · اشاره X '+Number(k.xMentionCount||0)+'</div>'+(k.evidence||[]).slice(0,8).map(function(e){return '<div class="check"><span>'+esc(e.kol||'KOL')+' · '+esc(e.type||'')+'</span><span class="manual">'+esc(e.label||'')+'</span></div>'}).join('')+'</div></details>';}
   if(tr){var bf=largeBuyerFlow(t);h+='<div class="note"><b>خریدارهای ردیابی‌شده ۵۰۰$+:</b> '+bf.buyers+' کیف‌پول ('+money(bf.buyerUsd)+') · <b>فروشنده خالص:</b> '+bf.sellers+' کیف‌پول ('+money(bf.sellerUsd)+') · '+(bf.dominant?'<span class="pass">✓ خریدارها بیشترند</span>':'<span class="manual">خریدارها بیشتر نیستند</span>')+'</div>';}
   if(tr&&tr.convictionHolders&&tr.convictionHolders.length)h+='<details class="accordion"><summary>💎 هولدرهای ردیابی‌شده با خرید ۱۰۰۰$+ و فروش کمتر</summary><div class="accordion-body">'+tr.convictionHolders.map(function(x){return '<div class="check"><span>'+esc(x.wallet)+' · خرید '+money(x.buyUsd)+' · فروش '+money(x.sellUsd)+'</span><span class="pass">هولد فعلی '+money(x.currentHoldingUsd)+'</span></div>'}).join('')+'<div class="note">بر اساس Swapهای قابل‌تشخیص ۴۸ ساعت اخیر کیف‌پول‌های تحت ردیابی؛ پوشش کل بازار نیست.</div></div></details>';
