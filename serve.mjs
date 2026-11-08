@@ -6,6 +6,9 @@ const CACHE_MS=55_000;
 let cache={at:0,data:null};
 let smartMoneyCache={at:0,data:null};
 const SMART_MONEY_CACHE_MS=6*60*60*1000;
+let smartTraderHandles=new Set();
+let liveFomoState={connected:false,realtime:false,delaySeconds:null,updatedAt:null,events:[],lastError:null};
+let liveFomoSocket=null;
 
 const headers={
   'content-security-policy':"default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; connect-src 'self'; img-src 'self' data: https:; frame-ancestors 'none'; object-src 'none'",
@@ -273,6 +276,113 @@ async function build(){
   cache={at:Date.now(),data};return data;
 }
 
+
+function liveEventSeverity(e){
+  if(e.alertType!=='sell')return e.alertType==='buy'?'BUY':'INFO';
+  const now=e.ts||Date.now();
+  const recent=liveFomoState.events.filter(x=>x.alertType==='sell'&&x.tokenAddress===e.tokenAddress&&Math.abs((x.ts||0)-now)<=10*60*1000);
+  const unique=new Set(recent.map(x=>String(x.trader||'').toLowerCase()).filter(Boolean));
+  if(e.trader)unique.add(String(e.trader).toLowerCase());
+  if(unique.size>=2)return 'MULTI-WALLET EXIT';
+  if(num(e.tradeUsd)>=5000)return 'HEAVY SELL';
+  return 'SELL STARTED';
+}
+async function verifySellPosition(evt){
+  const key=process.env.FOMO_API_KEY;
+  if(!key||!evt?.trader||!evt?.tokenAddress||!smartTraderHandles.has(String(evt.trader).toLowerCase()))return;
+  try{
+    await sleep(2500);
+    const d=await jfetch('https://api.fomoapi.io/v2/users/'+encodeURIComponent(evt.trader)+'/balances?chain=solana',{headers:{authorization:'Bearer '+key}},10000);
+    const h=(d?.holdings||[]).find(x=>String(x?.token?.address||'')===String(evt.tokenAddress));
+    evt.remainingValueUsd=h?num(h.valueUsd):0;
+    evt.remainingAmount=h?num(h.amount):0;
+    evt.positionVerified=true;
+    if(!h||num(h.valueUsd)<25)evt.exitStatus='POSITION CLOSED / NEAR ZERO';
+    else evt.exitStatus='POSITION REDUCED / STILL HOLDING';
+    liveFomoState.updatedAt=new Date().toISOString();
+  }catch{
+    evt.positionVerified=false;
+  }
+}
+function pushLiveFomoEvent(m){
+  if(!m||m.type!=='alert'||!['buy','sell'].includes(m.alertType)||String(m.chain||'').toLowerCase()!=='solana')return;
+  const e={
+    eventId:m.eventId||String(Date.now())+Math.random(),
+    alertType:m.alertType,
+    trader:m.trader||'unknown',
+    userId:m.userId||null,
+    tradeId:m.tradeId||null,
+    token:m.token||'?',
+    tokenAddress:m.tokenAddress||'',
+    tradeUsd:m.tradeUsd==null?null:num(m.tradeUsd),
+    positionValueUsd:m.positionValueUsd==null?null:num(m.positionValueUsd),
+    text:m.text||'',
+    ts:num(m.execTs||m.ts,Date.now()),
+    txHash:m.txHash||null,
+    trackedSmart:smartTraderHandles.has(String(m.trader||'').toLowerCase()),
+    positionVerified:false
+  };
+  if(liveFomoState.events.some(x=>x.eventId===e.eventId))return;
+  e.severity=liveEventSeverity(e);
+  liveFomoState.events.unshift(e);
+  liveFomoState.events=liveFomoState.events.slice(0,80);
+  // Recompute exit severity after inserting the latest event.
+  for(const x of liveFomoState.events.slice(0,30)){
+    if(x.alertType==='sell')x.severity=liveEventSeverity(x);
+  }
+  liveFomoState.updatedAt=new Date().toISOString();
+  if(e.alertType==='sell')verifySellPosition(e);
+}
+function startLiveFomoStream(){
+  if(typeof WebSocket==='undefined')return;
+  try{
+    if(liveFomoSocket&&[0,1].includes(liveFomoSocket.readyState))return;
+    const key=process.env.FOMO_API_KEY;
+    const url='wss://api.fomoapi.io/ws/alerts?chain=solana'+(key?'&key='+encodeURIComponent(key):'');
+    const ws=new WebSocket(url);
+    liveFomoSocket=ws;
+    ws.onopen=()=>{liveFomoState.connected=true;liveFomoState.lastError=null;liveFomoState.updatedAt=new Date().toISOString()};
+    ws.onmessage=(ev)=>{
+      try{
+        const m=JSON.parse(String(ev.data));
+        if(m.type==='welcome'){
+          liveFomoState.realtime=!!m.realtime;
+          liveFomoState.delaySeconds=m.delaySeconds??null;
+          liveFomoState.updatedAt=new Date().toISOString();
+          return;
+        }
+        pushLiveFomoEvent(m);
+      }catch{}
+    };
+    ws.onerror=()=>{liveFomoState.lastError='stream error'};
+    ws.onclose=()=>{
+      liveFomoState.connected=false;
+      liveFomoState.updatedAt=new Date().toISOString();
+      setTimeout(startLiveFomoStream,5000);
+    };
+  }catch(e){
+    liveFomoState.connected=false;
+    liveFomoState.lastError=String(e?.message||e);
+    setTimeout(startLiveFomoStream,10000);
+  }
+}
+startLiveFomoStream();
+
+function liveSmartMoneyPayload(){
+  const events=liveFomoState.events.slice(0,50);
+  const exits=events.filter(x=>x.alertType==='sell');
+  const buys=events.filter(x=>x.alertType==='buy');
+  const byToken=new Map();
+  for(const e of exits.filter(x=>(Date.now()-(x.ts||0))<=30*60*1000)){
+    const k=e.tokenAddress||e.token;
+    const x=byToken.get(k)||{token:e.token,tokenAddress:e.tokenAddress,sellers:new Set(),sellEvents:0,knownSellUsd:0,severity:'SELL STARTED',latestTs:0};
+    x.sellers.add(e.trader);x.sellEvents++;x.knownSellUsd+=num(e.tradeUsd);x.latestTs=Math.max(x.latestTs,e.ts||0);
+    byToken.set(k,x);
+  }
+  const exitClusters=[...byToken.values()].map(x=>({...x,sellers:[...x.sellers],uniqueSellers:x.sellers.size,severity:x.sellers.size>=2?'MULTI-WALLET EXIT':x.knownSellUsd>=5000?'HEAVY SELL':'SELL STARTED'})).sort((a,b)=>b.latestTs-a.latestTs);
+  return {ok:true,connected:liveFomoState.connected,realtime:liveFomoState.realtime,delaySeconds:liveFomoState.delaySeconds,updatedAt:liveFomoState.updatedAt,lastError:liveFomoState.lastError,keyConfigured:!!process.env.FOMO_API_KEY,events,buys:buys.slice(0,20),exits:exits.slice(0,20),exitClusters};
+}
+
 async function buildSmartMoney(){
   const key=process.env.FOMO_API_KEY;
   if(!key){
@@ -303,6 +413,7 @@ async function buildSmartMoney(){
     return {...x,consistency,smartScore:+score.toFixed(1)};
   }).filter(x=>x.consistency>=1).sort((a,b)=>b.smartScore-a.smartScore).slice(0,3);
 
+  smartTraderHandles=new Set(traders.map(x=>String(x.handle||'').toLowerCase()).filter(Boolean));
   const tokenMap=new Map();
   for(const tr of traders){
     let bal;
@@ -362,13 +473,14 @@ button,input,select{background:#101c31;color:#fff;border:1px solid #29415f;borde
 </style></head><body><div class="wrap"><h1>🚀 Solana Meme Radar</h1><div class="sub">رادار زنده + Social Trend Score — بروزرسانی خودکار هر ۶۰ ثانیه</div>
 <div class="warn">فیلتر امنیت + ضدربات فعال است. مجموع Top10 باید بین ۱۰٪ تا ۲۰٪ باشد؛ بزرگ‌ترین هولدر و Top5 هم سقف جداگانه دارند. MAX SECURITY فقط با فعالیت PROBABLE ORGANIC و شرایط امنیتی کامل داده می‌شود.</div>
 <div class="summary"><div class="sum"><div class="k">توکن‌های دیده‌شده</div><div class="big" id="sCount">–</div></div><div class="sum"><div class="k">ترند Score≥50</div><div class="big" id="sTrend">–</div></div><div class="sum"><div class="k">Strong Watch</div><div class="big" id="sStrong">–</div></div><div class="sum"><div class="k">Refresh</div><div class="big">60s</div></div></div>
-<div id="sources" class="sources"></div><div style="margin:18px 0"><h2 style="margin:0 0 8px">🧠 Smart Money Watch</h2><div class="sub" id="smartStatus">در حال بررسی کیف‌پول‌های سودده...</div><div id="smartGrid" class="grid"></div></div>
-<div class="bar"><button onclick="load()">↻ بروزرسانی</button><input id="q" placeholder="جستجو نام / ticker / CA" oninput="render()"><select id="vf" onchange="render()"><option value="">همه وضعیت‌ها</option><option>STRONG WATCH</option><option>WATCH</option><option>LOW SIGNAL</option><option>SKIP</option></select><select id="sf" onchange="render()"><option value="0">همه امتیازهای ترند</option><option value="50">Trend ≥ 50</option><option value="70">Trend ≥ 70</option></select><select id="secf" onchange="render()"><option value="">همه امنیت‌ها</option><option>MAX SECURITY</option><option>HIGH</option><option>REVIEW</option><option>REJECT</option></select><select id="actf" onchange="render()"><option value="">همه فعالیت‌ها</option><option>PROBABLE ORGANIC</option><option>MIXED</option><option>BOT RISK</option></select><span id="status">در حال بارگذاری...</span></div>
+<div id="sources" class="sources"></div><div style="margin:18px 0"><h2 style="margin:0 0 8px">🧠 Smart Money Watch</h2><div class="sub" id="smartStatus">در حال بررسی کیف‌پول‌های سودده...</div><div id="smartGrid" class="grid"></div></div><div style="margin:18px 0"><h2 style="margin:0 0 8px">⚡ Live Smart Money Flow & Exit Alerts</h2><div class="sub" id="liveSmartStatus">در حال اتصال به جریان خرید/فروش Solana...</div><div id="liveExitBanner"></div><div id="liveSmartGrid" class="grid"></div></div>
+<div class="bar"><button onclick="load()">↻ بروزرسانی</button><button onclick="enableExitNotifications()">🔔 هشدار خروج</button><input id="q" placeholder="جستجو نام / ticker / CA" oninput="render()"><select id="vf" onchange="render()"><option value="">همه وضعیت‌ها</option><option>STRONG WATCH</option><option>WATCH</option><option>LOW SIGNAL</option><option>SKIP</option></select><select id="sf" onchange="render()"><option value="0">همه امتیازهای ترند</option><option value="50">Trend ≥ 50</option><option value="70">Trend ≥ 70</option></select><select id="secf" onchange="render()"><option value="">همه امنیت‌ها</option><option>MAX SECURITY</option><option>HIGH</option><option>REVIEW</option><option>REJECT</option></select><select id="actf" onchange="render()"><option value="">همه فعالیت‌ها</option><option>PROBABLE ORGANIC</option><option>MIXED</option><option>BOT RISK</option></select><span id="status">در حال بارگذاری...</span></div>
 <div id="grid" class="grid"></div></div><script>
 let data=[]; const $=s=>document.querySelector(s);
 const money=n=>'$'+Number(n||0).toLocaleString(undefined,{maximumFractionDigits:0});
 const pct=n=>n==null?'نامشخص':Number(n).toFixed(1)+'%';
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+async function enableExitNotifications(){if('Notification' in window){await Notification.requestPermission();}}
 async function load(){status.textContent='در حال دریافت داده زنده...';try{const r=await fetch('/api/v1/tokens');const d=await r.json();data=d.tokens||[];status.textContent='آخرین بروزرسانی: '+new Date(d.generatedAt).toLocaleTimeString('fa-IR');sCount.textContent=d.count||0;sTrend.textContent=d.trending||0;sStrong.textContent=d.strong||0;sources.textContent='منابع: '+Object.entries(d.sourceStatus||{}).map(([k,v])=>k+'='+v).join(' | ');render()}catch(e){status.textContent='خطا در دریافت داده';}}
 function render(){
  const q=$('#q').value.toLowerCase(),v=$('#vf').value,min=Number($('#sf').value||0),secf=$('#secf').value,actf=$('#actf').value;
@@ -411,6 +523,39 @@ async function loadSmart(){
 }
 
 loadSmart();setInterval(loadSmart,6*60*60*1000);
+
+let seenLiveEventIds=new Set();
+async function loadLiveSmart(){
+ try{
+  const r=await fetch('/api/v1/smart-money-live');const d=await r.json();
+  const delay=d.delaySeconds==null?'نامشخص':(d.delaySeconds+'s');
+  liveSmartStatus.textContent=(d.connected?'● متصل':'○ قطع')+' | delay: '+delay+(d.keyConfigured?' | API key فعال':' | بدون کلید/دمو');
+  const clusters=(d.exitClusters||[]).slice(0,5);
+  liveExitBanner.innerHTML=clusters.filter(x=>x.severity==='MULTI-WALLET EXIT').map(x=>'<div class="warn" style="border-color:#a43848;color:#ff9bad">🚨 MULTI-WALLET EXIT: '+esc(x.token)+' — '+x.uniqueSellers+' تریدر در ۳۰ دقیقه اخیر شروع به فروش کرده‌اند.</div>').join('');
+  const events=(d.events||[]).slice(0,18);
+  liveSmartGrid.innerHTML=events.map(e=>{
+   const sell=e.alertType==='sell';
+   const cls=sell?'skip':'strong';
+   const sev=e.severity||e.alertType.toUpperCase();
+   const when=new Date(e.ts).toLocaleTimeString('fa-IR');
+   const amount=e.tradeUsd!=null?money(e.tradeUsd):'اندازه نامشخص';
+   const remain=e.positionVerified?(e.exitStatus+' | باقی‌مانده '+money(e.remainingValueUsd||0)):'';
+   return '<div class="card"><div class="top"><div><div class="name">'+(sell?'🔴':'🟢')+' '+esc(e.token)+'</div><div class="mint">'+esc(e.tokenAddress||'')+'</div></div><span class="badge '+cls+'">'+esc(sev)+'</span></div>'+
+    '<div class="stats"><div class="stat"><div class="k">Trader</div><div class="v">'+esc(e.trader)+'</div></div><div class="stat"><div class="k">Side</div><div class="v">'+esc(e.alertType.toUpperCase())+'</div></div><div class="stat"><div class="k">Trade</div><div class="v">'+amount+'</div></div><div class="stat"><div class="k">Time</div><div class="v">'+when+'</div></div><div class="stat"><div class="k">Smart tracked</div><div class="v">'+(e.trackedSmart?'YES':'—')+'</div></div><div class="stat"><div class="k">Position</div><div class="v">'+esc(remain||'در انتظار/نامشخص')+'</div></div></div>'+
+    '<div class="links" style="margin-top:10px"><a target="_blank" rel="noopener" href="https://solscan.io/token/'+esc(e.tokenAddress||'')+'">Solscan Token</a>'+(e.txHash?'<a target="_blank" rel="noopener" href="https://solscan.io/tx/'+esc(e.txHash)+'">Transaction</a>':'')+'</div></div>'
+  }).join('')||'<p>هنوز رویداد خرید/فروش جدیدی دریافت نشده.</p>';
+
+  for(const e of events){
+   if(seenLiveEventIds.has(e.eventId))continue;
+   seenLiveEventIds.add(e.eventId);
+   if(e.alertType==='sell'&&Notification?.permission==='granted'){
+    new Notification('Smart Money Exit: '+e.token,{body:(e.severity||'SELL')+' — '+e.trader});
+   }
+  }
+ }catch(e){liveSmartStatus.textContent='جریان زنده فعلاً در دسترس نیست.'}
+}
+
+loadLiveSmart();setInterval(loadLiveSmart,5000);
 </script></body></html>`;
 
 createServer(async(req,res)=>{
@@ -418,6 +563,7 @@ createServer(async(req,res)=>{
   try{
     if(url.pathname==='/api/health'){res.writeHead(200,{'content-type':'application/json',...headers});return res.end(JSON.stringify({ok:true,time:new Date().toISOString()}))}
     if(url.pathname==='/api/v1/smart-money'){const sm=await buildSmartMoney();res.writeHead(200,{'content-type':'application/json; charset=utf-8','cache-control':'no-store',...headers});return res.end(JSON.stringify(sm))}
+    if(url.pathname==='/api/v1/smart-money-live'){const sm=liveSmartMoneyPayload();res.writeHead(200,{'content-type':'application/json; charset=utf-8','cache-control':'no-store',...headers});return res.end(JSON.stringify(sm))}
     if(url.pathname==='/api/v1/tokens'||url.pathname==='/api/radar'||url.pathname==='/api/v1/trending'){
       const d=await build(); let body=d;
       if(url.pathname==='/api/v1/trending')body={...d,tokens:[...d.tokens].sort((a,b)=>b.trend.score-a.trend.score)};
