@@ -431,7 +431,7 @@ function academyGuard(t){
   const state=(ok,bad)=>ok?'pass':bad?'fail':'manual';
   checks.push({name:'Mint authority لغو شده',state:state(sec.mintDisabled===true,sec.mintDisabled===false)});
   checks.push({name:'Freeze authority غیرفعال',state:state(sec.freezeDisabled===true,sec.freezeDisabled===false)});
-  checks.push({name:'توزیع هولدر طبق قانون رادار',state:state(sec.holderPolicyPassed===true,sec.holderPolicyPassed===false)});
+  checks.push({name:'هولدر #1 <10% و هر هولدر #2 تا #10 <5%',state:state(sec.holderPolicyPassed===true,sec.holderPolicyPassed===false)});
   checks.push({name:'نقدینگی سالم نسبت به Market Cap',state:mq.liqRatio>=0.05?'pass':mq.liqRatio>0&&mq.liqRatio<0.02?'fail':'manual'});
   checks.push({name:'حجم در حال رشد، نه محو شدن',state:chart.volumeTrend==='RISING'?'pass':chart.volumeTrend==='FADING'?'fail':'manual'});
   checks.push({name:'فعالیت غیررباتی',state:t.activity?.label==='PROBABLE ORGANIC'?'pass':t.activity?.label==='BOT RISK'?'fail':'manual'});
@@ -462,7 +462,7 @@ function securityGate(t){
   else if(sec.mintDisabled!==true)cautions.push('Mint authority نامشخص');
   if(sec.freezeDisabled===false)hard.push('Freeze authority فعال');
   else if(sec.freezeDisabled!==true)cautions.push('Freeze authority نامشخص');
-  if(sec.holderPolicyPassed===false)hard.push('توزیع هولدرها رد شده');
+  if(sec.holderPolicyPassed===false)hard.push('قانون هولدر رد: #1 باید <10% و #2 تا #10 هرکدام <5% باشند');
   else if(sec.holderPolicyPassed!==true)cautions.push('توزیع هولدرها نیازمند داده کامل‌تر');
   if(act.label==='BOT RISK')hard.push('ریسک ربات/Wash');
   else if(!act.label)cautions.push('فعالیت معاملاتی نامشخص');
@@ -647,7 +647,7 @@ async function build(){
   const trending=out.filter(x=>x.trend.score>=50).length;
   const data={ok:true,generatedAt:new Date().toISOString(),refreshSeconds:60,count:out.length,strong,trending,tokens:out,
     sourceStatus:{dexscreener:'live',solanaRpc:'live',bluesky:'live-public',x:process.env.X_BEARER_TOKEN?'live-api':'needs API key',youtube:process.env.YOUTUBE_API_KEY?'live-api':'needs API key',reddit:process.env.REDDIT_CLIENT_ID?'configured':'presence-only',instagram:'presence-only',facebook:'presence-only',tiktok:'presence-only',telegram:'presence-only'},
-    holderPolicy:{hardRules:{holder1MaxPct:10,holders2to10EachMaxPct:5},gradeA:{holder1MaxPct:5,holders2to10EachMaxPct:2.5},gradeB:{holder1MaxPct:7.5,holders2to10EachMaxPct:4},gradeC:{holder1MaxPct:10,holders2to10EachMaxPct:5},unknownFailsStrong:true},
+    holderPolicy:{hardRules:{holder1MustBeBelowPct:10,holders2to10EachMustBeBelowPct:5,exclusive:true},gradeA:{holder1MaxPct:5,holders2to10EachMaxPct:2.5},gradeB:{holder1MaxPct:7.5,holders2to10EachMaxPct:4},gradeC:{holder1MaxPct:10,holders2to10EachMaxPct:5},unknownFailsStrong:true},
     activityPolicy:{probableOrganicMin:72,highSecurityMin:58,method:'aggregate heuristics; not proof of human identity'},
     orderFlowPolicy:{buyerPower:'buy transaction count / total buy+sell transactions; not dollar buy volume',strongBuyer:'5m >=55% and 1h >=51% when available',volumeQuality:'absolute volume + tx count + volume/liquidity sanity check'},
     knowledgeEngine:{marketQuality:'transparency + liquidity + data coverage',chartDiscipline:'trend + FOMO + pump/dump guard',academy:'rug/honeypot/MEV/sniper/risk checklist; unknown checks stay manual'},
@@ -1257,7 +1257,7 @@ dialog{width:min(720px,94vw);max-height:88vh;border:1px solid #36506e;border-rad
 <label>امنیت<select class="signal-filter" data-filter="security"><option value="">همه</option><option value="MAX SECURITY">خیلی بالا</option><option value="HIGH">بالا</option><option value="REVIEW">نیاز به بررسی</option><option value="REJECT">رد</option></select></label>
 <label>هولدر ردیابی‌شده ۱۰۰۰$+<select class="signal-filter" data-filter="holders"><option value="">همه</option><option value="1">حداقل ۱ هولدر</option><option value="2">حداقل ۲ هولدر</option><option value="3">حداقل ۳ هولدر</option></select></label>
 <label>خریدار ۵۰۰$+ بیشتر از فروشنده<select class="signal-filter" data-filter="bigbuyers"><option value="">همه</option><option value="yes">فقط خریدار غالب</option></select></label>
-</div><p class="muted" style="font-size:11px">رتبه هر گروه با مدل امتیاز مخصوص همان سن محاسبه می‌شود. فیلترها فقط کیف‌پول‌های تحت ردیابی و تراکنش‌های قابل‌تشخیص ۴۸ ساعت اخیر را بررسی می‌کنند. هولدر ۱۰۰۰$+: خرید حداقل ۱۰۰۰ دلار، فروش کمتر از خرید و موجودی فعلی مثبت. خریدار ۵۰۰$+: خرید تجمعی حداقل ۵۰۰ دلار و خرید بیشتر از فروش همان کیف‌پول؛ تعدادشان باید از کیف‌پول‌های فروشنده خالص بیشتر باشد.</p></div>
+</div><p class="muted" style="font-size:11px">قانون اجباری هولدر برای همه توکن‌ها: هولدر #1 کمتر از 10% و هرکدام از هولدرهای #2 تا #10 کمتر از 5%. رتبه هر گروه با مدل امتیاز مخصوص همان سن محاسبه می‌شود. فیلترها فقط کیف‌پول‌های تحت ردیابی و تراکنش‌های قابل‌تشخیص ۴۸ ساعت اخیر را بررسی می‌کنند. هولدر ۱۰۰۰$+: خرید حداقل ۱۰۰۰ دلار، فروش کمتر از خرید و موجودی فعلی مثبت. خریدار ۵۰۰$+: خرید تجمعی حداقل ۵۰۰ دلار و خرید بیشتر از فروش همان کیف‌پول؛ تعدادشان باید از کیف‌پول‌های فروشنده خالص بیشتر باشد.</p></div>
   </details>
   <details class="accordion" open>
     <summary>⚡ توکن‌های تازه و ترند — کمتر از ۲۴ ساعت</summary>
