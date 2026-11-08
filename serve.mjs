@@ -4,6 +4,8 @@ const PORT=Number(process.env.PORT||4173);
 const RPC=process.env.SOLANA_RPC_URL||'https://api.mainnet.solana.com';
 const CACHE_MS=55_000;
 let cache={at:0,data:null};
+let smartMoneyCache={at:0,data:null};
+const SMART_MONEY_CACHE_MS=6*60*60*1000;
 
 const headers={
   'content-security-policy':"default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; connect-src 'self'; img-src 'self' data: https:; frame-ancestors 'none'; object-src 'none'",
@@ -270,6 +272,77 @@ async function build(){
     disclaimer:'فیلتر هولدر هدف می‌گیرد که مجموع Top10 بین 10% تا 20% باشد؛ خارج این بازه رد می‌شود. Organic Activity یک تخمین ضدربات/ضدواش است و انسان‌بودن واقعی را اثبات نمی‌کند. MAX SECURITY نیازمند PROBABLE ORGANIC، Mint/Freeze غیرفعال، Holder Grade A/B، Security>=85 و Liquidity>=10K است. هیچ فیلتر آن‌چین کلاهبرداری را 100% رد نمی‌کند.'};
   cache={at:Date.now(),data};return data;
 }
+
+async function buildSmartMoney(){
+  const key=process.env.FOMO_API_KEY;
+  if(!key){
+    return {ok:false,configured:false,source:'fomoapi',message:'FOMO_API_KEY لازم است',traders:[],tokens:[]};
+  }
+  if(smartMoneyCache.data&&Date.now()-smartMoneyCache.at<SMART_MONEY_CACHE_MS)return smartMoneyCache.data;
+  const auth={authorization:'Bearer '+key};
+  const [b7,b30]=await Promise.all([
+    jfetch('https://api.fomoapi.io/v2/leaderboard/7d?limit=30',{headers:auth},12000),
+    jfetch('https://api.fomoapi.io/v2/leaderboard/30d?limit=30',{headers:auth},12000)
+  ]);
+  const m=new Map();
+  const ingest=(board,window)=>{
+    for(const r of (board?.traders||[])){
+      const wallet=r?.wallets?.solana;
+      if(!wallet||r?.verified!==true||num(r.pnlUsd)<=0)continue;
+      const id=r.userId||r.handle||wallet;
+      const x=m.get(id)||{id,handle:r.handle||'',displayName:r.displayName||r.handle||'',wallet,verified:true,pnl7d:0,pnl30d:0,volume7d:0,volume30d:0,rank7d:null,rank30d:null};
+      if(window==='7d'){x.pnl7d=num(r.pnlUsd);x.volume7d=num(r.volumeUsd);x.rank7d=r.rank??null}
+      else{x.pnl30d=num(r.pnlUsd);x.volume30d=num(r.volumeUsd);x.rank30d=r.rank??null}
+      m.set(id,x);
+    }
+  };
+  ingest(b7,'7d'); ingest(b30,'30d');
+  let traders=[...m.values()].map(x=>{
+    const consistency=(x.pnl7d>0?1:0)+(x.pnl30d>0?1:0);
+    const score=(consistency*100)+Math.log10(1+Math.max(0,x.pnl7d))*12+Math.log10(1+Math.max(0,x.pnl30d))*10;
+    return {...x,consistency,smartScore:+score.toFixed(1)};
+  }).filter(x=>x.consistency>=1).sort((a,b)=>b.smartScore-a.smartScore).slice(0,3);
+
+  const tokenMap=new Map();
+  for(const tr of traders){
+    let bal;
+    try{
+      bal=await jfetch('https://api.fomoapi.io/v2/users/'+encodeURIComponent(tr.id)+'/balances?chain=solana',{headers:auth},12000);
+    }catch{
+      try{bal=await jfetch('https://api.fomoapi.io/v2/users/'+encodeURIComponent(tr.handle)+'/balances?chain=solana',{headers:auth},12000)}catch{continue}
+    }
+    for(const h of (bal?.holdings||[])){
+      const address=h?.token?.address;
+      const symbol=String(h?.token?.symbol||'').toUpperCase();
+      if(!address||['SOL','WSOL','USDC','USDT'].includes(symbol))continue;
+      const value=num(h.valueUsd);
+      if(value<25)continue;
+      const old=tokenMap.get(address)||{address,symbol:symbol||'?',name:h?.token?.name||'',smartMoneyCount:0,totalValueUsd:0,traders:[],change24h:num(h.change24h),marketCap:0,liquidity:0,security:null};
+      old.smartMoneyCount+=1;
+      old.totalValueUsd+=value;
+      old.traders.push({handle:tr.handle||tr.displayName,wallet:tr.wallet,valueUsd:value,pnl7d:tr.pnl7d,pnl30d:tr.pnl30d});
+      tokenMap.set(address,old);
+    }
+  }
+
+  let tokens=[...tokenMap.values()].sort((a,b)=>(b.smartMoneyCount-a.smartMoneyCount)||(b.totalValueUsd-a.totalValueUsd)).slice(0,12);
+  for(const t of tokens){
+    try{
+      const p=await pairFor(t.address);
+      if(p){t.marketCap=num(p.marketCap||p.fdv);t.liquidity=num(p.liquidity?.usd);t.dexUrl=p.url||'';t.volume5m=num(p.volume?.m5);t.txns5m=num(p.txns?.m5?.buys)+num(p.txns?.m5?.sells)}
+      t.security=await security(t.address);
+    }catch{}
+  }
+  tokens.sort((a,b)=>{
+    const qa=(a.security?.holderStrong?2:a.security?.holderPolicyPassed?1:0)+(a.security?.mintDisabled&&a.security?.freezeDisabled?2:0);
+    const qb=(b.security?.holderStrong?2:b.security?.holderPolicyPassed?1:0)+(b.security?.mintDisabled&&b.security?.freezeDisabled?2:0);
+    return (b.smartMoneyCount-a.smartMoneyCount)||(qb-qa)||(b.totalValueUsd-a.totalValueUsd);
+  });
+  const data={ok:true,configured:true,source:'fomoapi',generatedAt:new Date().toISOString(),cacheHours:6,traders,tokens,disclaimer:'Smart Money یعنی کیف‌پول‌های سودده/تأییدشده در leaderboard؛ تضمین سود آینده یا سالم بودن توکن نیست.'};
+  smartMoneyCache={at:Date.now(),data};
+  return data;
+}
+
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const html=()=>`<!doctype html><html lang="fa" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Solana Meme Radar</title><style>
@@ -289,7 +362,7 @@ button,input,select{background:#101c31;color:#fff;border:1px solid #29415f;borde
 </style></head><body><div class="wrap"><h1>🚀 Solana Meme Radar</h1><div class="sub">رادار زنده + Social Trend Score — بروزرسانی خودکار هر ۶۰ ثانیه</div>
 <div class="warn">فیلتر امنیت + ضدربات فعال است. مجموع Top10 باید بین ۱۰٪ تا ۲۰٪ باشد؛ بزرگ‌ترین هولدر و Top5 هم سقف جداگانه دارند. MAX SECURITY فقط با فعالیت PROBABLE ORGANIC و شرایط امنیتی کامل داده می‌شود.</div>
 <div class="summary"><div class="sum"><div class="k">توکن‌های دیده‌شده</div><div class="big" id="sCount">–</div></div><div class="sum"><div class="k">ترند Score≥50</div><div class="big" id="sTrend">–</div></div><div class="sum"><div class="k">Strong Watch</div><div class="big" id="sStrong">–</div></div><div class="sum"><div class="k">Refresh</div><div class="big">60s</div></div></div>
-<div id="sources" class="sources"></div>
+<div id="sources" class="sources"></div><div style="margin:18px 0"><h2 style="margin:0 0 8px">🧠 Smart Money Watch</h2><div class="sub" id="smartStatus">در حال بررسی کیف‌پول‌های سودده...</div><div id="smartGrid" class="grid"></div></div>
 <div class="bar"><button onclick="load()">↻ بروزرسانی</button><input id="q" placeholder="جستجو نام / ticker / CA" oninput="render()"><select id="vf" onchange="render()"><option value="">همه وضعیت‌ها</option><option>STRONG WATCH</option><option>WATCH</option><option>LOW SIGNAL</option><option>SKIP</option></select><select id="sf" onchange="render()"><option value="0">همه امتیازهای ترند</option><option value="50">Trend ≥ 50</option><option value="70">Trend ≥ 70</option></select><select id="secf" onchange="render()"><option value="">همه امنیت‌ها</option><option>MAX SECURITY</option><option>HIGH</option><option>REVIEW</option><option>REJECT</option></select><select id="actf" onchange="render()"><option value="">همه فعالیت‌ها</option><option>PROBABLE ORGANIC</option><option>MIXED</option><option>BOT RISK</option></select><span id="status">در حال بارگذاری...</span></div>
 <div id="grid" class="grid"></div></div><script>
 let data=[]; const $=s=>document.querySelector(s);
@@ -321,12 +394,30 @@ function render(){
  }).join('')||'<p>موردی با فیلتر فعلی نیست.</p>'
 }
 load();setInterval(load,60000);
+
+async function loadSmart(){
+ try{
+  const r=await fetch('/api/v1/smart-money');const d=await r.json();
+  if(!d.configured){smartStatus.textContent='برای ردیابی زنده Smart Money، FOMO_API_KEY رایگان را در Render اضافه کن.';smartGrid.innerHTML='';return}
+  smartStatus.textContent='آخرین Smart Money snapshot: '+new Date(d.generatedAt).toLocaleString('fa-IR')+' | '+d.traders.length+' کیف‌پول منتخب';
+  smartGrid.innerHTML=(d.tokens||[]).map(t=>{
+   const hs=t.security||{};const pass=hs.mintDisabled===true&&hs.freezeDisabled===true&&hs.holderPolicyPassed;
+   const tr=(t.traders||[]).map(x=>'<span class="chip">'+esc(x.handle||'wallet')+' '+money(x.valueUsd)+'</span>').join('');
+   return '<div class="card"><div class="top"><div><div class="name">'+esc(t.symbol||'?')+'</div><div class="mint">'+esc(t.address)+'</div></div><span class="badge '+(pass?'strong':'watch')+'">'+(pass?'SECURITY PASS':'CHECK')+'</span></div>'+
+   '<div class="stats"><div class="stat"><div class="k">Smart wallets</div><div class="v">'+t.smartMoneyCount+'</div></div><div class="stat"><div class="k">Held value</div><div class="v">'+money(t.totalValueUsd)+'</div></div><div class="stat"><div class="k">Market Cap</div><div class="v">'+money(t.marketCap)+'</div></div><div class="stat"><div class="k">Liquidity</div><div class="v">'+money(t.liquidity)+'</div></div><div class="stat"><div class="k">Top10</div><div class="v">'+pct(hs.top10)+'</div></div><div class="stat"><div class="k">Largest</div><div class="v">'+pct(hs.largestHolder)+'</div></div></div>'+
+   '<div class="chips">'+tr+'</div><div class="links" style="margin-top:10px">'+(t.dexUrl?'<a target="_blank" rel="noopener" href="'+esc(t.dexUrl)+'">DEX Screener</a>':'')+'<a target="_blank" rel="noopener" href="https://solscan.io/token/'+esc(t.address)+'">Solscan</a></div></div>'
+  }).join('')||'<p>فعلاً پوزیشن Solana قابل‌نمایش پیدا نشد.</p>';
+ }catch(e){smartStatus.textContent='Smart Money فعلاً در دسترس نیست.'}
+}
+
+loadSmart();setInterval(loadSmart,6*60*60*1000);
 </script></body></html>`;
 
 createServer(async(req,res)=>{
   const url=new URL(req.url,'http://localhost');
   try{
     if(url.pathname==='/api/health'){res.writeHead(200,{'content-type':'application/json',...headers});return res.end(JSON.stringify({ok:true,time:new Date().toISOString()}))}
+    if(url.pathname==='/api/v1/smart-money'){const sm=await buildSmartMoney();res.writeHead(200,{'content-type':'application/json; charset=utf-8','cache-control':'no-store',...headers});return res.end(JSON.stringify(sm))}
     if(url.pathname==='/api/v1/tokens'||url.pathname==='/api/radar'||url.pathname==='/api/v1/trending'){
       const d=await build(); let body=d;
       if(url.pathname==='/api/v1/trending')body={...d,tokens:[...d.tokens].sort((a,b)=>b.trend.score-a.trend.score)};
