@@ -23,6 +23,10 @@ const STABLE_MINTS=new Set([
   'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v',
   'Es9vMFrzaCERmJfrF4H2FYD6PGVgN7k9Yg1iQeSxGZ7'
 ]);
+const KOL_WATCH_NAMES=new Set(['Cented','Decu','Theo','Trunoest','Nyhrox','Limfork','Kadenox','Casino','Jijo','Johnson']);
+let kolTrendCache={at:0,data:null};
+const KOL_TREND_CACHE_MS=2*60*1000;
+
 const TRACKED_WALLETS=[
   {name:'Cented',address:'CyaE1VxvBrahnPWkqm5VsdCvyS2QmNht2UFrKJHga54o',source:'KOL Explorer',sourceUrl:'https://kolexplorer.com/kol/cented',seedPnl30d:476703,seedWinRate:58.1,medianHoldSec:13,priority:true},
   {name:'Decu',address:'4vw54BmAogeRV3vPKWyFet5yf8DTLcREzdSzx4rw9Ud9',source:'KOL Explorer',sourceUrl:'https://kolexplorer.com/kol/decu',seedPnl30d:384534,seedWinRate:72.0,medianHoldSec:16,priority:true},
@@ -106,15 +110,103 @@ function stripHtml(x){
     .replace(/<[^>]+>/g,' ').replace(/&nbsp;|&#160;/gi,' ').replace(/&amp;/gi,'&').replace(/\s+/g,' ').trim();
 }
 
+
+function agoMinutes(text){
+  const x=String(text||'');
+  let m=x.match(/(\d+(?:\.\d+)?)\s*(?:min|mins|minute|minutes|m)\s*ago/i);if(m)return num(m[1]);
+  m=x.match(/(\d+(?:\.\d+)?)\s*(?:h|hr|hrs|hour|hours)\s*ago/i);if(m)return num(m[1])*60;
+  m=x.match(/(\d+(?:\.\d+)?)\s*(?:d|day|days)\s*ago/i);if(m)return num(m[1])*1440;
+  return null;
+}
+function kolSeed(){
+  return {kolNames:new Set(),kolHandles:new Set(),holdingCount:0,recentCount:0,xMentionCount:0,xEngagement:0,evidence:[]};
+}
+async function kolTrendDiscovery(){
+  if(kolTrendCache.data&&Date.now()-kolTrendCache.at<KOL_TREND_CACHE_MS)return kolTrendCache.data;
+  const profiles=TRACKED_WALLETS.filter(w=>KOL_WATCH_NAMES.has(w.name)&&w.source==='KOL Explorer'&&w.sourceUrl);
+  const agg=new Map(),handles=[];
+  const settled=await Promise.allSettled(profiles.map(async w=>{
+    const html=await tfetch(w.sourceUrl,{},12000);
+    const txt=stripHtml(html);
+    const hm=txt.match(/Follow\s+@([A-Za-z0-9_]{1,15})\s+on X/i)||html.match(/(?:x\.com|twitter\.com)\/([A-Za-z0-9_]{1,15})/i);
+    const handle=hm?hm[1]:null;
+    if(handle)handles.push({name:w.name,handle});
+    const rows=[];
+    const re=/<a\b[^>]*href=["'](?:https?:\/\/kolexplorer\.com)?\/token\/([1-9A-HJ-NP-Za-km-z]{32,44})["'][^>]*>([\s\S]*?)<\/a>/gi;
+    let m;
+    while((m=re.exec(html))){
+      const mint=m[1],label=stripHtml(m[2]),age=agoMinutes(label);
+      const holding=/\bHolding\b/i.test(label);
+      const recent=age!=null&&age<=360;
+      if(!holding&&!recent)continue;
+      rows.push({mint,label:label.slice(0,180),holding,recent,ageMinutes:age});
+    }
+    return {w,handle,rows};
+  }));
+  for(const r of settled){
+    if(r.status!=='fulfilled')continue;
+    const {w,handle,rows}=r.value;
+    for(const row of rows){
+      const a=agg.get(row.mint)||kolSeed();
+      a.kolNames.add(w.name);if(handle)a.kolHandles.add(handle);
+      if(row.holding)a.holdingCount++;
+      if(row.recent)a.recentCount++;
+      a.evidence.push({kol:w.name,handle:handle||null,type:row.holding?'HOLDING':'RECENT_TRADE',ageMinutes:row.ageMinutes,label:row.label});
+      agg.set(row.mint,a);
+    }
+  }
+
+  // If X API is configured, scan the watched KOL accounts for direct Solana mint mentions.
+  const xKey=process.env.X_BEARER_TOKEN;
+  if(xKey&&handles.length){
+    for(let i=0;i<handles.length;i+=4){
+      const group=handles.slice(i,i+4);
+      const q='('+group.map(x=>'from:'+x.handle).join(' OR ')+') -is:retweet';
+      const startTime=new Date(Date.now()-6*60*60*1000).toISOString();
+      const u='https://api.x.com/2/tweets/search/recent?query='+encodeURIComponent(q)+'&max_results=100&start_time='+encodeURIComponent(startTime)+'&tweet.fields=public_metrics,author_id,created_at&expansions=author_id&user.fields=username';
+      try{
+        const d=await jfetch(u,{headers:{authorization:'Bearer '+xKey}},12000);
+        const users=new Map((d?.includes?.users||[]).map(x=>[String(x.id),String(x.username||'')]));
+        for(const tw of (d?.data||[])){
+          const username=users.get(String(tw.author_id))||'';
+          const who=group.find(x=>x.handle.toLowerCase()===username.toLowerCase());
+          const mints=[...new Set(String(tw.text||'').match(/[1-9A-HJ-NP-Za-km-z]{32,44}/g)||[])];
+          const pm=tw.public_metrics||{};
+          const engagement=num(pm.like_count)+num(pm.retweet_count)*2+num(pm.reply_count)+num(pm.quote_count)*2;
+          for(const mint of mints){
+            const a=agg.get(mint)||kolSeed();
+            if(who){a.kolNames.add(who.name);a.kolHandles.add(who.handle)}
+            a.xMentionCount++;a.xEngagement+=engagement;
+            a.evidence.push({kol:who?.name||username,handle:username||null,type:'X_MENTION',ageMinutes:null,label:String(tw.text||'').slice(0,180)});
+            agg.set(mint,a);
+          }
+        }
+      }catch{}
+      await sleep(80);
+    }
+  }
+
+  const tokens=[...agg.entries()].map(([mint,a])=>{
+    const kolNames=[...a.kolNames],kolHandles=[...a.kolHandles];
+    let score=kolNames.length*18+a.recentCount*8+a.holdingCount*4+a.xMentionCount*12;
+    if(a.xEngagement>0)score+=Math.min(15,Math.log10(1+a.xEngagement)*5);
+    score=clamp(Math.round(score));
+    return {mint,score,kolCount:kolNames.length,kolNames,kolHandles,holdingCount:a.holdingCount,recentCount:a.recentCount,xMentionCount:a.xMentionCount,xEngagement:a.xEngagement,evidence:a.evidence.slice(0,12)};
+  }).sort((a,b)=>b.score-a.score||b.kolCount-a.kolCount);
+  const data={tokens:tokens.slice(0,30),handles,xConfigured:!!xKey,generatedAt:new Date().toISOString()};
+  kolTrendCache={at:Date.now(),data};return data;
+}
+
 async function discovery(){
   const urls=['https://api.dexscreener.com/token-profiles/latest/v1','https://api.dexscreener.com/token-boosts/latest/v1','https://api.dexscreener.com/token-boosts/top/v1'];
-  const sets=await Promise.allSettled(urls.map(u=>jfetch(u)));
+  const [sets,kol]=await Promise.all([Promise.allSettled(urls.map(u=>jfetch(u))),kolTrendDiscovery()]);
   const m=new Map();
-  sets.forEach((s,idx)=>{
-    if(s.status!=='fulfilled')return;
-    for(const x of (Array.isArray(s.value)?s.value:[])){
+  const blank=mint=>({mint,description:'',image:'',links:[],boostAmount:0,boostTotal:0,boostSeen:false,profileSeen:false,kolTrend:null});
+  sets.forEach((r,idx)=>{
+    if(r.status!=='fulfilled')return;
+    for(const x of (Array.isArray(r.value)?r.value:[])){
       if(x.chainId!=='solana'||!x.tokenAddress)continue;
-      const old=m.get(x.tokenAddress)||{mint:x.tokenAddress,description:'',image:'',links:[],boostAmount:0,boostTotal:0,boostSeen:false,profileSeen:false};
+      const old=m.get(x.tokenAddress)||blank(x.tokenAddress);
       old.description=x.description||old.description;
       old.image=x.icon||old.image;
       old.links=Array.isArray(x.links)&&x.links.length?x.links:old.links;
@@ -123,7 +215,17 @@ async function discovery(){
       m.set(x.tokenAddress,old);
     }
   });
-  return [...m.values()].slice(0,45);
+  for(const k of (kol?.tokens||[])){
+    const old=m.get(k.mint)||blank(k.mint);
+    old.kolTrend=k;
+    m.set(k.mint,old);
+  }
+  return [...m.values()].sort((a,b)=>{
+    const ka=num(a.kolTrend?.score),kb=num(b.kolTrend?.score);
+    if(kb!==ka)return kb-ka;
+    if(a.kolTrend&&!b.kolTrend)return -1;if(b.kolTrend&&!a.kolTrend)return 1;
+    return num(b.boostTotal)-num(a.boostTotal);
+  }).slice(0,60);
 }
 async function pairFor(mint){
   try{
@@ -311,6 +413,13 @@ function trendScore(t,seed){
   if(socialNames.has('Telegram'))score+=2;
   if(socialNames.has('YouTube')||socialNames.has('Instagram')||socialNames.has('TikTok')||socialNames.has('Facebook'))score+=2;
   if(seed.profileSeen)score+=3;
+  if(seed.kolTrend){
+    const k=seed.kolTrend;
+    score+=Math.min(22,Math.round(num(k.score)*0.22));
+    if(num(k.kolCount)>=2)reasons.push(k.kolCount+' KOL همزمان');
+    else if(num(k.kolCount)===1)reasons.push('ردیابی KOL');
+    if(num(k.xMentionCount)>0)reasons.push(k.xMentionCount+' اشاره مستقیم X');
+  }
   if(t.ageMinutes<=10)score+=6;
   else if(t.ageMinutes<=30)score+=3;
   return {score:clamp(Math.round(score)),reasons,boostAmount:seed.boostAmount,boostTotal:seed.boostTotal,socialCount,sources:[...socialNames]};
@@ -703,7 +812,7 @@ async function build(){
   if(cache.data&&Date.now()-cache.at<CACHE_MS)return cache.data;
   const seeds=await discovery();
   const out=[];
-  for(const s of seeds.slice(0,35)){
+  for(const s of seeds.slice(0,45)){
     const p=await pairFor(s.mint); if(!p)continue;
     const created=num(p.pairCreatedAt);
     const ageMinutes=created?Math.max(0,(Date.now()-created)/60000):9999;
@@ -719,7 +828,7 @@ async function build(){
       buys1h:num(p.txns?.h1?.buys),sells1h:num(p.txns?.h1?.sells),txns1h:num(p.txns?.h1?.buys)+num(p.txns?.h1?.sells),
       buys6h:num(p.txns?.h6?.buys),sells6h:num(p.txns?.h6?.sells),txns6h:num(p.txns?.h6?.buys)+num(p.txns?.h6?.sells),
       buys24h:num(p.txns?.h24?.buys),sells24h:num(p.txns?.h24?.sells),txns24h:num(p.txns?.h24?.buys)+num(p.txns?.h24?.sells),
-      priceChange5m:num(p.priceChange?.m5),priceChange1h:num(p.priceChange?.h1),priceChange6h:num(p.priceChange?.h6),priceChange24h:num(p.priceChange?.h24),security:sec
+      priceChange5m:num(p.priceChange?.m5),priceChange1h:num(p.priceChange?.h1),priceChange6h:num(p.priceChange?.h6),priceChange24h:num(p.priceChange?.h24),security:sec,kolTrend:s.kolTrend||null
     };
     t.socialSources=socialMeta(s,p);
     t.bluesky={mentions2h:0,engagement2h:0};
@@ -767,7 +876,7 @@ async function build(){
   const strong=out.filter(x=>x.verdict==='STRONG WATCH').length;
   const trending=out.filter(x=>x.trend.score>=50).length;
   const data={ok:true,generatedAt:new Date().toISOString(),refreshSeconds:60,count:out.length,strong,trending,tokens:out,
-    sourceStatus:{dexscreener:'live',solanaRpc:'live',bluesky:'live-public',x:process.env.X_BEARER_TOKEN?'live-api':'needs API key',youtube:process.env.YOUTUBE_API_KEY?'live-api':'needs API key',reddit:process.env.REDDIT_CLIENT_ID?'configured':'presence-only',instagram:'presence-only',facebook:'presence-only',tiktok:'presence-only',telegram:'presence-only'},
+    sourceStatus:{dexscreener:'live',solanaRpc:'live',kolExplorer:'live-public profiles + on-chain holdings/trades',kolX:process.env.X_BEARER_TOKEN?'live-api':'on-chain fallback; X API key not configured',bluesky:'live-public',x:process.env.X_BEARER_TOKEN?'live-api':'needs API key',youtube:process.env.YOUTUBE_API_KEY?'live-api':'needs API key',reddit:process.env.REDDIT_CLIENT_ID?'configured':'presence-only',instagram:'presence-only',facebook:'presence-only',tiktok:'presence-only',telegram:'presence-only'},
     holderPolicy:{hardRules:{holder1MustBeBelowPct:10,holders2to10EachMustBeBelowPct:5,exclusive:true},gradeA:{holder1MaxPct:5,holders2to10EachMaxPct:2.5},gradeB:{holder1MaxPct:7.5,holders2to10EachMaxPct:4},gradeC:{holder1MaxPct:10,holders2to10EachMaxPct:5},unknownFailsStrong:true},
     activityPolicy:{probableOrganicMin:72,highSecurityMin:58,method:'aggregate heuristics; not proof of human identity'},
     orderFlowPolicy:{buyerPower:'buy transaction count / total buy+sell transactions; not dollar buy volume',strongBuyer:'5m >=55% and 1h >=51% when available',volumeQuality:'absolute volume + tx count + volume/liquidity sanity check'},
@@ -1369,6 +1478,10 @@ dialog{width:min(720px,94vw);max-height:88vh;border:1px solid #36506e;border-rad
 </section>
 
 <section class="panel" id="tokensPanel">
+  <details class="accordion highlight" open>
+    <summary>👑 ترند KOL — فقط بالاترین امنیت</summary>
+    <div class="accordion-body"><p class="muted" id="kolTrendStatus" style="font-size:11px">توکن‌هایی که همین KOLهای منتخب در پوزیشن/معامله اخیر داشته‌اند یا مستقیماً در X اشاره کرده‌اند؛ فقط امنیت HIGH/MAX نمایش داده می‌شود.</p><div class="list" id="kolTrendList"></div></div>
+  </details>
   <details class="accordion">
     <summary>🎛 فیلتر مشترک سه گروه</summary>
     <div class="accordion-body"><div class="subfilters">
@@ -1449,7 +1562,7 @@ function bucketScore(t,bucket){
   else if(bucket==='day')score=security*.22+sh*.10+md*.18+lg*.15+buyer*.12+volume*.12+social*.06+market*.05;
   else score=security*.28+sh*.05+md*.13+lg*.22+buyer*.10+volume*.08+social*.04+market*.10;
   var wh=whaleFor(t.mint),tr=findTracked(t.mint),sm=smartFor(t.mint);
-  if(wh.count)score+=3;if(tr&&Number(tr.uniqueBuyers||0)>=2&&Number(tr.netFlowUsd||0)>0)score+=3;if(tr&&Number(tr.convictionHolderCount||0)>=1)score+=Math.min(5,Number(tr.convictionHolderCount||0)*2);if(tr?.largeBuyer500Dominant)score+=5;else if(Number(tr?.netSellerWalletCount||0)>Number(tr?.largeBuyer500Count||0))score-=4;if(sm)score+=2;
+  if(wh.count)score+=3;if(t.kolTrend?.kolCount>=2)score+=Math.min(7,t.kolTrend.kolCount*2);else if(t.kolTrend?.kolCount===1)score+=2;if(t.kolTrend?.xMentionCount>0)score+=Math.min(5,t.kolTrend.xMentionCount*2);if(tr&&Number(tr.uniqueBuyers||0)>=2&&Number(tr.netFlowUsd||0)>0)score+=3;if(tr&&Number(tr.convictionHolderCount||0)>=1)score+=Math.min(5,Number(tr.convictionHolderCount||0)*2);if(tr?.largeBuyer500Dominant)score+=5;else if(Number(tr?.netSellerWalletCount||0)>Number(tr?.largeBuyer500Count||0))score-=4;if(sm)score+=2;
   if(exitFor(t.mint).length)score-=18;
   if(fl.sellerDominant)score-=8;
   if(fl.volumeLabel==='SUSPICIOUS')score-=12;
@@ -1471,6 +1584,16 @@ function bucketSignalClass(score,t){
 function qualifyingTrackedHolders(t){
   var tr=t?findTracked(t.mint):null;
   return tr&&Array.isArray(tr.convictionHolders)?tr.convictionHolders:[];
+}
+function kolTrendSafe(t){
+  if(!t||!t.kolTrend)return false;
+  var sec=t.security||{},ac=t.academy||{},gate=t.securityGate||{};
+  return !gate.blocked&&!ac.blocked&&sec.holderPolicyPassed===true&&(sec.tier==='MAX SECURITY'||sec.tier==='HIGH');
+}
+function kolTrendScore(t){
+  if(!t||!t.kolTrend)return 0;
+  var k=t.kolTrend||{},base=Number(k.score||0);
+  return Math.min(100,Math.round(base*.45+bucketScore(t,ageBucket(t))*.55));
 }
 function largeBuyerFlow(t){
   var tr=t?findTracked(t.mint):null;
@@ -1526,6 +1649,8 @@ function featuredRows(){
     if(t.flow&&t.flow.volumeLabel==='STRONG'){s+=9;w.push('حجم قوی')}else if(t.flow&&t.flow.volumeLabel==='GOOD'){s+=5;w.push('حجم خوب')}
     if(t.flow&&t.flow.buyerDominant){s+=10;w.push('قدرت خریدار غالب')}else if(t.flow&&t.flow.sellerDominant)s-=12;
     if(t.socialHeat&&t.socialHeat.score>=75){s+=10;w.push('وایرال اجتماعی')}else if(t.socialHeat&&t.socialHeat.score>=55){s+=6;w.push('ترند اجتماعی داغ')}
+    if(t.kolTrend&&t.kolTrend.kolCount>=2){s+=10;w.push(t.kolTrend.kolCount+' KOL همزمان')}else if(t.kolTrend&&t.kolTrend.kolCount===1){s+=4;w.push('KOL ردیابی‌شده')}
+    if(t.kolTrend&&t.kolTrend.xMentionCount>0){s+=Math.min(6,t.kolTrend.xMentionCount*2);w.push('اشاره X توسط KOL')}
     if(t.chart&&t.chart.pumpDumpRisk==='HIGH')s-=25;
     if(t.chart&&t.chart.fomoRisk==='HIGH')s-=12;
     if(t.academy&&t.academy.blocked)s-=25;
@@ -1543,7 +1668,7 @@ function featuredRows(){
 function tokenRow(t,bucket){
   var s=t.security||{},sg=t.signals||{},sh=sg.short||{},md=sg.medium||{},lg=sg.long||{},fl=t.flow||{},bs=bucketScore(t,bucket||ageBucket(t));
   return '<div class="row">'+
-  '<div class="asset"><b>'+esc(t.symbol||'?')+' · '+esc(t.name||'')+'</b><span class="age-chip">'+esc(ageText(t))+'</span><small>'+esc(short(t.mint))+'</small>'+socialButtons(t)+'</div>'+
+  '<div class="asset"><b>'+esc(t.symbol||'?')+' · '+esc(t.name||'')+'</b><span class="age-chip">'+esc(ageText(t))+'</span>'+(t.kolTrend?'<span class="age-chip">👑 '+Number(t.kolTrend.kolCount||0)+' KOL</span>':'')+'<small>'+esc(short(t.mint))+'</small>'+socialButtons(t)+'</div>'+
   '<div class="cell"><small>امتیاز گروه</small><b><span class="badge '+bucketSignalClass(bs,t)+'">'+bs+'/100</span></b></div>'+
   '<div class="cell"><small>کوتاه / میان / بلند</small><b>'+Number(sh.score||0)+' / '+Number(md.score||0)+' / '+Number(lg.score||0)+'</b></div>'+
   '<div class="cell"><small>قدرت خریدار</small><b><span class="badge '+pressureClass(t)+'">'+(fl.buyerPower==null?'—':Number(fl.buyerPower)+'%')+'</span></b></div>'+
@@ -1736,6 +1861,26 @@ function renderBucketBest(id,rows,bucket,title){
     '<div class="actions"><a class="action" target="_blank" rel="noopener" href="'+esc(dexUrl(t.mint,t.dexUrl))+'">📈 چارت</a><button class="detail-btn" data-mint="'+esc(t.mint)+'">جزئیات</button></div>'+
   '</div></div>';
 }
+function renderKolTrends(){
+  var el=document.getElementById('kolTrendList');if(!el)return;
+  var r=tokens.filter(kolTrendSafe).sort(function(a,b){return kolTrendScore(b)-kolTrendScore(a)}).slice(0,15);
+  var st=document.getElementById('kolTrendStatus');
+  if(st){
+    var xConfigured=tokens.some(function(t){return t.kolTrend&&Number(t.kolTrend.xMentionCount||0)>0});
+    st.textContent='فقط HIGH/MAX + قانون هولدر + چک‌لیست امنیتی. '+(xConfigured?'اشاره‌های X هم در امتیاز دیده شده‌اند.':'فعلاً منبع اصلی خرید/هولد آن‌چین KOLهاست؛ X فقط وقتی API فعال باشد شمارش می‌شود.');
+  }
+  el.innerHTML=r.length?r.map(function(t,i){
+    var k=t.kolTrend||{},score=kolTrendScore(t),names=(k.kolNames||[]).slice(0,5).join('، ');
+    return '<div class="row"><div class="asset"><b>#'+(i+1)+' 👑 '+esc(t.symbol||'?')+' · '+esc(t.name||'')+'</b><small>'+esc(names||'KOL')+' · '+Number(k.recentCount||0)+' معامله اخیر · '+Number(k.holdingCount||0)+' هولد · '+Number(k.xMentionCount||0)+' اشاره X</small>'+socialButtons(t)+'</div>'+
+      '<div class="cell"><small>امتیاز KOL+امنیت</small><b><span class="badge good">'+score+'/100</span></b></div>'+
+      '<div class="cell"><small>KOLها</small><b>'+Number(k.kolCount||0)+'</b></div>'+
+      '<div class="cell"><small>امنیت</small><b><span class="badge '+secClass(t.security?.tier)+'">'+esc(faSec(t.security?.tier))+'</span></b></div>'+
+      '<div class="cell hide-sm"><small>قدرت خریدار</small><b>'+Number(t.flow?.buyerPower||0)+'%</b></div>'+
+      '<div class="cell hide-md"><small>حجم</small><b>'+esc(faVolume(t.flow?.volumeLabel))+'</b></div>'+
+      '<div class="actions"><a class="action" target="_blank" rel="noopener" href="'+esc(dexUrl(t.mint,t.dexUrl))+'">📈 چارت</a><button class="detail-btn" data-mint="'+esc(t.mint)+'">جزئیات</button></div></div>';
+  }).join(''):'<div class="empty">فعلاً توکن KOL که همزمان امنیت HIGH/MAX را پاس کند پیدا نشده.</div>';
+}
+
 function renderTokens(){
   var r=filteredTokens();
   var fresh=r.filter(function(t){return ageBucket(t)==='fresh'}).sort(function(a,b){return bucketScore(b,'fresh')-bucketScore(a,'fresh')});
@@ -1752,7 +1897,7 @@ function renderAlerts(){
   var c=live&&live.exitClusters?live.exitClusters.filter(function(x){return x.severity==='MULTI-WALLET EXIT'}).slice(0,3):[];
   document.getElementById('kExits').textContent=c.length;document.getElementById('alerts').innerHTML=c.map(function(x){return '<div class="alert">🚨 خروج همزمان چند کیف‌پول از <b>'+esc(x.token||short(x.tokenAddress))+'</b> · '+Number(x.uniqueSellers||0)+' فروشنده</div>'}).join('');
 }
-function renderAll(){document.getElementById('kTokens').textContent=tokens.length;renderChampion();renderAlerts();renderFeatured();renderWhales();renderSmart();renderSocialTrends();renderWallets();renderConviction();renderTokens()}
+function renderAll(){document.getElementById('kTokens').textContent=tokens.length;renderChampion();renderAlerts();renderFeatured();renderWhales();renderSmart();renderSocialTrends();renderWallets();renderConviction();renderKolTrends();renderTokens()}
 function stateLabel(v){return v==='pass'?'<span class="pass">✓ تأیید خودکار</span>':v==='fail'?'<span class="fail">✕ رد خودکار</span>':v==='warn'?'<span class="manual">△ هشدار</span>':'<span class="manual">? داده ناکافی</span>'}
 function openDetail(m){
   var t=findToken(m),tr=findTracked(m),sm=smartFor(m),wh=whaleFor(m),name=t?(t.symbol+' · '+t.name):(tr?(tr.symbol+' · '+tr.name):short(m)),h='';
@@ -1764,6 +1909,7 @@ function openDetail(m){
     if(ac.checks&&ac.checks.length)h+='<details class="accordion"><summary>🛡 چک‌لیست امنیتی</summary><div class="accordion-body">'+ac.checks.map(function(c){return '<div class="check"><span>'+esc(c.name)+(c.detail?'<small style="display:block;color:var(--muted);margin-top:3px">'+esc(c.detail)+'</small>':'')+'</span>'+stateLabel(c.state)+'</div>'}).join('')+'</div></details>';
   }
   if(tr)h+='<div class="note"><b>کیف‌پول‌های برتر:</b> '+Number(tr.uniqueBuyers||0)+' خریدار، '+Number(tr.uniqueSellers||0)+' فروشنده، جریان خالص '+money(tr.netFlowUsd)+'، هولدینگ '+money(tr.currentHoldingUsd)+'</div>';
+  if(t.kolTrend){var k=t.kolTrend;h+='<details class="accordion" open><summary>👑 شواهد KOL</summary><div class="accordion-body"><div class="note"><b>KOLها:</b> '+esc((k.kolNames||[]).join('، ')||'—')+' · معامله اخیر '+Number(k.recentCount||0)+' · هولد '+Number(k.holdingCount||0)+' · اشاره X '+Number(k.xMentionCount||0)+'</div>'+(k.evidence||[]).slice(0,8).map(function(e){return '<div class="check"><span>'+esc(e.kol||'KOL')+' · '+esc(e.type||'')+'</span><span class="manual">'+esc(e.label||'')+'</span></div>'}).join('')+'</div></details>';}
   if(tr){var bf=largeBuyerFlow(t);h+='<div class="note"><b>خریدارهای ردیابی‌شده ۵۰۰$+:</b> '+bf.buyers+' کیف‌پول ('+money(bf.buyerUsd)+') · <b>فروشنده خالص:</b> '+bf.sellers+' کیف‌پول ('+money(bf.sellerUsd)+') · '+(bf.dominant?'<span class="pass">✓ خریدارها بیشترند</span>':'<span class="manual">خریدارها بیشتر نیستند</span>')+'</div>';}
   if(tr&&tr.convictionHolders&&tr.convictionHolders.length)h+='<details class="accordion"><summary>💎 هولدرهای ردیابی‌شده با خرید ۱۰۰۰$+ و فروش کمتر</summary><div class="accordion-body">'+tr.convictionHolders.map(function(x){return '<div class="check"><span>'+esc(x.wallet)+' · خرید '+money(x.buyUsd)+' · فروش '+money(x.sellUsd)+'</span><span class="pass">هولد فعلی '+money(x.currentHoldingUsd)+'</span></div>'}).join('')+'<div class="note">بر اساس Swapهای قابل‌تشخیص ۴۸ ساعت اخیر کیف‌پول‌های تحت ردیابی؛ پوشش کل بازار نیست.</div></div></details>';
   if(sm)h+='<div class="note"><b>اسمارت‌مانی:</b> '+Number(sm.smartMoneyCount||0)+' کیف‌پول · '+money(sm.totalValueUsd)+' پوزیشن</div>';
