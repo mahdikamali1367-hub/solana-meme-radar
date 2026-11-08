@@ -1609,7 +1609,7 @@ dialog{width:min(720px,94vw);max-height:88vh;border:1px solid #36506e;border-rad
 </section>
 <details class="accordion" open>
     <summary>🔥 پیشنهادهای اولویت‌دار</summary>
-    <div class="accordion-body"><p class="muted" style="font-size:11px">فقط توکن‌های بدون هشدار خروج/رد امنیتی که نقطه ورود فعال دارند. ورود قوی و ورود قابل‌بررسی جدا نمایش داده می‌شوند؛ هیچ‌کدام تضمین سود نیست.</p><div class="subfilters">
+    <div class="accordion-body"><p class="muted" style="font-size:11px">منطق ورود: هر وقت قدرت خریدار از فروشنده بیشتر باشد، نقطه ورود فعال می‌شود؛ اگر فروشنده بیشتر باشد، خروج/ورود نکن نمایش داده می‌شود. هشدار امنیتی جدی همچنان ورود را مسدود می‌کند.</p><div class="subfilters">
 <label>کوتاه‌مدت<select class="signal-filter" data-filter="short"><option value="">همه</option><option value="STRONG">قوی</option><option value="POSITIVE">مثبت</option><option value="NEUTRAL">خنثی</option><option value="WAIT_DATA">داده ناکافی</option><option value="AVOID">ورود نکن</option><option value="BLOCKED">مسدود امنیتی</option></select></label>
 <label>میان‌مدت<select class="signal-filter" data-filter="medium"><option value="">همه</option><option value="STRONG">قوی</option><option value="POSITIVE">مثبت</option><option value="NEUTRAL">خنثی</option><option value="WAIT_DATA">داده ناکافی</option><option value="AVOID">ورود نکن</option><option value="BLOCKED">مسدود امنیتی</option></select></label>
 <label>بلندمدت<select class="signal-filter" data-filter="long"><option value="">همه</option><option value="STRONG">قوی</option><option value="POSITIVE">مثبت</option><option value="NEUTRAL">خنثی</option><option value="WAIT_DATA">داده ناکافی</option><option value="AVOID">ورود نکن</option><option value="BLOCKED">مسدود امنیتی</option></select></label>
@@ -1924,55 +1924,49 @@ function fmtPrice(v){
 }
 function tradePlan(t){
   if(!t)return {status:'WAIT',entry:null,entryLow:null,entryHigh:null,exit:null,reason:'داده کافی نیست'};
-  var sec=t.security||{},fl=t.flow||{},tg=trustGuard(t),pre=t.preSignalGuard||{};
-  var ws=whaleSellsFor(t.mint),ex=exitFor(t.mint),wh=whaleFor(t.mint);
-  var p=Number(t.priceUsd||0),pc5=Number(t.priceChange5m||0),pc1=Number(t.priceChange1h||0);
+  var sec=t.security||{},fl=t.flow||{},tg=trustGuard(t);
+  var ws=whaleSellsFor(t.mint),ex=exitFor(t.mint);
+  var p=Number(t.priceUsd||0);
+  var buyerPower=Number(fl.buyerPower||0);
+  var sellerPower=Math.max(0,100-buyerPower);
   var riskPct=(sec.tier==='MAX SECURITY'&&Number(t.liquidity||0)>=25000)?0.055:0.07;
   var invalidation=p>0?p*(1-riskPct):null;
-  var entryLow=p>0?p*0.985:null,entryHigh=p>0?p*1.012:null;
+  var entryLow=p>0?p*0.99:null,entryHigh=p>0?p*1.01:null;
 
-  // Never create an entry when there is an actual safety/exit condition.
-  var hardExit=tg.status==='BLOCK'||fl.sellerDominant===true||ws.count>0||ex.length>0||pc5<=-8||
-    t.securityGate?.blocked===true||t.academy?.blocked===true;
-  if(hardExit)return {status:'EXIT',entry:null,entryLow:null,entryHigh:null,exit:invalidation,reason:'فشار فروش/هشدار خروج یا رد امنیتی فعال است',riskPct:riskPct*100};
+  // Hard safety blocks still override flow direction.
+  var hardBlock=t.securityGate?.blocked===true||t.academy?.blocked===true||tg.status==='BLOCK'||ws.count>0||ex.length>0;
+  if(hardBlock)return {
+    status:'EXIT',entry:null,entryLow:null,entryHigh:null,exit:invalidation,
+    reason:'هشدار امنیتی/خروج فعال است',riskPct:riskPct*100,
+    buyerPower,sellerPower
+  };
 
-  var safe=(sec.tier==='MAX SECURITY'||sec.tier==='HIGH')&&t.securityGate?.blocked!==true;
-  var volumeStrong=fl.volumeLabel==='STRONG'&&Number(fl.volumeScore||0)>=75;
-  var volumeGood=(fl.volumeLabel==='STRONG'||fl.volumeLabel==='GOOD')&&Number(fl.volumeScore||0)>=60;
-  var buyerPower=Number(fl.buyerPower||0);
-  var buyerOk=fl.buyerDominant===true||buyerPower>=54;
-  var marketOk=Number(t.marketQuality?.score||0)>=60&&Number(t.liquidity||0)>=5000;
-  var notChasing=pc5>=-3&&pc5<=12&&pc1<=45;
-  var fullyConfirmed=tg.status==='CONFIRMED';
-  var earlyConfirmed=tg.status==='WAIT'&&
-    (!Array.isArray(pre.blocks)||pre.blocks.length===0)&&
-    Number(pre.goodScans||0)>=1&&
-    Number(pre.holderSnapshots||0)>=2&&
-    sec.holderPolicyPassed===true;
-
-  // Full entry: strongest path.
-  var ready=!!p&&safe&&volumeGood&&buyerOk&&marketOk&&notChasing&&(fullyConfirmed||earlyConfirmed);
-  if(ready){
-    var confidence=fullyConfirmed&&volumeStrong?'HIGH':'MEDIUM';
+  // Simple flow rule requested by user:
+  // buyers > sellers => ENTRY
+  // sellers > buyers => EXIT
+  // equal => WAIT
+  if(buyerPower>sellerPower){
     return {
-      status:'ENTRY',confidence,
-      entry:p,entryLow,entryHigh,exit:invalidation,
-      reason:confidence==='HIGH'
-        ?'امنیت HIGH/MAX + حجم قوی + خریدار غالب + تأیید چندمرحله‌ای'
-        :'امنیت HIGH/MAX + حجم مناسب + خریدار غالب + تأیید اولیه بدون هشدار خروج',
-      riskPct:riskPct*100
+      status:'ENTRY',confidence:buyerPower>=60?'HIGH':'MEDIUM',
+      entry:p||null,entryLow,entryHigh,exit:invalidation,
+      reason:'قدرت خریدار بیشتر از فروشنده است: '+buyerPower+'% در برابر '+sellerPower+'%',
+      riskPct:riskPct*100,buyerPower,sellerPower
     };
   }
 
-  var reasons=[];
-  if(!p)reasons.push('قیمت معتبر دریافت نشده');
-  if(!safe)reasons.push('امنیت HIGH/MAX نیست');
-  if(!volumeGood)reasons.push('حجم حداقل GOOD نیست');
-  if(!buyerOk)reasons.push('قدرت خریدار کمتر از حد ورود است');
-  if(!marketOk)reasons.push('نقدینگی/کیفیت بازار کافی نیست');
-  if(!notChasing)reasons.push('قیمت برای ورود کشیده است');
-  if(!(fullyConfirmed||earlyConfirmed))reasons.push('تأیید جریان/هولدر هنوز کافی نیست');
-  return {status:'WAIT',entry:null,entryLow:null,entryHigh:null,exit:invalidation,reason:reasons.slice(0,4).join(' • ')||'در انتظار تأیید',riskPct:riskPct*100};
+  if(sellerPower>buyerPower){
+    return {
+      status:'EXIT',entry:null,entryLow:null,entryHigh:null,exit:invalidation,
+      reason:'قدرت فروشنده بیشتر از خریدار است: '+sellerPower+'% در برابر '+buyerPower+'%',
+      riskPct:riskPct*100,buyerPower,sellerPower
+    };
+  }
+
+  return {
+    status:'WAIT',entry:null,entryLow:null,entryHigh:null,exit:invalidation,
+    reason:'قدرت خریدار و فروشنده برابر است',
+    riskPct:riskPct*100,buyerPower,sellerPower
+  };
 }
 function tradePlanChips(t){
   var p=tradePlan(t);
@@ -2041,10 +2035,7 @@ function featuredRows(){
     return {token:t,score:s,why:w,whale:wh,smart:sm,tracked:tr};
   }).filter(function(x){
     var tp=tradePlan(x.token);
-    return x.score>=78&&tp.status==='ENTRY'&&
-      (!x.token.chart||x.token.chart.pumpDumpRisk!=='HIGH')&&
-      (!x.token.academy||!x.token.academy.blocked)&&
-      !exitFor(x.token.mint).length;
+    return tp.status==='ENTRY';
   }).sort(function(a,b){
     var ac=tradePlan(a.token).confidence==='HIGH'?1:0,bc=tradePlan(b.token).confidence==='HIGH'?1:0;
     return (bc-ac)||(b.score-a.score);
