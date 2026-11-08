@@ -1924,7 +1924,7 @@ function fmtPrice(v){
 }
 function tradePlan(t){
   if(!t)return {status:'WAIT',entry:null,entryLow:null,entryHigh:null,exit:null,reason:'داده کافی نیست'};
-  var sec=t.security||{},fl=t.flow||{},tg=trustGuard(t);
+  var sec=t.security||{},fl=t.flow||{};
   var ws=whaleSellsFor(t.mint),ex=exitFor(t.mint);
   var p=Number(t.priceUsd||0);
   var buyerPower=Number(fl.buyerPower||0);
@@ -1933,46 +1933,61 @@ function tradePlan(t){
   var invalidation=p>0?p*(1-riskPct):null;
   var entryLow=p>0?p*0.99:null,entryHigh=p>0?p*1.01:null;
 
-  // Hard safety blocks still override flow direction.
-  var hardBlock=t.securityGate?.blocked===true||t.academy?.blocked===true||tg.status==='BLOCK'||ws.count>0||ex.length>0;
-  if(hardBlock)return {
-    status:'EXIT',entry:null,entryLow:null,entryHigh:null,exit:invalidation,
-    reason:'هشدار امنیتی/خروج فعال است',riskPct:riskPct*100,
-    buyerPower,sellerPower
-  };
+  // Only critical contract/holder/liquidity risks and live sell/exit events override flow.
+  var criticalSecurity=
+    sec.mintDisabled===false||
+    sec.freezeDisabled===false||
+    sec.holderPolicyPassed===false||
+    sec.tokenExtensions?.hardFail===true||
+    t.chart?.pumpDumpRisk==='HIGH'||
+    (Number(t.liquidity||0)>0&&Number(t.liquidity||0)<3000);
 
-  // Simple flow rule requested by user:
-  // buyers > sellers => ENTRY
-  // sellers > buyers => EXIT
-  // equal => WAIT
-  if(buyerPower>sellerPower){
+  if(criticalSecurity||ws.count>0||ex.length>0){
     return {
-      status:'ENTRY',confidence:buyerPower>=60?'HIGH':'MEDIUM',
-      entry:p||null,entryLow,entryHigh,exit:invalidation,
-      reason:'قدرت خریدار بیشتر از فروشنده است: '+buyerPower+'% در برابر '+sellerPower+'%',
+      status:'EXIT',entry:null,entryLow:null,entryHigh:null,exit:invalidation,
+      reason:criticalSecurity?'ریسک امنیتی جدی فعال است':'فروش نهنگ یا هشدار خروج زنده ثبت شده',
       riskPct:riskPct*100,buyerPower,sellerPower
     };
   }
 
+  if(!p){
+    return {
+      status:'WAIT',entry:null,entryLow:null,entryHigh:null,exit:null,
+      reason:'قیمت معتبر هنوز دریافت نشده',riskPct:riskPct*100,buyerPower,sellerPower
+    };
+  }
+
+  if(buyerPower>sellerPower){
+    var edge=buyerPower-sellerPower;
+    return {
+      status:'ENTRY',
+      confidence:buyerPower>=60?'HIGH':buyerPower>=55?'MEDIUM':'EARLY',
+      entry:p,entryLow,entryHigh,exit:invalidation,
+      reason:'قدرت خریدار بیشتر است: '+buyerPower+'% خریدار در برابر '+sellerPower+'% فروشنده · برتری '+edge+'%',
+      riskPct:riskPct*100,buyerPower,sellerPower,edge
+    };
+  }
+
   if(sellerPower>buyerPower){
+    var sellEdge=sellerPower-buyerPower;
     return {
       status:'EXIT',entry:null,entryLow:null,entryHigh:null,exit:invalidation,
-      reason:'قدرت فروشنده بیشتر از خریدار است: '+sellerPower+'% در برابر '+buyerPower+'%',
-      riskPct:riskPct*100,buyerPower,sellerPower
+      reason:'قدرت فروشنده بیشتر است: '+sellerPower+'% فروشنده در برابر '+buyerPower+'% خریدار · برتری '+sellEdge+'%',
+      riskPct:riskPct*100,buyerPower,sellerPower,edge:-sellEdge
     };
   }
 
   return {
     status:'WAIT',entry:null,entryLow:null,entryHigh:null,exit:invalidation,
     reason:'قدرت خریدار و فروشنده برابر است',
-    riskPct:riskPct*100,buyerPower,sellerPower
+    riskPct:riskPct*100,buyerPower,sellerPower,edge:0
   };
 }
 function tradePlanChips(t){
   var p=tradePlan(t);
   if(p.status==='ENTRY'){
     var zone=(p.entryLow&&p.entryHigh)?fmtPrice(p.entryLow)+' تا '+fmtPrice(p.entryHigh):fmtPrice(p.entry);
-    var label=p.confidence==='HIGH'?'🟢 نقطه ورود قوی':'🟡 نقطه ورود قابل‌بررسی';
+    var label=p.confidence==='HIGH'?'🟢 نقطه ورود قوی':p.confidence==='MEDIUM'?'🟢 نقطه ورود فعال':'🟡 ورود زودهنگام';
     return '<span class="entry-chip entry-ready">'+label+' · '+zone+'</span><span class="entry-chip entry-exit">🛑 خروج/ابطال · '+fmtPrice(p.exit)+'</span>';
   }
   if(p.status==='EXIT')return '<span class="entry-chip entry-exit">🔴 خروج / ورود نکن'+(p.exit?' · '+fmtPrice(p.exit):'')+'</span>';
@@ -2056,42 +2071,67 @@ function tokenRow(t,bucket){
 }
 
 function beginnerDecision(t,overallScore){
-  if(!t)return {label:'صبر کن',cls:'decision-wait',reason:'فعلاً سیگنال کامل و امنی وجود ندارد'};
-  var sec=t.security||{},gate=t.securityGate||{},sg=t.signals||{},wh=whaleFor(t.mint);
-  if(gate.blocked||sec.tier==='REJECT'||trustGuard(t).status==='BLOCK'||exitFor(t.mint).length)return {label:'ورود نکن',cls:'decision-stop',reason:'ریسک امنیتی، فشار فروش یا هشدار خروج فعال است'};
-  if(trustGuard(t).status!=='CONFIRMED')return {label:'صبر کن',cls:'decision-wait',reason:'Trust Guard هنوز پایداری هولدرها و جریان خرید را در چند اسکن تأیید نکرده'};
-  var strongWindows=[sg.short,sg.medium,sg.long].filter(function(x){return Number(x?.score||0)>=75&&x?.label!=='BLOCKED'&&x?.label!=='AVOID'}).length;
-  var flow=t.flow||{};
-  var autoSecure=t.academy&&Number(t.academy.manual||0)===0&&Number(t.academy.unknown||0)===0&&Number(t.academy.fail||0)===0;
-  var safe=(sec.tier==='MAX SECURITY'||sec.tier==='HIGH')&&autoSecure&&Number(t.liquidity||0)>=10000&&t.activity?.label!=='BOT RISK';
-  var flowOk=flow.volumeLabel==='STRONG'&&Number(flow.volumeScore||0)>=80&&flow.buyerDominant===true;
-  var bf=largeBuyerFlow(t),trackedOk=(bf.buyers+bf.sellers===0)||bf.dominant;
-  if(safe&&flowOk&&trackedOk&&strongWindows>=2&&Number(overallScore||0)>=78)return {label:'شرایط ورود قوی',cls:'decision-buy',reason:'امنیت بالا + حجم خوب + قدرت خریدار غالب + خریدارهای ۵۰۰$+ بیشتر از فروشنده‌ها (اگر داده ردیابی موجود باشد) + حداقل دو بازه زمانی قوی'};
-  return {label:'صبر کن',cls:'decision-wait',reason:'برای مبتدی بهتر است تا تکمیل تأییدها صبر شود'};
+  if(!t)return {label:'صبر کن',cls:'decision-wait',reason:'فعلاً توکن قابل‌ارزیابی وجود ندارد'};
+  var tp=tradePlan(t);
+  if(tp.status==='EXIT')return {label:'ورود نکن / خروج',cls:'decision-stop',reason:tp.reason};
+  if(tp.status==='WAIT')return {label:'صبر کن',cls:'decision-wait',reason:tp.reason};
+  if(tp.status==='ENTRY'){
+    return {
+      label:tp.confidence==='HIGH'?'نقطه ورود قوی':'نقطه ورود فعال',
+      cls:'decision-buy',
+      reason:tp.reason+' · امتیاز رتبه‌بندی '+Number(overallScore||0)+'/100'
+    };
+  }
+  return {label:'صبر کن',cls:'decision-wait',reason:'داده کافی نیست'};
 }
 function overallCandidates(){
   return tokens.map(function(t){
-    var gate=t.securityGate||{},sec=t.security||{},sg=t.signals||{},sh=sg.short||{},md=sg.medium||{},lg=sg.long||{};
-    if(gate.blocked||sec.tier==='REJECT'||t.flow?.volumeLabel!=='STRONG'||trustGuard(t).status!=='CONFIRMED'||tradePlan(t).status!=='ENTRY'||exitFor(t.mint).length)return null;
-    if(sec.tier!=='MAX SECURITY'&&sec.tier!=='HIGH')return null;
-    if(Number(sh.score||0)<60||Number(md.score||0)<60)return null;
-    var score=0;
-    score+=sec.tier==='MAX SECURITY'?30:22;
-    score+=Number(sh.score||0)*0.16+Number(md.score||0)*0.22+Number(lg.score||0)*0.22;
-    if(t.security&&t.security.holderStrong)score+=6;
-    if(t.activity&&t.activity.label==='PROBABLE ORGANIC')score+=5;
-    if(t.marketQuality&&t.marketQuality.score>=80)score+=5;
-    if(t.flow?.volumeLabel==='STRONG')score+=7; else if(t.flow?.volumeLabel==='GOOD')score+=4;
-    if(t.flow?.buyerDominant)score+=8; else if(t.flow?.sellerDominant)score-=10;
-    score+=Math.min(8,Number(t.socialHeat?.score||0)*0.10);
+    var tp=tradePlan(t);
+    if(tp.status!=='ENTRY')return null;
+
+    var sec=t.security||{},fl=t.flow||{},mq=t.marketQuality||{},sg=t.signals||{};
+    var score=0,reasons=[];
+
+    // Buyer/seller edge is the main ranking factor.
+    score+=Math.min(38,Math.max(0,Number(tp.buyerPower||0)-50)*1.9);
+    if(Number(tp.buyerPower||0)>=60){score+=10;reasons.push('قدرت خریدار 60%+')}
+    else if(Number(tp.buyerPower||0)>=55){score+=7;reasons.push('قدرت خریدار 55%+')}
+    else reasons.push('خریدار کمی غالب');
+
+    // Safety and market quality improve ranking, but do not re-disable valid flow entries.
+    if(sec.tier==='MAX SECURITY'){score+=18;reasons.push('امنیت خیلی بالا')}
+    else if(sec.tier==='HIGH'){score+=14;reasons.push('امنیت بالا')}
+    else if(sec.tier==='REVIEW')score+=6;
+
+    if(Number(t.liquidity||0)>=25000){score+=9;reasons.push('نقدینگی خوب')}
+    else if(Number(t.liquidity||0)>=10000)score+=6;
+    else if(Number(t.liquidity||0)>=3000)score+=3;
+
+    if(fl.volumeLabel==='STRONG'){score+=9;reasons.push('حجم قوی')}
+    else if(fl.volumeLabel==='GOOD'){score+=7;reasons.push('حجم خوب')}
+    else if(fl.volumeLabel==='MEDIUM')score+=4;
+
+    score+=Math.min(7,Number(mq.score||0)*0.07);
+    score+=Math.min(5,Number(t.socialHeat?.score||0)*0.05);
+
     var sm=smartFor(t.mint),wh=whaleFor(t.mint),tr=findTracked(t.mint);
-    if(sm)score+=4;if(wh.count)score+=4;if(tr&&tr.uniqueBuyers>=2&&tr.netFlowUsd>0)score+=5;
-    return {t:t,score:Math.min(100,Math.round(score)),sm:sm,wh:wh,tr:tr};
-  }).filter(Boolean).sort(function(a,b){return b.score-a.score});
+    if(wh.count){score+=Math.min(8,3+wh.count*2);reasons.push('خرید نهنگ')}
+    if(sm){score+=4;reasons.push('اسمارت‌مانی')}
+    if(tr&&Number(tr.uniqueBuyers||0)>Number(tr.uniqueSellers||0)){score+=4;reasons.push('کیف‌پول‌های ردیابی‌شده خریدار غالب')}
+
+    var shortScore=Number(sg.short?.score||0),medScore=Number(sg.medium?.score||0);
+    score+=Math.min(6,(shortScore+medScore)/40);
+
+    return {t:t,score:Math.min(100,Math.round(score)),sm:sm,wh:wh,tr:tr,reasons:reasons,tp:tp};
+  }).filter(Boolean).sort(function(a,b){
+    return (Number(b.tp?.buyerPower||0)-Number(a.tp?.buyerPower||0))||
+      (b.score-a.score)||
+      (Number(b.t?.liquidity||0)-Number(a.t?.liquidity||0));
+  });
 }
 function renderChampion(){
   var x=overallCandidates()[0],el=document.getElementById('championBox');
-  if(!x){el.innerHTML='<div class="muted">فعلاً توکنی نیست که هم امنیت بالا و هم حداقل دو بازه زمانی قوی را همزمان پاس کند.</div>';return}
+  if(!x){el.innerHTML='<div class="muted">فعلاً هیچ توکنی قدرت خریدار بیشتر از فروشنده و قیمت معتبر، بدون ریسک امنیتی جدی/هشدار خروج ندارد.</div>';return}
   var t=x.t,sg=t.signals||{},d=beginnerDecision(t,x.score);
   el.innerHTML='<div class="decision-banner '+d.cls+'">'+esc(d.label)+'<div class="beginner-note">'+esc(d.reason)+' · تضمین سود نیست و اندازه پوزیشن باید کوچک بماند.</div></div><div class="champion-grid">'+
     '<div class="asset"><b>'+esc(t.symbol||'?')+' · '+esc(t.name||'')+'</b>'+whaleTrendBadge(t)+socialTrendBadges(t)+tradePlanChips(t)+'<small>بدون هشدار خروج · امنیت '+esc(faSec(t.security?.tier))+'</small>'+socialButtons(t)+'</div>'+
