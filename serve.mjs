@@ -588,7 +588,7 @@ async function build(){
     const p=await pairFor(s.mint); if(!p)continue;
     const created=num(p.pairCreatedAt);
     const ageMinutes=created?Math.max(0,(Date.now()-created)/60000):9999;
-    if(ageMinutes>1440)continue;
+    if(ageMinutes>43200)continue;
     const sec=await security(s.mint);
     const buys5m=num(p.txns?.m5?.buys),sells5m=num(p.txns?.m5?.sells);
     const t={
@@ -651,6 +651,7 @@ async function build(){
     activityPolicy:{probableOrganicMin:72,highSecurityMin:58,method:'aggregate heuristics; not proof of human identity'},
     orderFlowPolicy:{buyerPower:'buy transaction count / total buy+sell transactions; not dollar buy volume',strongBuyer:'5m >=55% and 1h >=51% when available',volumeQuality:'absolute volume + tx count + volume/liquidity sanity check'},
     knowledgeEngine:{marketQuality:'transparency + liquidity + data coverage',chartDiscipline:'trend + FOMO + pump/dump guard',academy:'rug/honeypot/MEV/sniper/risk checklist; unknown checks stay manual'},
+    ageBuckets:{fresh:'0-24h',day:'24h-7d',week:'7d-30d discovery horizon'},
     signalWindows:{short:'5m-1h',medium:'1h-6h',long:'6h-24h',securityGate:'explicit failures block; unknown security data becomes CAUTION and caps confidence instead of auto-reject'},
     disclaimer:'قانون هولدرها: هولدر شماره 1 حداکثر 10% و هرکدام از هولدرهای شماره 2 تا 10 حداکثر 5% می‌توانند داشته باشند. مجموع Top10 فقط جهت اطلاع نمایش داده می‌شود و شرط رد نیست. Organic Activity یک تخمین ضدربات/ضدواش است. هیچ فیلتر آن‌چین کلاهبرداری را 100% رد نمی‌کند.'};
   cache={at:Date.now(),data};return data;
@@ -1097,10 +1098,10 @@ button,input,select,a.action{border:1px solid var(--line);background:#101d31;col
 .panel{display:none}.panel.active{display:block}.section-title{display:flex;justify-content:space-between;gap:10px;align-items:end;margin:6px 0 9px}.section-title h2{margin:0;font-size:18px}.section-title p{margin:3px 0 0;color:var(--muted);font-size:11px}
 .list{display:grid;gap:7px}.row{display:grid;grid-template-columns:minmax(175px,1.6fr) repeat(5,minmax(80px,.7fr)) auto;gap:7px;align-items:center;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:9px}.asset{min-width:0}.asset b{font-size:14px}.asset small{display:block;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:3px;font-size:10px}.cell small{display:block;color:var(--muted);font-size:9px}.cell b{font-size:13px}.actions{display:flex;gap:4px}.actions a,.actions button{font-size:11px;padding:6px 7px;text-decoration:none}
 .badge{display:inline-flex;padding:3px 6px;border-radius:999px;font-size:10px;font-weight:700}.good{background:#123a2d;color:var(--good)}.mid{background:#3b3317;color:var(--warn)}.bad{background:#421a24;color:var(--bad)}.blue{background:#152d49;color:var(--blue)}
-.empty{background:var(--panel);border:1px dashed var(--line);border-radius:12px;padding:22px;text-align:center;color:var(--muted);font-size:12px}
+.empty{background:var(--panel);border:1px dashed var(--line);border-radius:12px;padding:22px;text-align:center;color:var(--muted);font-size:12px}.bucket-best{border:1px solid #34745e;background:linear-gradient(135deg,#102b27,#101f35);border-radius:12px;padding:10px;margin-bottom:10px}.bucket-best-title{font-size:12px;color:var(--muted);font-weight:800}.bucket-best-main{display:grid;grid-template-columns:1.5fr repeat(4,.7fr) auto;gap:8px;align-items:center;margin-top:7px}.bucket-score{font-size:22px;font-weight:900;color:var(--good)}.age-chip{display:inline-flex;padding:3px 7px;border-radius:999px;background:#152d49;color:var(--blue);font-size:10px;font-weight:800;margin-top:5px}
 .three{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}.mini{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:10px}.mini h3{font-size:15px;margin:0 0 9px;font-weight:900}.mini-row{display:flex;justify-content:space-between;gap:8px;padding:6px 0;border-top:1px solid #182b45;font-size:11px}.mini-row:first-of-type{border-top:0}.mini-row span{color:var(--muted)}.portfolio-item{padding:8px 0;border-top:1px solid #1b304b}.portfolio-item:first-child{border-top:0}.portfolio-top{display:flex;justify-content:space-between;gap:8px;font-size:12px}.portfolio-bar{height:6px;background:#15263d;border-radius:999px;overflow:hidden;margin-top:5px}.portfolio-fill{height:100%;background:#3d8f72;border-radius:999px}.portfolio-meta{display:flex;justify-content:space-between;gap:8px;color:var(--muted);font-size:10px;margin-top:4px}
 dialog{width:min(720px,94vw);max-height:88vh;border:1px solid #36506e;border-radius:15px;background:#091426;color:var(--text);padding:0;box-shadow:0 30px 90px #0009}dialog::backdrop{background:#000a}.modal-head{position:sticky;top:0;background:#091426;border-bottom:1px solid var(--line);padding:12px 14px;display:flex;justify-content:space-between;align-items:center}.modal-body{padding:13px}.modal-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:7px}.box{background:#0f1d31;border:1px solid var(--line);border-radius:10px;padding:8px}.box small{display:block;color:var(--muted);font-size:9px}.box b{display:block;margin-top:3px;font-size:12px}.holders{margin-top:11px}.holder,.check{display:flex;justify-content:space-between;gap:7px;padding:6px 0;border-top:1px solid var(--line);font-size:11px}.holder a{color:var(--blue);text-decoration:none}.links{display:flex;flex-wrap:wrap;gap:5px;margin-top:11px}.links a{color:#b5ddff;text-decoration:none;border:1px solid #315071;background:#10243b;padding:6px 8px;border-radius:8px;font-size:11px}.note{margin-top:10px;color:var(--muted);font-size:11px;line-height:1.65}.pass{color:var(--good)}.fail{color:var(--bad)}.manual{color:var(--warn)}
-@media(max-width:900px){.champion-grid{grid-template-columns:1fr 1fr}.champion-grid .asset,.champion-grid .actions{grid-column:1/-1}.row{grid-template-columns:1.5fr repeat(3,.8fr) auto}.hide-md{display:none}.three{grid-template-columns:1fr}.kpis{grid-template-columns:repeat(2,1fr)}}
+@media(max-width:900px){.bucket-best-main{grid-template-columns:1fr 1fr}.bucket-best-main .asset,.bucket-best-main .actions{grid-column:1/-1}.champion-grid{grid-template-columns:1fr 1fr}.champion-grid .asset,.champion-grid .actions{grid-column:1/-1}.row{grid-template-columns:1.5fr repeat(3,.8fr) auto}.hide-md{display:none}.three{grid-template-columns:1fr}.kpis{grid-template-columns:repeat(2,1fr)}}
 @media(max-width:620px){.whale-summary{grid-template-columns:1fr}.subfilters{grid-template-columns:1fr 1fr}.head{padding:9px 10px}.shell{padding:10px}.brand small,.status{display:none}.row{grid-template-columns:1fr 1fr}.asset,.actions{grid-column:1/-1}.hide-sm{display:none}.modal-grid{grid-template-columns:repeat(2,1fr)}}
 </style>
 </head>
@@ -1221,14 +1222,26 @@ dialog{width:min(720px,94vw);max-height:88vh;border:1px solid #36506e;border-rad
 </section>
 
 <section class="panel" id="tokensPanel">
-  <details class="accordion" open>
-    <summary>🪙 همه توکن‌ها</summary>
-    <div class="accordion-body"><p class="muted" style="font-size:11px">سه سیگنال زمانی + امنیت و هولدرها برای همه توکن‌های کشف‌شده رادار.</p><div class="subfilters">
+  <details class="accordion">
+    <summary>🎛 فیلتر مشترک سه گروه</summary>
+    <div class="accordion-body"><div class="subfilters">
 <label>کوتاه‌مدت<select class="signal-filter" data-filter="short"><option value="">همه</option><option value="STRONG">قوی</option><option value="POSITIVE">مثبت</option><option value="NEUTRAL">خنثی</option><option value="WAIT_DATA">داده ناکافی</option><option value="AVOID">ورود نکن</option><option value="BLOCKED">مسدود امنیتی</option></select></label>
 <label>میان‌مدت<select class="signal-filter" data-filter="medium"><option value="">همه</option><option value="STRONG">قوی</option><option value="POSITIVE">مثبت</option><option value="NEUTRAL">خنثی</option><option value="WAIT_DATA">داده ناکافی</option><option value="AVOID">ورود نکن</option><option value="BLOCKED">مسدود امنیتی</option></select></label>
 <label>بلندمدت<select class="signal-filter" data-filter="long"><option value="">همه</option><option value="STRONG">قوی</option><option value="POSITIVE">مثبت</option><option value="NEUTRAL">خنثی</option><option value="WAIT_DATA">داده ناکافی</option><option value="AVOID">ورود نکن</option><option value="BLOCKED">مسدود امنیتی</option></select></label>
 <label>امنیت<select class="signal-filter" data-filter="security"><option value="">همه</option><option value="MAX SECURITY">خیلی بالا</option><option value="HIGH">بالا</option><option value="REVIEW">نیاز به بررسی</option><option value="REJECT">رد</option></select></label>
-</div><div class="list" id="tokenList"></div></div>
+</div><p class="muted" style="font-size:11px">رتبه هر گروه با مدل امتیاز مخصوص همان سن محاسبه می‌شود.</p></div>
+  </details>
+  <details class="accordion" open>
+    <summary>⚡ توکن‌های تازه و ترند — کمتر از ۲۴ ساعت</summary>
+    <div class="accordion-body"><div id="freshBest"></div><div class="list" id="freshTokenList"></div></div>
+  </details>
+  <details class="accordion" open>
+    <summary>🌱 توکن‌های ۱ تا ۷ روزه</summary>
+    <div class="accordion-body"><div id="dayBest"></div><div class="list" id="dayTokenList"></div></div>
+  </details>
+  <details class="accordion" open>
+    <summary>🧱 توکن‌های ۷ روزه به بالا</summary>
+    <div class="accordion-body"><div id="weekBest"></div><div class="list" id="weekTokenList"></div><div class="note">دامنه کشف فعلی رادار تا حدود ۳۰ روز است؛ اگر منابع کشف، توکن قدیمی‌تر را برنگردانند در این بخش ظاهر نمی‌شود.</div></div>
   </details>
 </section>
 </main>
@@ -1264,6 +1277,48 @@ function tokenStrength(t){
   var secScore=sec.tier==='MAX SECURITY'?30:sec.tier==='HIGH'?22:sec.tier==='REVIEW'?8:0;
   return secScore+Number(sg.short?.score||0)*0.27+Number(sg.medium?.score||0)*0.31+Number(sg.long?.score||0)*0.25+Number(t.socialHeat?.score||0)*0.10+(t.activity?.label==='PROBABLE ORGANIC'?5:0)+(sec.holderStrong?5:0);
 }
+function ageBucket(t){
+  var a=Number(t&&t.ageMinutes||0);
+  if(a<1440)return 'fresh';
+  if(a<10080)return 'day';
+  return 'week';
+}
+function ageText(t){
+  var m=Number(t&&t.ageMinutes||0);
+  if(m<60)return Math.round(m)+' دقیقه';
+  if(m<1440)return (m/60).toFixed(m<360?1:0)+' ساعت';
+  return (m/1440).toFixed(m<4320?1:0)+' روز';
+}
+function bucketScore(t,bucket){
+  if(!t)return 0;
+  var sec=t.security||{},sg=t.signals||{},fl=t.flow||{},mq=t.marketQuality||{},sh=Number(sg.short?.score||0),md=Number(sg.medium?.score||0),lg=Number(sg.long?.score||0);
+  if(t.securityGate?.blocked||sec.tier==='REJECT')return Math.min(39,Math.round((sh+md+lg)/12));
+  var security=sec.tier==='MAX SECURITY'?100:sec.tier==='HIGH'?86:sec.tier==='REVIEW'?55:20;
+  var buyer=Number(fl.buyerPower||50),volume=Number(fl.volumeScore||0),social=Number(t.socialHeat?.score||0),market=Number(mq.score||0);
+  var score=0;
+  if(bucket==='fresh')score=security*.18+sh*.22+md*.12+lg*.05+buyer*.13+volume*.12+social*.13+market*.05;
+  else if(bucket==='day')score=security*.22+sh*.10+md*.18+lg*.15+buyer*.12+volume*.12+social*.06+market*.05;
+  else score=security*.28+sh*.05+md*.13+lg*.22+buyer*.10+volume*.08+social*.04+market*.10;
+  var wh=whaleFor(t.mint),tr=findTracked(t.mint),sm=smartFor(t.mint);
+  if(wh.count)score+=3;if(tr&&Number(tr.uniqueBuyers||0)>=2&&Number(tr.netFlowUsd||0)>0)score+=3;if(sm)score+=2;
+  if(exitFor(t.mint).length)score-=18;
+  if(fl.sellerDominant)score-=8;
+  if(fl.volumeLabel==='SUSPICIOUS')score-=12;
+  return Math.max(0,Math.min(100,Math.round(score)));
+}
+function bucketSignalLabel(score,t){
+  if(t&&t.securityGate?.blocked)return 'رد امنیتی';
+  if(score>=85)return 'سیگنال بسیار قوی';
+  if(score>=75)return 'سیگنال قوی';
+  if(score>=65)return 'مثبت';
+  if(score>=50)return 'صبر / بررسی';
+  return 'ضعیف';
+}
+function bucketSignalClass(score,t){
+  if(t&&t.securityGate?.blocked)return 'bad';
+  return score>=75?'good':score>=50?'mid':'bad';
+}
+
 function passesSignalFilters(t){
   var any=signalFilters.short||signalFilters.medium||signalFilters.long||signalFilters.security;
   if(!t)return !any;
@@ -1320,14 +1375,14 @@ function featuredRows(){
     .sort(function(a,b){return b.score-a.score}).slice(0,8);
 }
 
-function tokenRow(t){
-  var s=t.security||{},g=t.securityGate||{},sg=t.signals||{},sh=sg.short||{},md=sg.medium||{},lg=sg.long||{},fl=t.flow||{};
+function tokenRow(t,bucket){
+  var s=t.security||{},sg=t.signals||{},sh=sg.short||{},md=sg.medium||{},lg=sg.long||{},fl=t.flow||{},bs=bucketScore(t,bucket||ageBucket(t));
   return '<div class="row">'+
-  '<div class="asset"><b>'+esc(t.symbol||'?')+' · '+esc(t.name||'')+'</b><small>'+esc(short(t.mint))+'</small>'+socialButtons(t)+'</div>'+
-  '<div class="cell"><small>کوتاه</small><b><span class="badge '+signalClass(sh.label)+'">'+esc(faSignal(sh.label))+' '+Number(sh.score||0)+'</span></b></div>'+
-  '<div class="cell"><small>میان</small><b><span class="badge '+signalClass(md.label)+'">'+esc(faSignal(md.label))+' '+Number(md.score||0)+'</span></b></div>'+
-  '<div class="cell"><small>بلند</small><b><span class="badge '+signalClass(lg.label)+'">'+esc(faSignal(lg.label))+' '+Number(lg.score||0)+'</span></b></div>'+
-  '<div class="cell hide-sm"><small>قدرت خریدار</small><b><span class="badge '+pressureClass(t)+'">'+(fl.buyerPower==null?'—':Number(fl.buyerPower)+'%')+'</span></b></div>'+
+  '<div class="asset"><b>'+esc(t.symbol||'?')+' · '+esc(t.name||'')+'</b><span class="age-chip">'+esc(ageText(t))+'</span><small>'+esc(short(t.mint))+'</small>'+socialButtons(t)+'</div>'+
+  '<div class="cell"><small>امتیاز گروه</small><b><span class="badge '+bucketSignalClass(bs,t)+'">'+bs+'/100</span></b></div>'+
+  '<div class="cell"><small>کوتاه / میان / بلند</small><b>'+Number(sh.score||0)+' / '+Number(md.score||0)+' / '+Number(lg.score||0)+'</b></div>'+
+  '<div class="cell"><small>قدرت خریدار</small><b><span class="badge '+pressureClass(t)+'">'+(fl.buyerPower==null?'—':Number(fl.buyerPower)+'%')+'</span></b></div>'+
+  '<div class="cell hide-sm"><small>امنیت</small><b><span class="badge '+secClass(s.tier)+'">'+esc(faSec(s.tier))+'</span></b></div>'+
   '<div class="cell hide-md"><small>حجم</small><b><span class="badge '+volumeClass(fl.volumeLabel)+'">'+esc(faVolume(fl.volumeLabel))+'</span></b></div>'+
   '<div class="actions"><a class="action" target="_blank" rel="noopener" href="'+esc(dexUrl(t.mint,t.dexUrl))+'">📈 چارت</a><button class="detail-btn" data-mint="'+esc(t.mint)+'">جزئیات</button></div></div>';
 }
@@ -1502,7 +1557,31 @@ function filteredTokens(){
   var q=document.getElementById('search').value.toLowerCase().trim(),sf=document.getElementById('securityFilter').value,af=document.getElementById('activityFilter').value;
   return tokens.filter(function(t){return (!q||[t.name,t.symbol,t.mint].join(' ').toLowerCase().includes(q))&&(!sf||(t.security&&t.security.tier===sf))&&(!af||(t.activity&&t.activity.label===af))&&passesSignalFilters(t)}).sort(function(a,b){return tokenStrength(b)-tokenStrength(a)});
 }
-function renderTokens(){var r=filteredTokens();document.getElementById('tokenList').innerHTML=r.length?r.map(tokenRow).join(''):'<div class="empty">موردی با این فیلترها نیست.</div>'}
+function renderBucketBest(id,rows,bucket,title){
+  var el=document.getElementById(id);if(!el)return;
+  if(!rows.length){el.innerHTML='<div class="empty">فعلاً توکنی در این بازه پیدا نشده.</div>';return}
+  var t=rows[0],bs=bucketScore(t,bucket),sg=t.signals||{},fl=t.flow||{};
+  el.innerHTML='<div class="bucket-best"><div class="bucket-best-title">🏆 بهترین توکن '+esc(title)+' — رتبه ۱ این گروه</div><div class="bucket-best-main">'+
+    '<div class="asset"><b>'+esc(t.symbol||'?')+' · '+esc(t.name||'')+'</b><span class="age-chip">'+esc(ageText(t))+'</span><small>'+esc(bucketSignalLabel(bs,t))+'</small>'+socialButtons(t)+'</div>'+
+    '<div><small class="muted">امتیاز نهایی</small><div class="bucket-score">'+bs+'/100</div></div>'+
+    '<div class="cell"><small>قدرت خریدار</small><b>'+Number(fl.buyerPower||0)+'%</b></div>'+
+    '<div class="cell"><small>حجم</small><b>'+esc(faVolume(fl.volumeLabel))+'</b></div>'+
+    '<div class="cell"><small>امنیت</small><b>'+esc(faSec(t.security?.tier))+'</b></div>'+
+    '<div class="actions"><a class="action" target="_blank" rel="noopener" href="'+esc(dexUrl(t.mint,t.dexUrl))+'">📈 چارت</a><button class="detail-btn" data-mint="'+esc(t.mint)+'">جزئیات</button></div>'+
+  '</div></div>';
+}
+function renderTokens(){
+  var r=filteredTokens();
+  var fresh=r.filter(function(t){return ageBucket(t)==='fresh'}).sort(function(a,b){return bucketScore(b,'fresh')-bucketScore(a,'fresh')});
+  var day=r.filter(function(t){return ageBucket(t)==='day'}).sort(function(a,b){return bucketScore(b,'day')-bucketScore(a,'day')});
+  var week=r.filter(function(t){return ageBucket(t)==='week'}).sort(function(a,b){return bucketScore(b,'week')-bucketScore(a,'week')});
+  renderBucketBest('freshBest',fresh,'fresh','تازه و ترند');
+  renderBucketBest('dayBest',day,'day','۱ تا ۷ روزه');
+  renderBucketBest('weekBest',week,'week','۷ روزه+');
+  document.getElementById('freshTokenList').innerHTML=fresh.length?fresh.map(function(t){return tokenRow(t,'fresh')}).join(''):'';
+  document.getElementById('dayTokenList').innerHTML=day.length?day.map(function(t){return tokenRow(t,'day')}).join(''):'';
+  document.getElementById('weekTokenList').innerHTML=week.length?week.map(function(t){return tokenRow(t,'week')}).join(''):'';
+}
 function renderAlerts(){
   var c=live&&live.exitClusters?live.exitClusters.filter(function(x){return x.severity==='MULTI-WALLET EXIT'}).slice(0,3):[];
   document.getElementById('kExits').textContent=c.length;document.getElementById('alerts').innerHTML=c.map(function(x){return '<div class="alert">🚨 خروج همزمان چند کیف‌پول از <b>'+esc(x.token||short(x.tokenAddress))+'</b> · '+Number(x.uniqueSellers||0)+' فروشنده</div>'}).join('');
