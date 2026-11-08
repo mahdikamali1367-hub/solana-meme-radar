@@ -945,6 +945,10 @@ button,input,select,a.action{border:1px solid var(--line);background:#101d31;col
 .champion{background:linear-gradient(135deg,#102b27,#101f35);border:1px solid #34745e;border-radius:14px;padding:12px;margin-bottom:10px}.champion h2{font-size:15px;margin:0 0 6px}.champion .score{font-size:24px;font-weight:900;color:var(--good)}.champion-grid{display:grid;grid-template-columns:1.4fr repeat(4,.7fr) auto;gap:8px;align-items:center}.alerts{display:grid;gap:6px;margin-bottom:9px}.alert{padding:8px 10px;border:1px solid #703343;background:#25151d;color:#ffb0bd;border-radius:10px;font-size:12px}
 .tabs{display:flex;gap:6px;overflow:auto;scrollbar-width:none;margin-bottom:10px}.tab{white-space:nowrap}.tab.active{background:#193759;border-color:#3d709f;color:#c0e1ff}
 .toolbar{display:flex;gap:7px;flex-wrap:wrap;margin-bottom:10px}.toolbar input{flex:1;min-width:220px}.toolbar select{min-width:140px}
+.accordion{background:var(--panel);border:1px solid var(--line);border-radius:12px;margin-bottom:9px;overflow:hidden}
+.accordion>summary{list-style:none;cursor:pointer;padding:10px 12px;font-weight:800;font-size:13px;display:flex;align-items:center;justify-content:space-between;gap:8px;user-select:none}
+.accordion>summary::-webkit-details-marker{display:none}.accordion>summary:after{content:'⌄';color:var(--muted);transition:transform .15s ease}.accordion[open]>summary:after{transform:rotate(180deg)}
+.accordion-body{padding:0 10px 10px}.accordion .kpis{margin:0}.accordion .toolbar{margin:0}.accordion.highlight{border-color:#34745e;background:linear-gradient(135deg,#0e241f,#0d1729)}
 .panel{display:none}.panel.active{display:block}.section-title{display:flex;justify-content:space-between;gap:10px;align-items:end;margin:6px 0 9px}.section-title h2{margin:0;font-size:16px}.section-title p{margin:3px 0 0;color:var(--muted);font-size:11px}
 .list{display:grid;gap:7px}.row{display:grid;grid-template-columns:minmax(175px,1.6fr) repeat(5,minmax(80px,.7fr)) auto;gap:7px;align-items:center;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:9px}.asset{min-width:0}.asset b{font-size:13px}.asset small{display:block;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:3px;font-size:10px}.cell small{display:block;color:var(--muted);font-size:9px}.cell b{font-size:12px}.actions{display:flex;gap:4px}.actions a,.actions button{font-size:11px;padding:6px 7px;text-decoration:none}
 .badge{display:inline-flex;padding:3px 6px;border-radius:999px;font-size:10px;font-weight:700}.good{background:#123a2d;color:var(--good)}.mid{background:#3b3317;color:var(--warn)}.bad{background:#421a24;color:var(--bad)}.blue{background:#152d49;color:var(--blue)}
@@ -964,14 +968,24 @@ dialog{width:min(720px,94vw);max-height:88vh;border:1px solid #36506e;border-rad
 </header>
 
 <main class="shell">
-<section class="kpis">
-  <div class="kpi"><small>توکن‌ها</small><b id="kTokens">—</b></div>
-  <div class="kpi"><small>پیشنهاد ۹۰+</small><b id="kFeatured">—</b></div>
-  <div class="kpi"><small>خرید نهنگ</small><b id="kWhales">—</b></div>
-  <div class="kpi"><small>خروج همزمان</small><b id="kExits">—</b></div>
-</section>
+<details class="accordion" open>
+  <summary>📊 خلاصه رادار</summary>
+  <div class="accordion-body"><section class="kpis">
+    <div class="kpi"><small>توکن‌ها</small><b id="kTokens">—</b></div>
+    <div class="kpi"><small>پیشنهاد ۹۰+</small><b id="kFeatured">—</b></div>
+    <div class="kpi"><small>خرید نهنگ</small><b id="kWhales">—</b></div>
+    <div class="kpi"><small>خروج همزمان</small><b id="kExits">—</b></div>
+  </section></div>
+</details>
 
-<div id="championBox"></div><div class="alerts" id="alerts"></div>
+<details class="accordion highlight" open>
+  <summary>🏆 بهترین سیگنال کل رادار</summary>
+  <div class="accordion-body" id="championBox"></div>
+</details>
+<details class="accordion">
+  <summary>🚨 هشدارهای خروج و فروش</summary>
+  <div class="accordion-body"><div class="alerts" id="alerts"></div></div>
+</details>
 
 <nav class="tabs" id="tabs">
   <button class="tab active" data-tab="featured">🔥 پیشنهادها</button>
@@ -981,41 +995,68 @@ dialog{width:min(720px,94vw);max-height:88vh;border:1px solid #36506e;border-rad
   <button class="tab" data-tab="tokens">🪙 همه توکن‌ها</button>
 </nav>
 
-<div class="toolbar">
-  <input id="search" placeholder="جستجو نام، نماد یا آدرس">
-  <select id="securityFilter"><option value="">همه امنیت‌ها</option><option value="MAX SECURITY">امنیت خیلی بالا</option><option value="HIGH">امنیت بالا</option></select>
-  <select id="activityFilter"><option value="">همه فعالیت‌ها</option><option value="PROBABLE ORGANIC">فعالیت طبیعی</option><option value="BOT RISK">ریسک ربات</option></select>
-</div>
+<details class="accordion">
+  <summary>🔎 جستجو و فیلترها</summary>
+  <div class="accordion-body"><div class="toolbar">
+    <input id="search" placeholder="جستجو نام، نماد یا آدرس">
+    <select id="securityFilter"><option value="">همه امنیت‌ها</option><option value="MAX SECURITY">امنیت خیلی بالا</option><option value="HIGH">امنیت بالا</option></select>
+    <select id="activityFilter"><option value="">همه فعالیت‌ها</option><option value="PROBABLE ORGANIC">فعالیت طبیعی</option><option value="BOT RISK">ریسک ربات</option></select>
+  </div></div>
+</details>
 
 <section class="panel active" id="featuredPanel">
-  <div class="section-title"><div><h2>پیشنهادهای اولویت‌دار</h2><p>امتیاز ۹۰/۱۰۰+؛ این عدد احتمال قطعی پامپ نیست.</p></div></div>
-  <div class="list" id="featuredList"></div>
+  <details class="accordion" open>
+    <summary>🔥 پیشنهادهای اولویت‌دار</summary>
+    <div class="accordion-body"><p class="muted" style="font-size:11px">امتیاز ۹۰/۱۰۰+؛ این عدد احتمال قطعی پامپ نیست.</p><div class="list" id="featuredList"></div></div>
+  </details>
 </section>
 
 <section class="panel" id="whalesPanel">
-  <div class="section-title"><div><h2>نهنگ‌ها</h2><p>خرید بزرگ اخیر و هشدار خروج.</p></div></div>
-  <div class="list" id="whaleList"></div>
+  <details class="accordion" open>
+    <summary>🐋 خریدهای نهنگ</summary>
+    <div class="accordion-body"><p class="muted" style="font-size:11px">خرید بزرگ اخیر و هشدار خروج.</p><div class="list" id="whaleList"></div></div>
+  </details>
 </section>
 
 <section class="panel" id="smartPanel">
-  <div class="section-title"><div><h2>اسمارت‌مانی</h2><p id="smartStatus">در حال دریافت…</p></div></div>
-  <div class="list" id="smartList"></div>
+  <details class="accordion" open>
+    <summary>🧠 اسمارت‌مانی</summary>
+    <div class="accordion-body"><p class="muted" id="smartStatus" style="font-size:11px">در حال دریافت…</p><div class="list" id="smartList"></div></div>
+  </details>
 </section>
 
 <section class="panel" id="walletsPanel">
-  <div class="section-title"><div><h2>۱۲ کیف‌پول برتر</h2><p id="walletStatus">در حال اسکن آن‌چین…</p></div></div>
-  <div class="three">
-    <div class="mini"><h3>💰 بیشترین سرمایه کل کیف‌پول‌ها</h3><div id="topHoldings"></div></div>
-    <div class="mini"><h3>🟢 بیشترین خرید خالص</h3><div id="topBuys"></div></div>
-    <div class="mini"><h3>🤝 خرید همزمان</h3><div id="consensus"></div></div>
-  </div>
-  <div class="section-title" style="margin-top:13px"><div><h2>🧱 سودده‌هایی که ۷ روز+ هنوز نگه داشته‌اند</h2><p>از پروفایل‌های آن‌چین عمومی KOL Explorer؛ فروش جزئی ممکن است رخ داده باشد.</p></div></div><div class="list" id="convictionList"></div><div class="section-title" style="margin-top:13px"><div><h2>خود کیف‌پول‌ها</h2><p>آخرین حرکت و لینک بررسی.</p></div></div>
-  <div class="list" id="walletList"></div>
+  <details class="accordion" open>
+    <summary>🏆 وضعیت کیف‌پول‌های برتر</summary>
+    <div class="accordion-body"><p class="muted" id="walletStatus" style="font-size:11px">در حال اسکن آن‌چین…</p></div>
+  </details>
+  <details class="accordion" open>
+    <summary>💰 بیشترین سرمایه کل کیف‌پول‌ها</summary>
+    <div class="accordion-body"><div id="topHoldings"></div></div>
+  </details>
+  <details class="accordion">
+    <summary>🟢 بیشترین خرید خالص</summary>
+    <div class="accordion-body"><div id="topBuys"></div></div>
+  </details>
+  <details class="accordion">
+    <summary>🤝 خرید همزمان چند کیف‌پول</summary>
+    <div class="accordion-body"><div id="consensus"></div></div>
+  </details>
+  <details class="accordion" open>
+    <summary>🧱 کیف‌پول‌های سودده با هولد ۷ روز+</summary>
+    <div class="accordion-body"><p class="muted" style="font-size:11px">فروش جزئی ممکن است رخ داده باشد؛ برای تأیید نهایی تاریخچه را بررسی کن.</p><div class="list" id="convictionList"></div></div>
+  </details>
+  <details class="accordion">
+    <summary>👛 فهرست کیف‌پول‌ها و آخرین حرکت</summary>
+    <div class="accordion-body"><div class="list" id="walletList"></div></div>
+  </details>
 </section>
 
 <section class="panel" id="tokensPanel">
-  <div class="section-title"><div><h2>همه توکن‌ها</h2><p>سه سیگنال زمانی + امنیت و هولدرها برای همه توکن‌های کشف‌شده رادار.</p></div></div>
-  <div class="list" id="tokenList"></div>
+  <details class="accordion" open>
+    <summary>🪙 همه توکن‌ها</summary>
+    <div class="accordion-body"><p class="muted" style="font-size:11px">سه سیگنال زمانی + امنیت و هولدرها برای همه توکن‌های کشف‌شده رادار.</p><div class="list" id="tokenList"></div></div>
+  </details>
 </section>
 </main>
 
@@ -1104,9 +1145,9 @@ function overallCandidates(){
 }
 function renderChampion(){
   var x=overallCandidates()[0],el=document.getElementById('championBox');
-  if(!x){el.innerHTML='<div class="champion"><h2>🏆 بهترین سیگنال کل رادار</h2><div class="muted">فعلاً توکنی نیست که هم امنیت بالا و هم حداقل دو بازه زمانی قوی را همزمان پاس کند.</div></div>';return}
+  if(!x){el.innerHTML='<div class="muted">فعلاً توکنی نیست که هم امنیت بالا و هم حداقل دو بازه زمانی قوی را همزمان پاس کند.</div>';return}
   var t=x.t,sg=t.signals||{};
-  el.innerHTML='<div class="champion"><h2>🏆 بهترین سیگنال کل رادار</h2><div class="champion-grid">'+
+  el.innerHTML='<div class="champion-grid">'+
     '<div class="asset"><b>'+esc(t.symbol||'?')+' · '+esc(t.name||'')+'</b><small>بدون هشدار خروج · امنیت '+esc(faSec(t.security?.tier))+'</small></div>'+
     '<div><small class="muted">امتیاز کل</small><div class="score">'+x.score+'/100</div></div>'+
     '<div class="cell"><small>کوتاه</small><b>'+Number(sg.short?.score||0)+'</b></div>'+
@@ -1205,8 +1246,8 @@ function openDetail(m){
   if(t){
     var s=t.security||{},a=t.activity||{},mq=t.marketQuality||{},ch=t.chart||{},ac=t.academy||{};
     h+='<div class="modal-grid"><div class="box"><small>امنیت</small><b>'+esc(faSec(s.tier))+' · '+Number(s.score||0)+'/100</b></div><div class="box"><small>فعالیت</small><b>'+esc(faAct(a.label))+' · '+Number(a.score||0)+'/100</b></div><div class="box"><small>ترند</small><b>'+Number(t.trend&&t.trend.score||0)+'/100</b></div><div class="box"><small>Market Cap</small><b>'+money(t.marketCap)+'</b></div><div class="box"><small>Liquidity</small><b>'+money(t.liquidity)+'</b></div><div class="box"><small>Vol 5m</small><b>'+money(t.volume5m)+'</b></div><div class="box"><small>هولدر #1</small><b>'+pct(s.largestHolder)+'</b></div><div class="box"><small>بیشترین 2-10</small><b>'+pct(s.maxOtherHolder)+'</b></div><div class="box"><small>Top10</small><b>'+pct(s.top10)+'</b></div><div class="box"><small>کیفیت بازار</small><b>'+Number(mq.score||0)+'/100</b></div><div class="box"><small>FOMO</small><b>'+esc(ch.fomoRisk||'—')+'</b></div><div class="box"><small>Pump/Dump</small><b>'+esc(ch.pumpDumpRisk||'—')+'</b></div></div>';
-    h+='<div class="holders"><b>هولدرهای بزرگ</b>'+(s.topHolders&&s.topHolders.length?s.topHolders.slice(0,10).map(function(x,i){return '<div class="holder"><span>#'+(i+1)+' · '+pct(x.pct)+'</span><a target="_blank" rel="noopener" href="https://solscan.io/account/'+esc(x.owner)+'">'+esc(short(x.owner))+'</a></div>'}).join(''):'<div class="note">داده هولدر موجود نیست.</div>')+'</div>';
-    if(ac.checks&&ac.checks.length)h+='<div class="holders"><b>چک‌لیست امنیتی</b>'+ac.checks.map(function(c){return '<div class="check"><span>'+esc(c.name)+'</span>'+stateLabel(c.state)+'</div>'}).join('')+'</div>';
+    h+='<details class="accordion" open><summary>👥 هولدرهای بزرگ</summary><div class="accordion-body">'+(s.topHolders&&s.topHolders.length?s.topHolders.slice(0,10).map(function(x,i){return '<div class="holder"><span>#'+(i+1)+' · '+pct(x.pct)+'</span><a target="_blank" rel="noopener" href="https://solscan.io/account/'+esc(x.owner)+'">'+esc(short(x.owner))+'</a></div>'}).join(''):'<div class="note">داده هولدر موجود نیست.</div>')+'</div></details>';
+    if(ac.checks&&ac.checks.length)h+='<details class="accordion"><summary>🛡 چک‌لیست امنیتی</summary><div class="accordion-body">'+ac.checks.map(function(c){return '<div class="check"><span>'+esc(c.name)+'</span>'+stateLabel(c.state)+'</div>'}).join('')+'</div></details>';
   }
   if(tr)h+='<div class="note"><b>کیف‌پول‌های برتر:</b> '+Number(tr.uniqueBuyers||0)+' خریدار، '+Number(tr.uniqueSellers||0)+' فروشنده، جریان خالص '+money(tr.netFlowUsd)+'، هولدینگ '+money(tr.currentHoldingUsd)+'</div>';
   if(sm)h+='<div class="note"><b>اسمارت‌مانی:</b> '+Number(sm.smartMoneyCount||0)+' کیف‌پول · '+money(sm.totalValueUsd)+' پوزیشن</div>';
