@@ -420,7 +420,9 @@ function preSignalConfirmation(t){
     signalConfirmState.set(mint,st);
   }
   const confirmedMinutes=st.firstGoodAt?Math.max(0,(now-st.firstGoodAt)/60000):0;
-  const confirmed=baseGood&&st.goodScans>=3&&confirmedMinutes>=2&&h.snapshots>=2;
+  // Fast confirmation for fast-moving meme coins: keep every hard block,
+  // but do not require three scans / two full minutes before surfacing a usable entry.
+  const confirmed=baseGood&&st.goodScans>=2&&confirmedMinutes>=0.75&&h.snapshots>=2;
   const status=blocks.length?'BLOCK':confirmed?'CONFIRMED':'WAIT';
   return {
     status,goodScans:st.goodScans,confirmedMinutes:+confirmedMinutes.toFixed(1),
@@ -1075,8 +1077,8 @@ async function buildFresh(){
     orderFlowPolicy:{buyerPower:'buy transaction count / total buy+sell transactions; not dollar buy volume',strongBuyer:'5m >=55% and 1h >=51% when available',volumeQuality:'absolute volume + tx count + volume/liquidity sanity check'},
     knowledgeEngine:{marketQuality:'transparency + liquidity + data coverage',chartDiscipline:'trend + FOMO + pump/dump guard',academy:'automated Solana RPC + Token-2022 extension audit + RugCheck full/summary + Jupiter sell-route quote + DexScreener sell evidence; unavailable evidence stays UNKNOWN'},
     ageBuckets:{fresh:'0-24h',day:'24h-7d',week:'7d-30d discovery horizon'},
-    entryExitPolicy:{entry:'only STRONG volume + HIGH/MAX security + buyer dominance + Trust Guard CONFIRMED + anti-FOMO price condition',exit:'live exit/whale sell/seller dominance/Trust Guard block; price invalidation is a risk reference, not guaranteed execution'},
-    trustGuard:{strongSignalRequires:'2+ holder snapshots, 3 consecutive good scans, >=2 minutes stable confirmation, buyer dominance, healthy volume, no holder-outflow risk',downgrade:'holder movement, seller dominance, whale/tracked exits or pump cooldown immediately remove strong status'},
+    entryExitPolicy:{entry:'HIGH/MAX security + GOOD/STRONG volume + buyer strength + adequate liquidity + confirmed or early-confirmed Trust Guard + anti-FOMO price condition',exit:'live exit/whale sell/seller dominance/Trust Guard block; price invalidation is a risk reference, not guaranteed execution'},
+    trustGuard:{strongSignalRequires:'2+ holder snapshots, 2 consecutive good scans, >=45 seconds stable confirmation, buyer strength, healthy volume, no holder-outflow risk',downgrade:'holder movement, seller dominance, whale/tracked exits or pump cooldown immediately remove strong status'},
     signalWindows:{short:'5m-1h',medium:'1h-6h',long:'6h-24h',securityGate:'HIGH/MAX requires zero manual, zero unknown and zero failed automated security checks; unknown evidence cannot receive strong approval'},
     disclaimer:'قانون هولدرها: هولدر شماره 1 باید کمتر از 10% و هرکدام از هولدرهای شماره 2 تا 10 باید کمتر از 5% داشته باشند. مجموع Top10 فقط جهت اطلاع نمایش داده می‌شود و شرط رد نیست. Organic Activity یک تخمین ضدربات/ضدواش است. هیچ فیلتر آن‌چین کلاهبرداری را 100% رد نمی‌کند.'};
   cache={at:Date.now(),data};return data;
@@ -1639,7 +1641,7 @@ dialog{width:min(720px,94vw);max-height:88vh;border:1px solid #36506e;border-rad
 <section class="panel active" id="featuredPanel">
   <details class="accordion" open>
     <summary>🔥 پیشنهادهای اولویت‌دار</summary>
-    <div class="accordion-body"><p class="muted" style="font-size:11px">فقط Volume STRONG + Trust Guard تأیید + نقطه ورود فعال. امتیاز ۹۰/۱۰۰ احتمال قطعی پامپ نیست.</p><div class="subfilters">
+    <div class="accordion-body"><p class="muted" style="font-size:11px">فقط توکن‌های بدون هشدار خروج/رد امنیتی که نقطه ورود فعال دارند. ورود قوی و ورود قابل‌بررسی جدا نمایش داده می‌شوند؛ هیچ‌کدام تضمین سود نیست.</p><div class="subfilters">
 <label>کوتاه‌مدت<select class="signal-filter" data-filter="short"><option value="">همه</option><option value="STRONG">قوی</option><option value="POSITIVE">مثبت</option><option value="NEUTRAL">خنثی</option><option value="WAIT_DATA">داده ناکافی</option><option value="AVOID">ورود نکن</option><option value="BLOCKED">مسدود امنیتی</option></select></label>
 <label>میان‌مدت<select class="signal-filter" data-filter="medium"><option value="">همه</option><option value="STRONG">قوی</option><option value="POSITIVE">مثبت</option><option value="NEUTRAL">خنثی</option><option value="WAIT_DATA">داده ناکافی</option><option value="AVOID">ورود نکن</option><option value="BLOCKED">مسدود امنیتی</option></select></label>
 <label>بلندمدت<select class="signal-filter" data-filter="long"><option value="">همه</option><option value="STRONG">قوی</option><option value="POSITIVE">مثبت</option><option value="NEUTRAL">خنثی</option><option value="WAIT_DATA">داده ناکافی</option><option value="AVOID">ورود نکن</option><option value="BLOCKED">مسدود امنیتی</option></select></label>
@@ -1893,32 +1895,66 @@ function fmtPrice(v){
   return 'USD '+n.toPrecision(5);
 }
 function tradePlan(t){
-  if(!t)return {status:'WAIT',entry:null,exit:null,reason:'داده کافی نیست'};
-  var sec=t.security||{},fl=t.flow||{},tg=trustGuard(t);
-  var ws=whaleSellsFor(t.mint),ex=exitFor(t.mint);
+  if(!t)return {status:'WAIT',entry:null,entryLow:null,entryHigh:null,exit:null,reason:'داده کافی نیست'};
+  var sec=t.security||{},fl=t.flow||{},tg=trustGuard(t),pre=t.preSignalGuard||{};
+  var ws=whaleSellsFor(t.mint),ex=exitFor(t.mint),wh=whaleFor(t.mint);
   var p=Number(t.priceUsd||0),pc5=Number(t.priceChange5m||0),pc1=Number(t.priceChange1h||0);
   var riskPct=(sec.tier==='MAX SECURITY'&&Number(t.liquidity||0)>=25000)?0.055:0.07;
   var invalidation=p>0?p*(1-riskPct):null;
-  var hardExit=tg.status==='BLOCK'||fl.sellerDominant===true||ws.count>0||ex.length>0||pc5<=-8;
-  if(hardExit)return {status:'EXIT',entry:null,exit:invalidation,reason:'فشار فروش/خروج یا شکست Trust Guard',riskPct:riskPct*100};
-  var strongVolume=fl.volumeLabel==='STRONG'&&Number(fl.volumeScore||0)>=80;
-  var safe=(sec.tier==='MAX SECURITY'||sec.tier==='HIGH')&&t.securityGate&&t.securityGate.blocked!==true;
-  var notChasing=pc5>=-2&&pc5<=10&&pc1<=40;
-  var ready=strongVolume&&safe&&fl.buyerDominant===true&&tg.status==='CONFIRMED'&&notChasing;
-  if(ready)return {status:'ENTRY',entry:p||null,exit:invalidation,reason:'حجم STRONG + خریدار غالب + Trust Guard تأیید + قیمت بدون کشیدگی شدید',riskPct:riskPct*100};
+  var entryLow=p>0?p*0.985:null,entryHigh=p>0?p*1.012:null;
+
+  // Never create an entry when there is an actual safety/exit condition.
+  var hardExit=tg.status==='BLOCK'||fl.sellerDominant===true||ws.count>0||ex.length>0||pc5<=-8||
+    t.securityGate?.blocked===true||t.academy?.blocked===true;
+  if(hardExit)return {status:'EXIT',entry:null,entryLow:null,entryHigh:null,exit:invalidation,reason:'فشار فروش/هشدار خروج یا رد امنیتی فعال است',riskPct:riskPct*100};
+
+  var safe=(sec.tier==='MAX SECURITY'||sec.tier==='HIGH')&&t.securityGate?.blocked!==true;
+  var volumeStrong=fl.volumeLabel==='STRONG'&&Number(fl.volumeScore||0)>=75;
+  var volumeGood=(fl.volumeLabel==='STRONG'||fl.volumeLabel==='GOOD')&&Number(fl.volumeScore||0)>=60;
+  var buyerPower=Number(fl.buyerPower||0);
+  var buyerOk=fl.buyerDominant===true||buyerPower>=54;
+  var marketOk=Number(t.marketQuality?.score||0)>=60&&Number(t.liquidity||0)>=5000;
+  var notChasing=pc5>=-3&&pc5<=12&&pc1<=45;
+  var fullyConfirmed=tg.status==='CONFIRMED';
+  var earlyConfirmed=tg.status==='WAIT'&&
+    (!Array.isArray(pre.blocks)||pre.blocks.length===0)&&
+    Number(pre.goodScans||0)>=1&&
+    Number(pre.holderSnapshots||0)>=2&&
+    sec.holderPolicyPassed===true;
+
+  // Full entry: strongest path.
+  var ready=!!p&&safe&&volumeGood&&buyerOk&&marketOk&&notChasing&&(fullyConfirmed||earlyConfirmed);
+  if(ready){
+    var confidence=fullyConfirmed&&volumeStrong?'HIGH':'MEDIUM';
+    return {
+      status:'ENTRY',confidence,
+      entry:p,entryLow,entryHigh,exit:invalidation,
+      reason:confidence==='HIGH'
+        ?'امنیت HIGH/MAX + حجم قوی + خریدار غالب + تأیید چندمرحله‌ای'
+        :'امنیت HIGH/MAX + حجم مناسب + خریدار غالب + تأیید اولیه بدون هشدار خروج',
+      riskPct:riskPct*100
+    };
+  }
+
   var reasons=[];
-  if(!strongVolume)reasons.push('حجم STRONG نیست');
+  if(!p)reasons.push('قیمت معتبر دریافت نشده');
   if(!safe)reasons.push('امنیت HIGH/MAX نیست');
-  if(!fl.buyerDominant)reasons.push('قدرت خریدار کافی نیست');
-  if(tg.status!=='CONFIRMED')reasons.push('Trust Guard تأیید نشده');
+  if(!volumeGood)reasons.push('حجم حداقل GOOD نیست');
+  if(!buyerOk)reasons.push('قدرت خریدار کمتر از حد ورود است');
+  if(!marketOk)reasons.push('نقدینگی/کیفیت بازار کافی نیست');
   if(!notChasing)reasons.push('قیمت برای ورود کشیده است');
-  return {status:'WAIT',entry:null,exit:invalidation,reason:reasons.slice(0,3).join(' • ')||'در انتظار تأیید',riskPct:riskPct*100};
+  if(!(fullyConfirmed||earlyConfirmed))reasons.push('تأیید جریان/هولدر هنوز کافی نیست');
+  return {status:'WAIT',entry:null,entryLow:null,entryHigh:null,exit:invalidation,reason:reasons.slice(0,4).join(' • ')||'در انتظار تأیید',riskPct:riskPct*100};
 }
 function tradePlanChips(t){
   var p=tradePlan(t);
-  if(p.status==='ENTRY')return '<span class="entry-chip entry-ready">🟢 نقطه ورود · '+fmtPrice(p.entry)+'</span><span class="entry-chip entry-exit">🛑 خروج/ابطال · '+fmtPrice(p.exit)+'</span>';
+  if(p.status==='ENTRY'){
+    var zone=(p.entryLow&&p.entryHigh)?fmtPrice(p.entryLow)+' تا '+fmtPrice(p.entryHigh):fmtPrice(p.entry);
+    var label=p.confidence==='HIGH'?'🟢 نقطه ورود قوی':'🟡 نقطه ورود قابل‌بررسی';
+    return '<span class="entry-chip entry-ready">'+label+' · '+zone+'</span><span class="entry-chip entry-exit">🛑 خروج/ابطال · '+fmtPrice(p.exit)+'</span>';
+  }
   if(p.status==='EXIT')return '<span class="entry-chip entry-exit">🔴 خروج / ورود نکن'+(p.exit?' · '+fmtPrice(p.exit):'')+'</span>';
-  return '<span class="entry-chip entry-wait">⏳ در انتظار تأیید</span>'+(p.exit?'<span class="entry-chip entry-exit">حد ابطال مرجع · '+fmtPrice(p.exit)+'</span>':'');
+  return '<span class="entry-chip entry-wait">⏳ '+esc(p.reason||'در انتظار تأیید')+'</span>'+(p.exit?'<span class="entry-chip entry-exit">حد ابطال مرجع · '+fmtPrice(p.exit)+'</span>':'');
 }
 
 
@@ -1975,8 +2011,16 @@ function featuredRows(){
     if(exitFor(t.mint).length)s-=28;
     s=Math.max(0,Math.min(100,Math.round(s)));
     return {token:t,score:s,why:w,whale:wh,smart:sm,tracked:tr};
-  }).filter(function(x){return x.score>=90&&x.token.flow?.volumeLabel==='STRONG'&&trustGuard(x.token).status==='CONFIRMED'&&(!x.token.chart||x.token.chart.pumpDumpRisk!=='HIGH')&&(!x.token.academy||!x.token.academy.blocked)&&!exitFor(x.token.mint).length})
-    .sort(function(a,b){return b.score-a.score}).slice(0,8);
+  }).filter(function(x){
+    var tp=tradePlan(x.token);
+    return x.score>=78&&tp.status==='ENTRY'&&
+      (!x.token.chart||x.token.chart.pumpDumpRisk!=='HIGH')&&
+      (!x.token.academy||!x.token.academy.blocked)&&
+      !exitFor(x.token.mint).length;
+  }).sort(function(a,b){
+    var ac=tradePlan(a.token).confidence==='HIGH'?1:0,bc=tradePlan(b.token).confidence==='HIGH'?1:0;
+    return (bc-ac)||(b.score-a.score);
+  }).slice(0,8);
 }
 
 function tokenRow(t,bucket){
