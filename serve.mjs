@@ -1517,11 +1517,12 @@ function startLiveFomoStream(){
 startLiveFomoStream();
 
 function liveSmartMoneyPayload(){
-  const events=liveFomoState.events.slice(0,50);
+  const events=liveFomoState.events.slice(0,120);
   const cutoff=Date.now()-30*60*1000;
   const recentEvents=events.filter(x=>normalizeTs(x.ts)>=cutoff);
   const exits=recentEvents.filter(x=>x.alertType==='sell');
   const buys=recentEvents.filter(x=>x.alertType==='buy');
+
   const byToken=new Map();
   for(const e of exits){
     const k=e.tokenAddress||e.token;
@@ -1529,22 +1530,97 @@ function liveSmartMoneyPayload(){
     x.sellers.add(e.trader);x.sellEvents++;x.knownSellUsd+=num(e.tradeUsd);x.latestTs=Math.max(x.latestTs,e.ts||0);
     byToken.set(k,x);
   }
-  const exitClusters=[...byToken.values()].map(x=>({...x,sellers:[...x.sellers],uniqueSellers:x.sellers.size,severity:x.sellers.size>=2?'MULTI-WALLET EXIT':x.knownSellUsd>=5000?'HEAVY SELL':'SELL STARTED'})).sort((a,b)=>b.latestTs-a.latestTs);
-  const whaleBuys=buys.filter(x=>num(x.tradeUsd)>=5000||num(x.positionValueUsd)>=25000).slice(0,50);
-  const whaleSells=exits.filter(x=>num(x.tradeUsd)>=5000||num(x.positionValueUsd)>=25000).slice(0,50);
-  const whaleAggMap=new Map();
-  for(const e of whaleBuys){
-    const k=e.tokenAddress||e.token||'unknown';
-    const a=whaleAggMap.get(k)||{token:e.token||'',tokenAddress:e.tokenAddress||'',totalBuyUsd:0,buyCount:0,traders:new Set(),latestTs:0};
-    a.totalBuyUsd+=num(e.tradeUsd);a.buyCount+=1;
-    if(e.trader)a.traders.add(String(e.trader));
+  const exitClusters=[...byToken.values()]
+    .map(x=>({...x,sellers:[...x.sellers],uniqueSellers:x.sellers.size,severity:x.sellers.size>=2?'MULTI-WALLET EXIT':x.knownSellUsd>=5000?'HEAVY SELL':'SELL STARTED'}))
+    .sort((a,b)=>b.latestTs-a.latestTs);
+
+  // Aggregate split buys by wallet+token. A whale often splits one position into
+  // several smaller swaps, so a strict per-transaction $5k threshold misses them.
+  const buyerAgg=new Map();
+  for(const e of buys){
+    const tokenKey=e.tokenAddress||e.token||'unknown';
+    const traderKey=String(e.trader||'unknown');
+    const k=tokenKey+'|'+traderKey;
+    const a=buyerAgg.get(k)||{
+      token:e.token||'',tokenAddress:e.tokenAddress||'',trader:e.trader||'',
+      totalBuyUsd:0,buyCount:0,maxSingleBuyUsd:0,maxPositionValueUsd:0,latestTs:0,events:[]
+    };
+    a.totalBuyUsd+=num(e.tradeUsd);
+    a.buyCount+=1;
+    a.maxSingleBuyUsd=Math.max(a.maxSingleBuyUsd,num(e.tradeUsd));
+    a.maxPositionValueUsd=Math.max(a.maxPositionValueUsd,num(e.positionValueUsd));
     a.latestTs=Math.max(a.latestTs,num(e.ts));
+    a.events.push(e);
+    buyerAgg.set(k,a);
+  }
+
+  const whaleWalletBuys=[...buyerAgg.values()].filter(a=>
+    a.maxSingleBuyUsd>=5000 ||
+    a.maxPositionValueUsd>=25000 ||
+    a.totalBuyUsd>=5000 ||
+    (a.buyCount>=3&&a.totalBuyUsd>=3500)
+  ).sort((a,b)=>b.totalBuyUsd-a.totalBuyUsd);
+
+  // Keep event-level rows for the UI, but include split-buy events that qualified
+  // through cumulative wallet activity.
+  const qualifiedKeys=new Set(whaleWalletBuys.map(a=>(a.tokenAddress||a.token||'unknown')+'|'+String(a.trader||'unknown')));
+  const whaleBuys=buys.filter(e=>{
+    const k=(e.tokenAddress||e.token||'unknown')+'|'+String(e.trader||'unknown');
+    return qualifiedKeys.has(k);
+  }).slice(0,100);
+
+  const whaleSells=exits.filter(x=>num(x.tradeUsd)>=5000||num(x.positionValueUsd)>=25000).slice(0,100);
+
+  const whaleAggMap=new Map();
+  for(const w of whaleWalletBuys){
+    const k=w.tokenAddress||w.token||'unknown';
+    const a=whaleAggMap.get(k)||{
+      token:w.token||'',tokenAddress:w.tokenAddress||'',totalBuyUsd:0,buyCount:0,
+      traders:new Set(),latestTs:0,largestWalletBuyUsd:0,splitBuyerCount:0
+    };
+    a.totalBuyUsd+=num(w.totalBuyUsd);
+    a.buyCount+=num(w.buyCount);
+    if(w.trader)a.traders.add(String(w.trader));
+    if(w.buyCount>=2)a.splitBuyerCount+=1;
+    a.largestWalletBuyUsd=Math.max(a.largestWalletBuyUsd,num(w.totalBuyUsd));
+    a.latestTs=Math.max(a.latestTs,num(w.latestTs));
     whaleAggMap.set(k,a);
   }
-  const whaleByToken=[...whaleAggMap.values()].map(x=>({...x,traders:[...x.traders],uniqueTraders:x.traders.size}))
-    .sort((a,b)=>b.totalBuyUsd-a.totalBuyUsd);
+
+  const whaleByToken=[...whaleAggMap.values()].map(x=>({
+    ...x,
+    traders:[...x.traders],
+    uniqueTraders:x.traders.size
+  })).sort((a,b)=>
+    (b.uniqueTraders-a.uniqueTraders)||
+    (b.totalBuyUsd-a.totalBuyUsd)
+  );
+
   const totalWhaleBuyUsd=whaleByToken.reduce((a,x)=>a+x.totalBuyUsd,0);
-  return {ok:true,connected:liveFomoState.connected,realtime:liveFomoState.realtime,delaySeconds:liveFomoState.delaySeconds,updatedAt:liveFomoState.updatedAt,lastError:liveFomoState.lastError,keyConfigured:!!process.env.FOMO_API_KEY,events,buys:buys.slice(0,20),exits:exits.slice(0,20),whaleBuys,whaleSells,whaleByToken,totalWhaleBuyUsd,exitClusters};
+  return {
+    ok:true,
+    connected:liveFomoState.connected,
+    realtime:liveFomoState.realtime,
+    delaySeconds:liveFomoState.delaySeconds,
+    updatedAt:liveFomoState.updatedAt,
+    lastError:liveFomoState.lastError,
+    keyConfigured:!!process.env.FOMO_API_KEY,
+    events,
+    buys:buys.slice(0,40),
+    exits:exits.slice(0,40),
+    whaleBuys,
+    whaleWalletBuys:whaleWalletBuys.slice(0,100),
+    whaleSells,
+    whaleByToken,
+    totalWhaleBuyUsd,
+    exitClusters,
+    whalePolicy:{
+      singleBuyUsd:5000,
+      positionValueUsd:25000,
+      cumulative30mUsd:5000,
+      splitBuyRule:'3+ buys and cumulative >= $3500'
+    }
+  };
 }
 
 async function buildSmartMoney(){
@@ -1743,7 +1819,7 @@ html,body,.shell,.panel,.list{overflow-anchor:none}
   <details class="accordion highlight" open>
   <summary>🐋 پیشنهادهای نهنگ‌ها و همه خریدهای زنده</summary>
   <div class="accordion-body">
-    <p class="muted" style="font-size:11px">خریدهای نهنگ از جریان زنده API جمع می‌شوند و فقط رویدادهای تازه در پنجره ۳۰ دقیقه‌ای لحاظ می‌شوند. «اولویت بررسی» تضمین رشد یا سود نیست.</p>
+    <p class="muted" style="font-size:11px">خریدهای نهنگ از جریان زنده API و تجمیع چند خرید یک کیف‌پول در پنجره ۳۰ دقیقه‌ای ساخته می‌شوند؛ خریدهای خردشده هم اگر مجموعشان به حد نهنگ برسد شناسایی می‌شوند. این برچسب تضمین رشد یا سود نیست.</p>
     <div id="whaleTopSummary"></div>
     <div class="list" id="whaleTopList"></div>
   </div>
@@ -2285,7 +2361,7 @@ function renderWhales(){
     var t=findToken(a.tokenAddress),sec=t&&t.security?t.security:{},tp=t?tradePlan(t):null;
     var strength=t?Math.round(tokenStrength(t)):0;
     return '<div class="row"><div class="asset"><b>#'+(i+1)+' 🐋 '+esc(a.token||t&&t.symbol||'?')+'</b>'+whaleTrendBadge(t)+socialTrendBadges(t)+(t?tradePlanChips(t):'')+
-      '<small>'+Number(a.uniqueTraders||0)+' نهنگ · '+Number(a.buyCount||0)+' خرید · منبع: Live whale API</small>'+socialButtons(t)+'</div>'+
+      '<small>'+Number(a.uniqueTraders||0)+' نهنگ · '+Number(a.buyCount||0)+' خرید · '+(Number(a.splitBuyerCount||0)?Number(a.splitBuyerCount||0)+' خریدار با خرید خردشده · ':'')+'منبع: Live whale API</small>'+socialButtons(t)+'</div>'+
       '<div class="cell"><small>کل خرید</small><b>'+money(a.totalBuyUsd)+'</b></div>'+
       '<div class="cell"><small>نهنگ یکتا</small><b>'+Number(a.uniqueTraders||0)+'</b></div>'+
       '<div class="cell"><small>امنیت</small><b><span class="badge '+secClass(sec.tier)+'">'+esc(faSec(sec.tier))+'</span></b></div>'+
