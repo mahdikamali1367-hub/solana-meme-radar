@@ -10,6 +10,31 @@ let smartTraderHandles=new Set();
 let liveFomoState={connected:false,realtime:false,delaySeconds:null,updatedAt:null,events:[],lastError:null};
 let liveFomoSocket=null;
 
+const SPL_TOKEN_PROGRAM='TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA';
+const TOKEN_2022_PROGRAM='TokenzQdBNbLqP5VEhdkAS6EPFLC1PHn4m9bqN6Arh';
+const WSOL_MINT='So11111111111111111111111111111111111111112';
+const STABLE_MINTS=new Set([
+  'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v',
+  'Es9vMFrzaCERmJfrF4H2FYD6PGVgN7k9Yg1iQeSxGZ7'
+]);
+const TRACKED_WALLETS=[
+  {name:'Cented',address:'CyaE1VxvBrahnPWkqm5VsdCvyS2QmNht2UFrKJHga54o',source:'KOL Explorer',sourceUrl:'https://kolexplorer.com/kol/cented',seedPnl30d:476703,seedWinRate:58.1,medianHoldSec:13,priority:true},
+  {name:'Decu',address:'4vw54BmAogeRV3vPKWyFet5yf8DTLcREzdSzx4rw9Ud9',source:'KOL Explorer',sourceUrl:'https://kolexplorer.com/kol/decu',seedPnl30d:384534,seedWinRate:72.0,medianHoldSec:16,priority:true},
+  {name:'Theo',address:'Bi4rd5FH5bYEN8scZ7wevxNZyNmKHdaBcvewdPFxYdLt',source:'KOL Explorer',sourceUrl:'https://kolexplorer.com/kol/theo',seedPnl30d:217389,seedWinRate:53.5,medianHoldSec:23},
+  {name:'Trunoest',address:'ardinRsN1mNYVeoJWTBsWeYeXvuR9UUDGMsCDKpb6AT',source:'KOL Explorer',sourceUrl:'https://kolexplorer.com/kol/trunoest',seedPnl30d:186357,seedWinRate:66.1,medianHoldSec:22,priority:true},
+  {name:'Nyhrox',address:'6S8GezkxYUfZy9JPtYnanbcZTMB87Wjt1qx3c6ELajKC',source:'KOL Explorer',sourceUrl:'https://kolexplorer.com/kol/nyhrox',seedPnl30d:102339,seedWinRate:64.7,medianHoldSec:17},
+  {name:'Limfork',address:'BQVz7fQ1WsQmSTMY3umdPEPPTm1sdcBcX9sP7o6kPRmB',source:'KOL Explorer',sourceUrl:'https://kolexplorer.com/kol/limfork',seedPnl30d:91407,seedWinRate:62.3,medianHoldSec:22},
+  {name:'Kadenox',address:'B32QbbdDAyhvUQzjcaM5j6ZVKwjCxAwGH5Xgvb9SJqnC',source:'KOL Explorer',sourceUrl:'https://kolexplorer.com/kol/kadenox',seedPnl30d:82622,seedWinRate:63.8,medianHoldSec:15,priority:true},
+  {name:'Casino',address:'8rvAsDKeAcEjEkiZMug9k8v1y8mW6gQQiMobd89Uy7qR',source:'KOL Explorer',sourceUrl:'https://kolexplorer.com/kol/casino',seedPnl30d:79709,seedWinRate:48.7,medianHoldSec:60},
+  {name:'Jijo',address:'4BdKaxN8G6ka4GYtQQWk4G4dZRUTX2vQH9GcXdBREFUk',source:'KOL Explorer',sourceUrl:'https://kolexplorer.com/kol/jijo',seedPnl30d:67699,seedWinRate:71.8,medianHoldSec:53},
+  {name:'Johnson',address:'J9TYAsWWidbrcZybmLSfrLzryANf4CgJBLdvwdGuC8MB',source:'KOL Explorer',sourceUrl:'https://kolexplorer.com/kol/johnson',seedPnl30d:63178,seedWinRate:65.7,medianHoldSec:180,priority:true},
+  {name:'Whale #1',address:'6ug4s5uoG2dxycww9wBxo7kQq9NPzEf1ZSmGMT6M76Ni',source:'Solana Tracker',sourceUrl:'https://www.solanatracker.io/wallet/6ug4s5uoG2dxycww9wBxo7kQq9NPzEf1ZSmGMT6M76Ni',seedPnl30d:53930000,seedWinRate:36.4,medianHoldSec:null,highFrequencyRisk:true},
+  {name:'moonlobsterdisc',address:'CFzVktB6sfK8rpewZeJ5VRPcvG5BBtK6pSbZ7FHVze4V',source:'Solana Tracker',sourceUrl:'https://www.solanatracker.io/wallet/CFzVktB6sfK8rpewZeJ5VRPcvG5BBtK6pSbZ7FHVze4V',seedPnl30d:9530000,seedWinRate:37.3,medianHoldSec:null}
+];
+let trackedWalletCache={at:0,data:null};
+const TRACKED_WALLET_CACHE_MS=5*60*1000;
+
+
 const headers={
   'content-security-policy':"default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; connect-src 'self'; img-src 'self' data: https:; frame-ancestors 'none'; object-src 'none'",
   'x-content-type-options':'nosniff','x-frame-options':'DENY','referrer-policy':'no-referrer'
@@ -350,6 +375,130 @@ async function build(){
 }
 
 
+
+function metaTokenMap(rows,wallet){
+  const m=new Map();
+  for(const x of (rows||[])){
+    if(x?.owner!==wallet)continue;
+    const mint=x?.mint;if(!mint)continue;
+    const a=num(x?.uiTokenAmount?.uiAmountString??x?.uiTokenAmount?.uiAmount);
+    m.set(mint,(m.get(mint)||0)+a);
+  }
+  return m;
+}
+function mergeMintKeys(a,b){return new Set([...a.keys(),...b.keys()])}
+function parsedAccountKey(x){return typeof x==='string'?x:(x?.pubkey||'')}
+function parseTrackedWalletTx(tx,wallet,solPrice){
+  const meta=tx?.result?.meta,body=tx?.result?.transaction;
+  if(!meta||meta.err||!body)return [];
+  const pre=metaTokenMap(meta.preTokenBalances,wallet),post=metaTokenMap(meta.postTokenBalances,wallet);
+  const keys=body?.message?.accountKeys||[];
+  const wi=keys.findIndex(x=>parsedAccountKey(x)===wallet);
+  const solDelta=wi>=0?(num(meta.postBalances?.[wi])-num(meta.preBalances?.[wi]))/1e9:0;
+  const stableDelta=[...STABLE_MINTS].reduce((a,m)=>a+(post.get(m)||0)-(pre.get(m)||0),0);
+  const wsolDelta=(post.get(WSOL_MINT)||0)-(pre.get(WSOL_MINT)||0);
+  const counterSolDelta=solDelta+wsolDelta;
+  const paidUsd=Math.max(0,-stableDelta,-counterSolDelta*solPrice);
+  const receivedUsd=Math.max(0,stableDelta,counterSolDelta*solPrice);
+  const events=[];
+  for(const mint of mergeMintKeys(pre,post)){
+    if(STABLE_MINTS.has(mint)||mint===WSOL_MINT)continue;
+    const delta=(post.get(mint)||0)-(pre.get(mint)||0);
+    if(Math.abs(delta)<=0)continue;
+    if(delta>0&&paidUsd>=1)events.push({side:'BUY',mint,tokenAmount:delta,approxUsd:paidUsd});
+    else if(delta<0&&receivedUsd>=1)events.push({side:'SELL',mint,tokenAmount:Math.abs(delta),approxUsd:receivedUsd});
+  }
+  return events;
+}
+async function walletTokenBalances(wallet){
+  const out=new Map();
+  for(const programId of [SPL_TOKEN_PROGRAM,TOKEN_2022_PROGRAM]){
+    try{
+      const d=await rpc('getTokenAccountsByOwner',[wallet,{programId},{encoding:'jsonParsed',commitment:'confirmed'}]);
+      for(const x of (d?.result?.value||[])){
+        const info=x?.account?.data?.parsed?.info;
+        const mint=info?.mint,amt=num(info?.tokenAmount?.uiAmountString??info?.tokenAmount?.uiAmount);
+        if(mint&&amt>0)out.set(mint,(out.get(mint)||0)+amt);
+      }
+    }catch{}
+  }
+  return out;
+}
+async function currentSolPrice(){
+  try{const p=await pairFor(WSOL_MINT);return num(p?.priceUsd,0)}catch{return 0}
+}
+async function buildTrackedWallets(){
+  if(trackedWalletCache.data&&Date.now()-trackedWalletCache.at<TRACKED_WALLET_CACHE_MS)return trackedWalletCache.data;
+  const solPrice=await currentSolPrice();
+  const nowSec=Math.floor(Date.now()/1000);
+  const walletRows=[];
+  const agg=new Map();
+
+  for(const w of TRACKED_WALLETS){
+    const events=[];
+    let balances=new Map(),rpcOk=true,lastActivity=null;
+    try{
+      balances=await walletTokenBalances(w.address);
+      const sigs=await rpc('getSignaturesForAddress',[w.address,{limit:6,commitment:'confirmed'}]);
+      const recent=(sigs?.result||[]).filter(x=>x.blockTime&&nowSec-x.blockTime<=48*3600).slice(0,4);
+      for(const sig of recent){
+        try{
+          const tx=await rpc('getTransaction',[sig.signature,{encoding:'jsonParsed',commitment:'confirmed',maxSupportedTransactionVersion:0}]);
+          const parsed=parseTrackedWalletTx(tx,w.address,solPrice);
+          for(const e of parsed){
+            e.signature=sig.signature;e.ts=num(sig.blockTime)*1000;e.wallet=w.name;e.walletAddress=w.address;
+            events.push(e);
+            const a=agg.get(e.mint)||{mint:e.mint,buyers:new Set(),sellers:new Set(),buyUsd:0,sellUsd:0,events:[],latestTs:0};
+            if(e.side==='BUY'){a.buyers.add(w.name);a.buyUsd+=num(e.approxUsd)}
+            else {a.sellers.add(w.name);a.sellUsd+=num(e.approxUsd)}
+            a.events.push(e);a.latestTs=Math.max(a.latestTs,e.ts||0);agg.set(e.mint,a);
+          }
+          lastActivity=Math.max(lastActivity||0,num(sig.blockTime)*1000);
+        }catch{}
+        await sleep(35);
+      }
+    }catch{rpcOk=false}
+    walletRows.push({...w,rpcOk,lastActivity,events:events.sort((a,b)=>b.ts-a.ts),_balances:balances});
+    await sleep(45);
+  }
+
+  const rankedAgg=[...agg.values()].sort((a,b)=>(b.buyers.size-a.buyers.size)||(b.buyUsd-b.sellUsd)-(a.buyUsd-a.sellUsd)).slice(0,20);
+  for(const a of rankedAgg){
+    let p=null;
+    try{p=await pairFor(a.mint)}catch{}
+    const price=num(p?.priceUsd);
+    const holders=[];
+    let currentHoldingUsd=0;
+    for(const w of walletRows){
+      const amount=num(w._balances.get(a.mint));
+      if(amount<=0)continue;
+      const valueUsd=price>0?amount*price:null;
+      holders.push({wallet:w.name,address:w.address,amount,valueUsd});
+      if(valueUsd!=null)currentHoldingUsd+=valueUsd;
+    }
+    a.symbol=p?.baseToken?.symbol||'?';a.name=p?.baseToken?.name||'Unknown';
+    for(const e of a.events){e.symbol=a.symbol;e.name=a.name;e.dexUrl=p?.url||''}
+    a.dexUrl=p?.url||'';a.priceUsd=price;a.liquidity=num(p?.liquidity?.usd);a.marketCap=num(p?.marketCap||p?.fdv);
+    a.currentHoldingUsd=currentHoldingUsd;a.holders=holders;a.holdingWallets=holders.length;
+    a.uniqueBuyers=a.buyers.size;a.uniqueSellers=a.sellers.size;a.buyers=[...a.buyers];a.sellers=[...a.sellers];
+    a.netFlowUsd=a.buyUsd-a.sellUsd;
+    a.consensus=a.uniqueBuyers>=2&&a.netFlowUsd>0;
+  }
+  const tokens=rankedAgg;
+  const topHoldings=[...tokens].filter(x=>x.currentHoldingUsd>0).sort((a,b)=>b.currentHoldingUsd-a.currentHoldingUsd).slice(0,10);
+  const topNetBuys=[...tokens].filter(x=>x.buyUsd>0).sort((a,b)=>b.netFlowUsd-a.netFlowUsd).slice(0,10);
+  const consensus=[...tokens].filter(x=>x.consensus).sort((a,b)=>(b.uniqueBuyers-a.uniqueBuyers)||(b.netFlowUsd-a.netFlowUsd)).slice(0,10);
+
+  const publicWallets=walletRows.map(w=>{
+    const { _balances,...rest}=w;
+    const speed=w.highFrequencyRisk?'ربات/فرکانس بسیار بالا محتمل':w.medianHoldSec!=null&&w.medianHoldSec<60?'اسکالپر بسیار سریع':w.medianHoldSec!=null&&w.medianHoldSec<=180?'اسکالپر سریع':'نامشخص';
+    return {...rest,speed,solscanUrl:'https://solscan.io/account/'+w.address,gmgnUrl:'https://gmgn.ai/sol/address/'+w.address};
+  });
+  const data={ok:true,generatedAt:new Date().toISOString(),refreshSeconds:300,source:'Solana RPC live + seed rankings from KOL Explorer/Solana Tracker',solPrice,wallets:publicWallets,tokens,topHoldings,topNetBuys,consensus,
+    disclaimer:'خرید/فروش از تغییر موجودی توکن همراه با خروج/ورود SOL یا استیبل‌کوین استنباط می‌شود. انتقال ساده حذف می‌شود اما تشخیص Swap صددرصد نیست. رتبه/سود تاریخی Seed است و تصمیم خرید نیست.'};
+  trackedWalletCache={at:Date.now(),data};return data;
+}
+
 function liveEventSeverity(e){
   if(e.alertType!=='sell')return e.alertType==='buy'?'BUY':'INFO';
   const now=e.ts||Date.now();
@@ -563,10 +712,18 @@ button,input,select{background:#101c31;color:#fff;border:1px solid #29415f;borde
 </div>
 <div class="sub" style="margin-top:9px">آستانه‌های آزمایشی هشدار نهنگ: ۱٬۰۰۰ / ۵٬۰۰۰ / ۲۵٬۰۰۰ دلار؛ این اعداد سیگنال خرید نیستند و باید نسبت به نقدینگی تفسیر شوند.</div>
 </div>
+<div style="margin:18px 0"><h2 style="margin:0 0 8px">🏆 کیف‌پول‌های برتر فایل — رصد زنده آن‌چین</h2>
+<div class="sub" id="trackedWalletStatus">در حال خواندن ۱۲ کیف‌پول از Solana...</div>
+<h3>💰 بیشترین سرمایه فعلی روی توکن‌های خریداری‌شده اخیر</h3><div id="trackedTopHoldings" class="grid"></div>
+<h3>🟢 بیشترین خرید خالص اخیر</h3><div id="trackedTopBuys" class="grid"></div>
+<h3>🤝 خرید همزمان چند کیف‌پول برتر</h3><div id="trackedConsensus" class="grid"></div>
+<details><summary>👛 نمایش ۱۲ کیف‌پول و آخرین حرکات</summary><div id="trackedWalletGrid" class="grid"></div></details>
+<div class="sub" style="margin-top:8px">رتبه‌ها و آمار اولیه از فایل شما آمده‌اند؛ خرید/فروش و موجودی فعلی در این بخش مستقیماً از بلاکچین Solana دوباره بررسی می‌شوند.</div>
+</div>
 <div style="margin:18px 0"><h2 style="margin:0 0 8px">🔥 پیشنهادهای برتر برای بررسی</h2><div class="sub" id="featuredStatus">فقط گزینه‌های با امتیاز مومنتوم خیلی بالا نمایش داده می‌شوند؛ ۹۰/۱۰۰ به معنی ۹۰٪ احتمال پامپ نیست.</div><div id="featuredGrid" class="grid"></div></div><div style="margin:18px 0"><h2 style="margin:0 0 8px">⭐ سیگنال‌های مشترک</h2><div class="sub">ارزهایی که همزمان در چند منبع دیده می‌شوند</div><div id="unifiedGrid" class="grid"></div></div><div style="margin:18px 0"><h2 style="margin:0 0 8px">🧠 اسمارت‌مانی — کیف‌پول‌های سودده روی چه ارزهایی سوارند</h2><div class="sub" id="smartStatus">در حال بررسی کیف‌پول‌های سودده...</div><div id="smartGrid" class="grid"></div></div><div style="margin:18px 0"><h2 style="margin:0 0 8px">🐋 خریدهای نهنگ‌ها</h2><div class="sub" id="whaleStatus">خریدهای بزرگ سولانا در حال بررسی است...</div><div id="whaleGrid" class="grid"></div></div><div style="margin:18px 0"><h2 style="margin:0 0 8px">⚡ جریان زنده خرید/فروش و هشدار خروج</h2><div class="sub" id="liveSmartStatus">در حال اتصال به جریان خرید/فروش سولانا...</div><div id="liveExitBanner"></div><div id="liveSmartGrid" class="grid"></div></div><div style="margin:18px 0"><h2 style="margin:0 0 8px">🪙 میم‌کوین‌های زیر نظر</h2><div class="sub">امنیت، هولدرها، فعالیت طبیعی و ترند اجتماعی</div></div>
 <div class="bar"><button onclick="load()">↻ بروزرسانی</button><button onclick="enableExitNotifications()">🔔 فعال‌کردن هشدار خروج</button><input id="q" placeholder="جستجو نام / نماد / آدرس توکن" oninput="render()"><select id="vf" onchange="render()"><option value="">همه وضعیت‌ها</option><option>STRONG WATCH</option><option>WATCH</option><option>LOW SIGNAL</option><option>SKIP</option></select><select id="sf" onchange="render()"><option value="0">همه امتیازهای ترند</option><option value="50">Trend ≥ 50</option><option value="70">Trend ≥ 70</option></select><select id="secf" onchange="render()"><option value="">همه سطح‌های امنیت</option><option>MAX SECURITY</option><option>HIGH</option><option>REVIEW</option><option>REJECT</option></select><select id="actf" onchange="render()"><option value="">همه نوع فعالیت</option><option>PROBABLE ORGANIC</option><option>MIXED</option><option>BOT RISK</option></select><span id="status">در حال بارگذاری...</span></div>
 <div id="grid" class="grid"></div></div><script>
-let data=[],smartData=null,liveData=null; const $=s=>document.querySelector(s);
+let data=[],smartData=null,liveData=null,trackedWalletData=null; const $=s=>document.querySelector(s);
 const faVerdict=v=>({'STRONG WATCH':'زیر نظر قوی','WATCH':'زیر نظر','LOW SIGNAL':'سیگنال ضعیف','SKIP':'رد','REVIEW':'نیاز به بررسی'}[v]||v);
 const faSecurity=v=>({'MAX SECURITY':'امنیت خیلی بالا','HIGH':'امنیت بالا','REVIEW':'نیاز به بررسی','REJECT':'رد امنیتی'}[v]||v);
 const faActivity=v=>({'PROBABLE ORGANIC':'فعالیت احتمالاً طبیعی','MIXED':'فعالیت ترکیبی','BOT RISK':'ریسک ربات','UNKNOWN':'نامشخص'}[v]||v);
@@ -670,6 +827,7 @@ function renderFeatured(){
   x.count+=1;x.usd+=Number(e.tradeUsd||0);whaleMap.set(k,x);
  });
  const exitSet=new Set(((liveData&&liveData.exits)?liveData.exits:[]).map(function(e){return e.tokenAddress}).filter(Boolean));
+ const trackedMap=new Map(((trackedWalletData&&trackedWalletData.tokens)?trackedWalletData.tokens:[]).map(function(t){return [t.mint,t]}));
  const rows=(data||[]).map(function(t){
   var score=0,why=[];
   var sec=t.security&&t.security.tier?t.security.tier:'REVIEW';
@@ -696,6 +854,11 @@ function renderFeatured(){
   if(sm){score+=Math.min(12,6+Number(sm.smartMoneyCount||0)*2);why.push('اسمارت‌مانی حاضر است')}
   var wh=whaleMap.get(t.mint);
   if(wh){score+=Math.min(18,8+Math.min(10,Math.log10(1+wh.usd)*3));why.push('خرید نهنگ '+money(wh.usd))}
+  var tw=trackedMap.get(t.mint);
+  if(tw&&tw.uniqueBuyers>=2&&tw.netFlowUsd>0){score+=12;why.push('خرید همزمان '+tw.uniqueBuyers+' کیف‌پول برتر')}
+  else if(tw&&tw.uniqueBuyers>=1&&tw.netFlowUsd>0){score+=5;why.push('خرید کیف‌پول برتر')}
+  if(tw&&tw.uniqueSellers>=2){score-=20;why.push('فروش همزمان کیف‌پول‌های برتر')}
+  if(tw&&tw.netFlowUsd<0){score-=8;why.push('جریان خالص کیف‌پول‌ها منفی')}
   if(exitSet.has(t.mint)){score-=35;why.push('هشدار خروج فعال')}
   score=Math.max(0,Math.min(100,Math.round(score)));
   return {t:t,score:score,why:why,sm:sm,wh:wh};
@@ -728,19 +891,54 @@ function renderUnified(){
   const x=map.get(k)||{address:k,symbol:t.symbol,name:t.name,score:0};
   x.smart=true;x.smartMoneyCount=t.smartMoneyCount||0;x.smartValue=t.totalValueUsd||0;x.security=x.security||t.security;x.dexUrl=x.dexUrl||t.dexUrl||'';x.score+=2+(t.smartMoneyCount||0);map.set(k,x);
  }
+ for(const t of (trackedWalletData?.tokens||[])){
+  const k=t.mint;if(!k)continue;
+  const x=map.get(k)||{address:k,symbol:t.symbol,name:t.name,score:0};
+  x.tracked=true;x.trackedBuyers=t.uniqueBuyers||0;x.trackedHolders=t.holdingWallets||0;x.trackedValue=t.currentHoldingUsd||0;x.trackedNet=t.netFlowUsd||0;x.dexUrl=x.dexUrl||t.dexUrl||'';x.score+=(t.uniqueBuyers||0)*2+(t.consensus?3:0);map.set(k,x);
+ }
  for(const e of (liveData?.whaleBuys||[])){
   const k=e.tokenAddress;if(!k)continue;
   const x=map.get(k)||{address:k,symbol:e.token,name:e.token,score:0};
   x.whale=true;x.whaleUsd=(x.whaleUsd||0)+num(e.tradeUsd);x.whaleCount=(x.whaleCount||0)+1;x.score+=2;map.set(k,x);
  }
- const rows=[...map.values()].filter(x=>(x.smart||x.whale)&&x.meme).sort((a,b)=>b.score-a.score).slice(0,12);
+ const rows=[...map.values()].filter(x=>(x.smart||x.whale||x.tracked)&&x.meme).sort((a,b)=>b.score-a.score).slice(0,12);
  unifiedGrid.innerHTML=rows.map(x=>{
   const reasons=[x.meme?'میم‌کوین رادار':'',x.smart?('اسمارت‌مانی ×'+x.smartMoneyCount):'',x.whale?('خرید نهنگ ×'+x.whaleCount):''].filter(Boolean);
   return '<div class="card"><div class="top"><div><div class="name">'+esc(x.symbol||x.name||'?')+'</div><div class="mint">'+esc(x.address)+'</div></div><span class="badge strong">تأیید چندمنبعی</span></div>'+
    '<div class="chips">'+reasons.map(r=>'<span class="chip">'+esc(r)+'</span>').join('')+'</div>'+
-   '<div class="stats"><div class="stat"><div class="k">ارزش پوزیشن اسمارت‌مانی</div><div class="v">'+money(x.smartValue||0)+'</div></div><div class="stat"><div class="k">خرید نهنگ</div><div class="v">'+money(x.whaleUsd||0)+'</div></div><div class="stat"><div class="k">امنیت</div><div class="v">'+esc(faSecurity(x.security?.tier||'REVIEW'))+'</div></div></div>'+
+   '<div class="stats"><div class="stat"><div class="k">ارزش پوزیشن اسمارت‌مانی</div><div class="v">'+money(x.smartValue||0)+'</div></div><div class="stat"><div class="k">هولدینگ کیف‌پول‌های فایل</div><div class="v">'+money(x.trackedValue||0)+'</div></div><div class="stat"><div class="k">جریان خالص کیف‌پول‌های فایل</div><div class="v">'+money(x.trackedNet||0)+'</div></div><div class="stat"><div class="k">خرید نهنگ</div><div class="v">'+money(x.whaleUsd||0)+'</div></div><div class="stat"><div class="k">امنیت</div><div class="v">'+esc(faSecurity(x.security?.tier||'REVIEW'))+'</div></div></div>'+
    '<div class="links" style="margin-top:10px"><a target="_blank" rel="noopener" href="'+esc(x.dexUrl||dexSearch(x.address))+'">📈 مشاهده چارت در DexScreener</a><a target="_blank" rel="noopener" href="https://solscan.io/token/'+esc(x.address)+'">سول‌اسکن</a></div></div>'
  }).join('')||'<p>فعلاً ارز مشترک بین میم‌کوین + اسمارت‌مانی + خرید نهنگ پیدا نشده.</p>';
+}
+
+
+function trackedTokenCard(t,mode){
+ const title=mode==='holding'?'ارزش فعلی تجمیعی':mode==='buy'?'ورود خالص اخیر':'همگرایی کیف‌پول‌ها';
+ const main=mode==='holding'?money(t.currentHoldingUsd):mode==='buy'?money(t.netFlowUsd):((t.uniqueBuyers||0)+' خریدار');
+ const buys=(t.buyers||[]).map(x=>'<span class="chip">خرید: '+esc(x)+'</span>').join('');
+ const sells=(t.sellers||[]).map(x=>'<span class="chip">فروش: '+esc(x)+'</span>').join('');
+ const holds=(t.holders||[]).slice(0,5).map(x=>'<span class="chip">هولد: '+esc(x.wallet)+(x.valueUsd!=null?' '+money(x.valueUsd):'')+'</span>').join('');
+ return '<div class="card"><div class="top"><div><div class="name">'+esc(t.symbol||'?')+' <small>'+esc(t.name||'')+'</small></div><div class="mint">'+esc(t.mint)+'</div></div><span class="badge '+(t.consensus?'strong':'watch')+'">'+esc(title)+'</span></div>'+
+ '<div class="stats"><div class="stat"><div class="k">'+esc(title)+'</div><div class="v">'+main+'</div></div><div class="stat"><div class="k">خرید تقریبی</div><div class="v">'+money(t.buyUsd)+'</div></div><div class="stat"><div class="k">فروش تقریبی</div><div class="v">'+money(t.sellUsd)+'</div></div><div class="stat"><div class="k">کیف‌پول خریدار</div><div class="v">'+(t.uniqueBuyers||0)+'</div></div><div class="stat"><div class="k">کیف‌پول هولدر</div><div class="v">'+(t.holdingWallets||0)+'</div></div><div class="stat"><div class="k">نقدینگی</div><div class="v">'+money(t.liquidity)+'</div></div></div>'+
+ '<div class="chips">'+buys+sells+holds+'</div><div class="links" style="margin-top:10px"><a target="_blank" rel="noopener" href="'+esc(t.dexUrl||dexSearch(t.mint))+'">📈 چارت DexScreener</a><a target="_blank" rel="noopener" href="https://solscan.io/token/'+esc(t.mint)+'">Solscan</a><a target="_blank" rel="noopener" href="'+gmgnLink(t.mint)+'">GMGN</a><a target="_blank" rel="noopener" href="'+bubbleLink(t.mint)+'">Bubblemaps</a></div></div>';
+}
+function renderTrackedWallets(){
+ const d=trackedWalletData;if(!d)return;
+ trackedWalletStatus.textContent='آخرین اسکن آن‌چین: '+new Date(d.generatedAt).toLocaleString('fa-IR')+' | '+d.wallets.length+' کیف‌پول | قیمت SOL '+money(d.solPrice);
+ trackedTopHoldings.innerHTML=(d.topHoldings||[]).map(t=>trackedTokenCard(t,'holding')).join('')||'<p>فعلاً هولدینگ قابل‌ارزش‌گذاری از خریدهای اخیر پیدا نشد.</p>';
+ trackedTopBuys.innerHTML=(d.topNetBuys||[]).map(t=>trackedTokenCard(t,'buy')).join('')||'<p>در بازه اخیر خرید خالص قابل‌تشخیص پیدا نشد.</p>';
+ trackedConsensus.innerHTML=(d.consensus||[]).map(t=>trackedTokenCard(t,'consensus')).join('')||'<p>فعلاً خرید همزمان دو یا چند کیف‌پول روی یک توکن تأیید نشده.</p>';
+ trackedWalletGrid.innerHTML=(d.wallets||[]).map(w=>{
+  const ev=(w.events||[]).slice(0,4).map(e=>'<div class="verifyrow"><span>'+(e.side==='BUY'?'🟢 خرید':'🔴 فروش')+' '+esc(e.symbol||e.mint.slice(0,6)+'…')+'</span><b>'+money(e.approxUsd)+' · '+new Date(e.ts).toLocaleTimeString('fa-IR')+'</b></div>').join('');
+  return '<div class="card"><div class="top"><div><div class="name">'+esc(w.name)+'</div><div class="mint">'+esc(w.address)+'</div></div><span class="badge '+(w.highFrequencyRisk?'skip':w.priority?'strong':'watch')+'">'+esc(w.speed)+'</span></div>'+
+   '<div class="stats"><div class="stat"><div class="k">PnL تاریخی Seed</div><div class="v">'+money(w.seedPnl30d)+'</div></div><div class="stat"><div class="k">Win Rate تاریخی</div><div class="v">'+(w.seedWinRate??'?')+'%</div></div><div class="stat"><div class="k">Median Hold</div><div class="v">'+(w.medianHoldSec==null?'نامشخص':w.medianHoldSec+'s')+'</div></div></div>'+
+   '<div class="holders">'+(ev||'رویداد Swap اخیر قابل‌تشخیص نیست')+'</div><div class="links" style="margin-top:10px"><a target="_blank" rel="noopener" href="'+esc(w.sourceUrl)+'">'+esc(w.source)+'</a><a target="_blank" rel="noopener" href="'+esc(w.solscanUrl)+'">Solscan</a><a target="_blank" rel="noopener" href="'+esc(w.gmgnUrl)+'">GMGN Wallet</a></div></div>';
+ }).join('');
+}
+async function loadTrackedWallets(){
+ try{
+  const r=await fetch('/api/v1/tracked-wallets');const d=await r.json();trackedWalletData=d;renderTrackedWallets();renderFeatured();renderUnified();
+ }catch(e){trackedWalletStatus.textContent='اسکن کیف‌پول‌ها فعلاً در دسترس نیست.'}
 }
 
 async function loadSmart(){
@@ -759,6 +957,7 @@ async function loadSmart(){
 }
 
 loadSmart();setInterval(loadSmart,6*60*60*1000);
+loadTrackedWallets();setInterval(loadTrackedWallets,120000);
 
 let seenLiveEventIds=new Set();
 async function loadLiveSmart(){
@@ -802,6 +1001,7 @@ createServer(async(req,res)=>{
   const url=new URL(req.url,'http://localhost');
   try{
     if(url.pathname==='/api/health'){res.writeHead(200,{'content-type':'application/json',...headers});return res.end(JSON.stringify({ok:true,time:new Date().toISOString()}))}
+    if(url.pathname==='/api/v1/tracked-wallets'){const tw=await buildTrackedWallets();res.writeHead(200,{'content-type':'application/json; charset=utf-8','cache-control':'no-store',...headers});return res.end(JSON.stringify(tw))}
     if(url.pathname==='/api/v1/smart-money'){const sm=await buildSmartMoney();res.writeHead(200,{'content-type':'application/json; charset=utf-8','cache-control':'no-store',...headers});return res.end(JSON.stringify(sm))}
     if(url.pathname==='/api/v1/smart-money-live'){const sm=liveSmartMoneyPayload();res.writeHead(200,{'content-type':'application/json; charset=utf-8','cache-control':'no-store',...headers});return res.end(JSON.stringify(sm))}
     if(url.pathname==='/api/v1/tokens'||url.pathname==='/api/radar'||url.pathname==='/api/v1/trending'){
