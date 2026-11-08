@@ -31,10 +31,13 @@ const TRACKED_WALLETS=[
   {name:'Jijo',address:'4BdKaxN8G6ka4GYtQQWk4G4dZRUTX2vQH9GcXdBREFUk',source:'KOL Explorer',sourceUrl:'https://kolexplorer.com/kol/jijo',seedPnl30d:67699,seedWinRate:71.8,medianHoldSec:53},
   {name:'Johnson',address:'J9TYAsWWidbrcZybmLSfrLzryANf4CgJBLdvwdGuC8MB',source:'KOL Explorer',sourceUrl:'https://kolexplorer.com/kol/johnson',seedPnl30d:63178,seedWinRate:65.7,medianHoldSec:180,priority:true},
   {name:'Whale #1',address:'6ug4s5uoG2dxycww9wBxo7kQq9NPzEf1ZSmGMT6M76Ni',source:'Solana Tracker',sourceUrl:'https://www.solanatracker.io/wallet/6ug4s5uoG2dxycww9wBxo7kQq9NPzEf1ZSmGMT6M76Ni',seedPnl30d:53930000,seedWinRate:36.4,medianHoldSec:null,highFrequencyRisk:true},
+  {name:'Cap',address:'CAPn1yH4oSywsxGU456jfgTrSSUidf9jgeAnHceNUJdw',source:'KOL Explorer',sourceUrl:'https://kolexplorer.com/kol/cap',seedPnl30d:234612,seedWinRate:41.8,medianHoldSec:60},
   {name:'moonlobsterdisc',address:'CFzVktB6sfK8rpewZeJ5VRPcvG5BBtK6pSbZ7FHVze4V',source:'Solana Tracker',sourceUrl:'https://www.solanatracker.io/wallet/CFzVktB6sfK8rpewZeJ5VRPcvG5BBtK6pSbZ7FHVze4V',seedPnl30d:9530000,seedWinRate:37.3,medianHoldSec:null}
 ];
 let trackedWalletCache={at:0,data:null};
 const TRACKED_WALLET_CACHE_MS=5*60*1000;
+let convictionCache={at:0,data:null};
+const CONVICTION_CACHE_MS=30*60*1000;
 
 
 const headers={
@@ -61,6 +64,44 @@ async function rpc(method,params){
   }
   throw last;
 }
+
+async function tfetch(url,opt={},timeout=12000){
+  const c=new AbortController();const t=setTimeout(()=>c.abort(),timeout);
+  try{
+    const r=await fetch(url,{...opt,signal:c.signal,headers:{'user-agent':'Mozilla/5.0 SolanaMemeRadar/1.0',...(opt.headers||{})}});
+    if(!r.ok)throw new Error(r.status+' '+r.statusText);
+    return await r.text();
+  }finally{clearTimeout(t)}
+}
+function humanNum(v){
+  const m=String(v||'').replace(/,/g,'').trim().match(/^(-?\$?)([\d.]+)\s*([KMB])?$/i);
+  if(!m)return num(String(v||'').replace(/[$,]/g,''));
+  const n=num(m[2]),u=(m[3]||'').toUpperCase();
+  return n*(u==='K'?1e3:u==='M'?1e6:u==='B'?1e9:1);
+}
+async function pairsForMany(mints){
+  const uniq=[...new Set((mints||[]).filter(Boolean))].slice(0,900);
+  const batches=[];for(let i=0;i<uniq.length;i+=30)batches.push(uniq.slice(i,i+30));
+  const out=new Map();
+  const settled=await Promise.allSettled(batches.map(async batch=>{
+    const rows=await jfetch('https://api.dexscreener.com/tokens/v1/solana/'+batch.join(','),{},12000);
+    return Array.isArray(rows)?rows:[];
+  }));
+  for(const r of settled){
+    if(r.status!=='fulfilled')continue;
+    for(const p of r.value){
+      const addr=p?.baseToken?.address||p?.quoteToken?.address;if(!addr)continue;
+      const old=out.get(addr);
+      if(!old||num(p?.liquidity?.usd)>num(old?.liquidity?.usd))out.set(addr,p);
+    }
+  }
+  return out;
+}
+function stripHtml(x){
+  return String(x||'').replace(/<script[\s\S]*?<\/script>/gi,' ').replace(/<style[\s\S]*?<\/style>/gi,' ')
+    .replace(/<[^>]+>/g,' ').replace(/&nbsp;|&#160;/gi,' ').replace(/&amp;/gi,'&').replace(/\s+/g,' ').trim();
+}
+
 async function discovery(){
   const urls=['https://api.dexscreener.com/token-profiles/latest/v1','https://api.dexscreener.com/token-boosts/latest/v1','https://api.dexscreener.com/token-boosts/top/v1'];
   const sets=await Promise.allSettled(urls.map(u=>jfetch(u)));
@@ -591,6 +632,29 @@ async function buildTrackedWallets(){
     await sleep(45);
   }
 
+
+  // Value the current portfolios of every tracked wallet, not only tokens traded recently.
+  const portfolioAgg=new Map();
+  for(const w of walletRows){
+    for(const [mint,amount] of w._balances.entries()){
+      if(!mint||STABLE_MINTS.has(mint)||mint===WSOL_MINT||amount<=0)continue;
+      const a=portfolioAgg.get(mint)||{mint,holders:[],holdingWallets:0,totalAmount:0};
+      a.holders.push({wallet:w.name,address:w.address,amount});
+      a.holdingWallets+=1;a.totalAmount+=amount;portfolioAgg.set(mint,a);
+    }
+  }
+  const portfolioPairs=await pairsForMany([...portfolioAgg.keys()]);
+  for(const [mint,a] of portfolioAgg){
+    const p=portfolioPairs.get(mint);if(!p)continue;
+    const price=num(p.priceUsd);if(price<=0)continue;
+    a.symbol=p?.baseToken?.symbol||'?';a.name=p?.baseToken?.name||'Unknown';a.priceUsd=price;
+    a.dexUrl=p.url||'';a.liquidity=num(p?.liquidity?.usd);a.marketCap=num(p.marketCap||p.fdv);
+    a.currentHoldingUsd=0;
+    for(const h of a.holders){h.valueUsd=h.amount*price;a.currentHoldingUsd+=h.valueUsd}
+  }
+  const marketTopHoldings=[...portfolioAgg.values()].filter(x=>num(x.currentHoldingUsd)>0)
+    .sort((a,b)=>b.currentHoldingUsd-a.currentHoldingUsd).slice(0,20);
+
   const rankedAgg=[...agg.values()].sort((a,b)=>(b.buyers.size-a.buyers.size)||(b.buyUsd-b.sellUsd)-(a.buyUsd-a.sellUsd)).slice(0,20);
   for(const a of rankedAgg){
     let p=null;
@@ -623,9 +687,64 @@ async function buildTrackedWallets(){
     const speed=w.highFrequencyRisk?'ربات/فرکانس بسیار بالا محتمل':w.medianHoldSec!=null&&w.medianHoldSec<60?'اسکالپر بسیار سریع':w.medianHoldSec!=null&&w.medianHoldSec<=180?'اسکالپر سریع':'نامشخص';
     return {...rest,speed,solscanUrl:'https://solscan.io/account/'+w.address,gmgnUrl:'https://gmgn.ai/sol/address/'+w.address};
   });
-  const data={ok:true,generatedAt:new Date().toISOString(),refreshSeconds:300,source:'Solana RPC live + seed rankings from KOL Explorer/Solana Tracker',solPrice,wallets:publicWallets,tokens,topHoldings,topNetBuys,consensus,
+  const data={ok:true,generatedAt:new Date().toISOString(),refreshSeconds:300,source:'Solana RPC live + seed rankings from KOL Explorer/Solana Tracker',solPrice,wallets:publicWallets,tokens,topHoldings,marketTopHoldings,topNetBuys,consensus,
     disclaimer:'خرید/فروش از تغییر موجودی توکن همراه با خروج/ورود SOL یا استیبل‌کوین استنباط می‌شود. انتقال ساده حذف می‌شود اما تشخیص Swap صددرصد نیست. رتبه/سود تاریخی Seed است و تصمیم خرید نیست.'};
   trackedWalletCache={at:Date.now(),data};return data;
+}
+
+
+async function discoverKolProfiles(){
+  const urls=new Set(TRACKED_WALLETS.filter(w=>w.source==='KOL Explorer'&&w.sourceUrl).map(w=>w.sourceUrl));
+  try{
+    const html=await tfetch('https://kolexplorer.com/');
+    const re=/href=["'](?:https?:\/\/kolexplorer\.com)?\/kol\/([a-zA-Z0-9_-]+)["']/g;let m;
+    while((m=re.exec(html))&&urls.size<24)urls.add('https://kolexplorer.com/kol/'+m[1]);
+  }catch{}
+  return [...urls].slice(0,20);
+}
+function parseKolProfile(html,url){
+  const text=stripHtml(html);
+  const nameMatch=text.match(/#?\s*([A-Za-z0-9 _.-]{2,30})\s+[—-]\s+Solana/i);
+  const name=(nameMatch?.[1]||url.split('/').pop()||'KOL').trim();
+  const walletMatch=text.match(/Wallet address\s+([1-9A-HJ-NP-Za-km-z]{32,44})/i);
+  const pnlMatch=text.match(/7D PnL\s*\+?\$([\d.,]+(?:\s*[KMB])?)/i);
+  const pnl7d=pnlMatch?humanNum(pnlMatch[1]):null;
+  const anchors=[];
+  const ar=/<a\b[^>]*href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi;let a;
+  while((a=ar.exec(html))){
+    const txt=stripHtml(a[2]);
+    if(!/Holding/i.test(txt)||!/\b\d+(?:\.\d+)?\s*d\s*ago\b/i.test(txt))continue;
+    const age=txt.match(/(\d+(?:\.\d+)?)\s*d\s*ago/i);
+    const inv=txt.match(/Invested\s*\$([\d.,]+)\s*([KMB])?/i);
+    const hp=txt.match(/Holding\s*(\d+(?:\.\d+)?)%/i);
+    const symbol=(txt.match(/^([A-Za-z0-9$._-]{1,16})\b/)||[])[1]||'?';
+    const ageDays=age?num(age[1]):0;if(ageDays<7)continue;
+    anchors.push({
+      symbol,ageDays,holdingPct:hp?num(hp[1]):null,
+      investedUsd:inv?humanNum(inv[1]+(inv[2]||'')):null,
+      url:a[1].startsWith('http')?a[1]:'https://kolexplorer.com'+a[1],
+      raw:txt.slice(0,220)
+    });
+  }
+  return {name,wallet:walletMatch?.[1]||null,pnl7d,profileUrl:url,holdings:anchors};
+}
+async function buildConvictionWallets(){
+  if(convictionCache.data&&Date.now()-convictionCache.at<CONVICTION_CACHE_MS)return convictionCache.data;
+  const profiles=await discoverKolProfiles();
+  const wallets=[];
+  for(const url of profiles){
+    try{
+      const p=parseKolProfile(await tfetch(url),url);
+      if(p.pnl7d!=null&&p.pnl7d>0&&p.holdings.length)wallets.push(p);
+    }catch{}
+    await sleep(80);
+  }
+  const holdings=[];
+  for(const w of wallets)for(const h of w.holdings)holdings.push({...h,walletName:w.name,wallet:w.wallet,pnl7d:w.pnl7d,profileUrl:w.profileUrl});
+  holdings.sort((a,b)=>(b.investedUsd||0)-(a.investedUsd||0)||b.ageDays-a.ageDays);
+  const data={ok:true,generatedAt:new Date().toISOString(),source:'KOL Explorer public on-chain profiles',wallets,holdings:holdings.slice(0,30),
+    disclaimer:'7D+ means the public profile reports the position is still held and its displayed holding age is at least 7 days. It does not prove the wallet never partially sold; always verify the trade history.'};
+  convictionCache={at:Date.now(),data};return data;
 }
 
 function liveEventSeverity(e){
@@ -823,7 +942,7 @@ header{position:sticky;top:0;z-index:20;background:rgba(7,16,29,.94);backdrop-fi
 .brand{display:flex;align-items:center;gap:9px}.logo{width:34px;height:34px;border-radius:10px;background:#183454;display:grid;place-items:center;font-weight:900}.brand b{font-size:17px}.brand small{display:block;color:var(--muted);font-size:11px;margin-top:2px}
 button,input,select,a.action{border:1px solid var(--line);background:#101d31;color:var(--text);border-radius:9px;padding:8px 10px;font:inherit}button{cursor:pointer}.primary{background:#153d32;border-color:#2f6d57;color:#8dffc8}.muted{color:var(--muted)}
 .kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:11px}.kpi{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:10px}.kpi small{color:var(--muted);font-size:11px}.kpi b{display:block;font-size:21px;margin-top:3px}
-.alerts{display:grid;gap:6px;margin-bottom:9px}.alert{padding:8px 10px;border:1px solid #703343;background:#25151d;color:#ffb0bd;border-radius:10px;font-size:12px}
+.champion{background:linear-gradient(135deg,#102b27,#101f35);border:1px solid #34745e;border-radius:14px;padding:12px;margin-bottom:10px}.champion h2{font-size:15px;margin:0 0 6px}.champion .score{font-size:24px;font-weight:900;color:var(--good)}.champion-grid{display:grid;grid-template-columns:1.4fr repeat(4,.7fr) auto;gap:8px;align-items:center}.alerts{display:grid;gap:6px;margin-bottom:9px}.alert{padding:8px 10px;border:1px solid #703343;background:#25151d;color:#ffb0bd;border-radius:10px;font-size:12px}
 .tabs{display:flex;gap:6px;overflow:auto;scrollbar-width:none;margin-bottom:10px}.tab{white-space:nowrap}.tab.active{background:#193759;border-color:#3d709f;color:#c0e1ff}
 .toolbar{display:flex;gap:7px;flex-wrap:wrap;margin-bottom:10px}.toolbar input{flex:1;min-width:220px}.toolbar select{min-width:140px}
 .panel{display:none}.panel.active{display:block}.section-title{display:flex;justify-content:space-between;gap:10px;align-items:end;margin:6px 0 9px}.section-title h2{margin:0;font-size:16px}.section-title p{margin:3px 0 0;color:var(--muted);font-size:11px}
@@ -832,7 +951,7 @@ button,input,select,a.action{border:1px solid var(--line);background:#101d31;col
 .empty{background:var(--panel);border:1px dashed var(--line);border-radius:12px;padding:22px;text-align:center;color:var(--muted);font-size:12px}
 .three{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}.mini{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:10px}.mini h3{font-size:13px;margin:0 0 7px}.mini-row{display:flex;justify-content:space-between;gap:8px;padding:6px 0;border-top:1px solid #182b45;font-size:11px}.mini-row:first-of-type{border-top:0}.mini-row span{color:var(--muted)}
 dialog{width:min(720px,94vw);max-height:88vh;border:1px solid #36506e;border-radius:15px;background:#091426;color:var(--text);padding:0;box-shadow:0 30px 90px #0009}dialog::backdrop{background:#000a}.modal-head{position:sticky;top:0;background:#091426;border-bottom:1px solid var(--line);padding:12px 14px;display:flex;justify-content:space-between;align-items:center}.modal-body{padding:13px}.modal-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:7px}.box{background:#0f1d31;border:1px solid var(--line);border-radius:10px;padding:8px}.box small{display:block;color:var(--muted);font-size:9px}.box b{display:block;margin-top:3px;font-size:12px}.holders{margin-top:11px}.holder,.check{display:flex;justify-content:space-between;gap:7px;padding:6px 0;border-top:1px solid var(--line);font-size:11px}.holder a{color:var(--blue);text-decoration:none}.links{display:flex;flex-wrap:wrap;gap:5px;margin-top:11px}.links a{color:#b5ddff;text-decoration:none;border:1px solid #315071;background:#10243b;padding:6px 8px;border-radius:8px;font-size:11px}.note{margin-top:10px;color:var(--muted);font-size:11px;line-height:1.65}.pass{color:var(--good)}.fail{color:var(--bad)}.manual{color:var(--warn)}
-@media(max-width:900px){.row{grid-template-columns:1.5fr repeat(3,.8fr) auto}.hide-md{display:none}.three{grid-template-columns:1fr}.kpis{grid-template-columns:repeat(2,1fr)}}
+@media(max-width:900px){.champion-grid{grid-template-columns:1fr 1fr}.champion-grid .asset,.champion-grid .actions{grid-column:1/-1}.row{grid-template-columns:1.5fr repeat(3,.8fr) auto}.hide-md{display:none}.three{grid-template-columns:1fr}.kpis{grid-template-columns:repeat(2,1fr)}}
 @media(max-width:620px){.head{padding:9px 10px}.shell{padding:10px}.brand small,.status{display:none}.row{grid-template-columns:1fr 1fr}.asset,.actions{grid-column:1/-1}.hide-sm{display:none}.modal-grid{grid-template-columns:repeat(2,1fr)}}
 </style>
 </head>
@@ -852,7 +971,7 @@ dialog{width:min(720px,94vw);max-height:88vh;border:1px solid #36506e;border-rad
   <div class="kpi"><small>خروج همزمان</small><b id="kExits">—</b></div>
 </section>
 
-<div class="alerts" id="alerts"></div>
+<div id="championBox"></div><div class="alerts" id="alerts"></div>
 
 <nav class="tabs" id="tabs">
   <button class="tab active" data-tab="featured">🔥 پیشنهادها</button>
@@ -886,11 +1005,11 @@ dialog{width:min(720px,94vw);max-height:88vh;border:1px solid #36506e;border-rad
 <section class="panel" id="walletsPanel">
   <div class="section-title"><div><h2>۱۲ کیف‌پول برتر</h2><p id="walletStatus">در حال اسکن آن‌چین…</p></div></div>
   <div class="three">
-    <div class="mini"><h3>💰 بیشترین سرمایه فعلی</h3><div id="topHoldings"></div></div>
+    <div class="mini"><h3>💰 بیشترین سرمایه کل کیف‌پول‌ها</h3><div id="topHoldings"></div></div>
     <div class="mini"><h3>🟢 بیشترین خرید خالص</h3><div id="topBuys"></div></div>
     <div class="mini"><h3>🤝 خرید همزمان</h3><div id="consensus"></div></div>
   </div>
-  <div class="section-title" style="margin-top:13px"><div><h2>خود کیف‌پول‌ها</h2><p>آخرین حرکت و لینک بررسی.</p></div></div>
+  <div class="section-title" style="margin-top:13px"><div><h2>🧱 سودده‌هایی که ۷ روز+ هنوز نگه داشته‌اند</h2><p>از پروفایل‌های آن‌چین عمومی KOL Explorer؛ فروش جزئی ممکن است رخ داده باشد.</p></div></div><div class="list" id="convictionList"></div><div class="section-title" style="margin-top:13px"><div><h2>خود کیف‌پول‌ها</h2><p>آخرین حرکت و لینک بررسی.</p></div></div>
   <div class="list" id="walletList"></div>
 </section>
 
@@ -906,7 +1025,7 @@ dialog{width:min(720px,94vw);max-height:88vh;border:1px solid #36506e;border-rad
 </dialog>
 
 <script>
-var tokens=[],smart=null,live=null,tracked=null,activeTab='featured';
+var tokens=[],smart=null,live=null,tracked=null,conviction=null,activeTab='featured';
 function esc(v){return String(v==null?'':v).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]})}
 function money(v){var n=Number(v||0);if(!Number.isFinite(n))return '—';return '$'+n.toLocaleString(undefined,{maximumFractionDigits:n<1?4:0})}
 function pct(v){return v==null?'—':Number(v).toFixed(1)+'%'}
@@ -965,6 +1084,38 @@ function tokenRow(t){
   '<div class="actions"><a class="action" target="_blank" rel="noopener" href="'+esc(dexUrl(t.mint,t.dexUrl))+'">📈 چارت</a><button class="detail-btn" data-mint="'+esc(t.mint)+'">جزئیات</button></div></div>';
 }
 
+
+function overallCandidates(){
+  return tokens.map(function(t){
+    var gate=t.securityGate||{},sec=t.security||{},sg=t.signals||{},sh=sg.short||{},md=sg.medium||{},lg=sg.long||{};
+    if(gate.blocked||sec.tier==='REJECT'||exitFor(t.mint).length)return null;
+    if(sec.tier!=='MAX SECURITY'&&sec.tier!=='HIGH')return null;
+    if(Number(sh.score||0)<60||Number(md.score||0)<60)return null;
+    var score=0;
+    score+=sec.tier==='MAX SECURITY'?30:22;
+    score+=Number(sh.score||0)*0.16+Number(md.score||0)*0.22+Number(lg.score||0)*0.22;
+    if(t.security&&t.security.holderStrong)score+=6;
+    if(t.activity&&t.activity.label==='PROBABLE ORGANIC')score+=5;
+    if(t.marketQuality&&t.marketQuality.score>=80)score+=5;
+    var sm=smartFor(t.mint),wh=whaleFor(t.mint),tr=findTracked(t.mint);
+    if(sm)score+=4;if(wh.count)score+=4;if(tr&&tr.uniqueBuyers>=2&&tr.netFlowUsd>0)score+=5;
+    return {t:t,score:Math.min(100,Math.round(score)),sm:sm,wh:wh,tr:tr};
+  }).filter(Boolean).sort(function(a,b){return b.score-a.score});
+}
+function renderChampion(){
+  var x=overallCandidates()[0],el=document.getElementById('championBox');
+  if(!x){el.innerHTML='<div class="champion"><h2>🏆 بهترین سیگنال کل رادار</h2><div class="muted">فعلاً توکنی نیست که هم امنیت بالا و هم حداقل دو بازه زمانی قوی را همزمان پاس کند.</div></div>';return}
+  var t=x.t,sg=t.signals||{};
+  el.innerHTML='<div class="champion"><h2>🏆 بهترین سیگنال کل رادار</h2><div class="champion-grid">'+
+    '<div class="asset"><b>'+esc(t.symbol||'?')+' · '+esc(t.name||'')+'</b><small>بدون هشدار خروج · امنیت '+esc(faSec(t.security?.tier))+'</small></div>'+
+    '<div><small class="muted">امتیاز کل</small><div class="score">'+x.score+'/100</div></div>'+
+    '<div class="cell"><small>کوتاه</small><b>'+Number(sg.short?.score||0)+'</b></div>'+
+    '<div class="cell"><small>میان</small><b>'+Number(sg.medium?.score||0)+'</b></div>'+
+    '<div class="cell"><small>بلند</small><b>'+Number(sg.long?.score||0)+'</b></div>'+
+    '<div class="actions"><a class="action" target="_blank" rel="noopener" href="'+esc(dexUrl(t.mint,t.dexUrl))+'">📈 چارت</a><button class="detail-btn" data-mint="'+esc(t.mint)+'">جزئیات</button></div>'+
+  '</div></div>';
+}
+
 function renderFeatured(){
   var r=featuredRows();document.getElementById('kFeatured').textContent=r.length;
   document.getElementById('featuredList').innerHTML=r.length?r.map(function(x){
@@ -1007,10 +1158,25 @@ function miniRows(r,m){
   if(!r||!r.length)return '<div class="mini-row"><span>موردی نیست</span><b>—</b></div>';
   return r.slice(0,5).map(function(t){var v=m==='hold'?money(t.currentHoldingUsd):m==='buy'?money(t.netFlowUsd):(Number(t.uniqueBuyers||0)+' خریدار');return '<div class="mini-row"><span>'+esc(t.symbol||short(t.mint))+'</span><b>'+v+'</b></div>'}).join('');
 }
+
+function renderConviction(){
+  var el=document.getElementById('convictionList');if(!el)return;
+  var rows=conviction&&conviction.holdings?conviction.holdings:[];
+  el.innerHTML=rows.length?rows.slice(0,15).map(function(h){
+    return '<div class="row"><div class="asset"><b>🧱 '+esc(h.symbol||'?')+' · '+esc(h.walletName||'')+'</b><small>هنوز در پوزیشن · '+Number(h.ageDays||0).toFixed(0)+' روز</small></div>'+
+    '<div class="cell"><small>PnL 7D کیف‌پول</small><b>'+money(h.pnl7d)+'</b></div>'+
+    '<div class="cell"><small>سرمایه اولیه</small><b>'+money(h.investedUsd)+'</b></div>'+
+    '<div class="cell"><small>عمر هولد</small><b>'+Number(h.ageDays||0).toFixed(0)+'d</b></div>'+
+    '<div class="cell hide-sm"><small>درصد باقی‌مانده</small><b>'+(h.holdingPct==null?'—':pct(h.holdingPct))+'</b></div>'+
+    '<div class="cell hide-md"><small>وضعیت</small><b><span class="badge good">۷ روز+</span></b></div>'+
+    '<div class="actions"><a class="action" target="_blank" rel="noopener" href="'+esc(h.profileUrl||h.url)+'">پروفایل</a><a class="action" target="_blank" rel="noopener" href="'+esc(h.url||h.profileUrl)+'">پوزیشن</a></div></div>';
+  }).join(''):'<div class="empty">فعلاً پوزیشن سودده ۷روزه+ قابل‌تأیید از منابع عمومی پیدا نشد.</div>';
+}
+
 function renderWallets(){
   if(!tracked){document.getElementById('walletStatus').textContent='داده در دسترس نیست';return}
   document.getElementById('walletStatus').textContent='آخرین اسکن: '+new Date(tracked.generatedAt||Date.now()).toLocaleTimeString('fa-IR')+' · '+(tracked.wallets?tracked.wallets.length:0)+' کیف‌پول';
-  document.getElementById('topHoldings').innerHTML=miniRows(tracked.topHoldings,'hold');document.getElementById('topBuys').innerHTML=miniRows(tracked.topNetBuys,'buy');document.getElementById('consensus').innerHTML=miniRows(tracked.consensus,'consensus');
+  document.getElementById('topHoldings').innerHTML=miniRows(tracked.marketTopHoldings||tracked.topHoldings,'hold');document.getElementById('topBuys').innerHTML=miniRows(tracked.topNetBuys,'buy');document.getElementById('consensus').innerHTML=miniRows(tracked.consensus,'consensus');
   var r=tracked.wallets||[];
   document.getElementById('walletList').innerHTML=r.length?r.map(function(w){
     var e=w.events&&w.events[0]?w.events[0]:null;
@@ -1031,7 +1197,7 @@ function renderAlerts(){
   var c=live&&live.exitClusters?live.exitClusters.filter(function(x){return x.severity==='MULTI-WALLET EXIT'}).slice(0,3):[];
   document.getElementById('kExits').textContent=c.length;document.getElementById('alerts').innerHTML=c.map(function(x){return '<div class="alert">🚨 خروج همزمان چند کیف‌پول از <b>'+esc(x.token||short(x.tokenAddress))+'</b> · '+Number(x.uniqueSellers||0)+' فروشنده</div>'}).join('');
 }
-function renderAll(){document.getElementById('kTokens').textContent=tokens.length;renderAlerts();renderFeatured();renderWhales();renderSmart();renderWallets();renderTokens()}
+function renderAll(){document.getElementById('kTokens').textContent=tokens.length;renderChampion();renderAlerts();renderFeatured();renderWhales();renderSmart();renderWallets();renderConviction();renderTokens()}
 function stateLabel(v){return v==='pass'?'<span class="pass">✓ تأیید</span>':v==='fail'?'<span class="fail">✕ رد</span>':'<span class="manual">◌ دستی</span>'}
 function openDetail(m){
   var t=findToken(m),tr=findTracked(m),sm=smartFor(m),wh=whaleFor(m),name=t?(t.symbol+' · '+t.name):(tr?(tr.symbol+' · '+tr.name):short(m)),h='';
@@ -1050,8 +1216,8 @@ function openDetail(m){
 }
 async function loadAll(){
   var b=document.getElementById('refresh');b.disabled=true;b.textContent='در حال دریافت…';
-  var r=await Promise.all([safeJson('/api/v1/tokens'),safeJson('/api/v1/smart-money'),safeJson('/api/v1/smart-money-live'),safeJson('/api/v1/tracked-wallets')]);
-  tokens=r[0]&&r[0].tokens?r[0].tokens:[];smart=r[1];live=r[2];tracked=r[3];
+  var r=await Promise.all([safeJson('/api/v1/tokens'),safeJson('/api/v1/smart-money'),safeJson('/api/v1/smart-money-live'),safeJson('/api/v1/tracked-wallets'),safeJson('/api/v1/conviction-wallets')]);
+  tokens=r[0]&&r[0].tokens?r[0].tokens:[];smart=r[1];live=r[2];tracked=r[3];conviction=r[4];
   document.getElementById('updated').textContent='آخرین بروزرسانی: '+new Date().toLocaleTimeString('fa-IR');b.disabled=false;b.textContent='↻ بروزرسانی';renderAll();
 }
 document.addEventListener('click',function(e){var d=e.target.closest('.detail-btn');if(!d)return;openDetail(d.getAttribute('data-mint')||'')});
@@ -1066,6 +1232,7 @@ createServer(async(req,res)=>{
   const url=new URL(req.url,'http://localhost');
   try{
     if(url.pathname==='/api/health'){res.writeHead(200,{'content-type':'application/json',...headers});return res.end(JSON.stringify({ok:true,time:new Date().toISOString()}))}
+    if(url.pathname==='/api/v1/conviction-wallets'){const cw=await buildConvictionWallets();res.writeHead(200,{'content-type':'application/json; charset=utf-8','cache-control':'no-store',...headers});return res.end(JSON.stringify(cw))}
     if(url.pathname==='/api/v1/tracked-wallets'){const tw=await buildTrackedWallets();res.writeHead(200,{'content-type':'application/json; charset=utf-8','cache-control':'no-store',...headers});return res.end(JSON.stringify(tw))}
     if(url.pathname==='/api/v1/smart-money'){const sm=await buildSmartMoney();res.writeHead(200,{'content-type':'application/json; charset=utf-8','cache-control':'no-store',...headers});return res.end(JSON.stringify(sm))}
     if(url.pathname==='/api/v1/smart-money-live'){const sm=liveSmartMoneyPayload();res.writeHead(200,{'content-type':'application/json; charset=utf-8','cache-control':'no-store',...headers});return res.end(JSON.stringify(sm))}
