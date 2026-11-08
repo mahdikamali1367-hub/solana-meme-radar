@@ -1627,73 +1627,171 @@ function liveSmartMoneyPayload(){
 
 async function buildSmartMoney(){
   const key=process.env.FOMO_API_KEY;
-  if(!key){
-    return {ok:false,configured:false,source:'fomoapi',message:'FOMO_API_KEY لازم است',traders:[],tokens:[]};
+
+  // Fallback: build smart-money candidates from the radar's own tracked-wallet
+  // on-chain data when the external FOMO API key is not configured.
+  async function fallbackFromTracked(){
+    const tw=await buildTrackedWallets();
+    const rows=Array.isArray(tw?.tokens)?tw.tokens:[];
+    const tokens=rows.map(function(x){
+      const buyers1000=Array.isArray(x.convictionHolders)?x.convictionHolders:[];
+      const score=
+        Math.max(0,Number(x.netFlowUsd||0))/250+
+        Number(x.uniqueBuyers||0)*8+
+        buyers1000.length*14+
+        Math.min(20,Number(x.currentHoldingUsd||0)/2500);
+
+      return {
+        address:x.mint,
+        symbol:x.symbol||'?',
+        name:x.name||'',
+        smartMoneyCount:Number(x.uniqueBuyers||0),
+        totalValueUsd:Number(x.currentHoldingUsd||0),
+        netFlowUsd:Number(x.netFlowUsd||0),
+        buyers1000Count:buyers1000.length,
+        buyers1000Usd:buyers1000.reduce(function(a,h){return a+Number(h.buyUsd||0)},0),
+        traders:(x.buyers||[]).map(function(name){return {handle:name,wallet:'',valueUsd:null,pnl7d:null,pnl30d:null}}),
+        marketCap:Number(x.marketCap||0),
+        liquidity:Number(x.liquidity||0),
+        dexUrl:x.dexUrl||'',
+        security:null,
+        smartScore:Math.round(score),
+        source:'tracked-wallets-onchain'
+      };
+    }).filter(function(x){
+      return x.smartMoneyCount>0&&(
+        x.netFlowUsd>0||
+        x.buyers1000Count>0||
+        x.totalValueUsd>0
+      );
+    }).sort(function(a,b){
+      return (b.buyers1000Count-a.buyers1000Count)||
+        (b.netFlowUsd-a.netFlowUsd)||
+        (b.totalValueUsd-a.totalValueUsd)||
+        (b.smartMoneyCount-a.smartMoneyCount);
+    }).slice(0,20);
+
+    for(const t of tokens){
+      try{t.security=await security(t.address)}catch{}
+    }
+
+    const traders=(tw?.wallets||[]).filter(function(w){
+      return Number(w.seedPnl30d||0)>0||Number(w.portfolioValueUsd||0)>0;
+    }).sort(function(a,b){
+      return Number(b.seedPnl30d||0)-Number(a.seedPnl30d||0);
+    }).slice(0,10).map(function(w){
+      return {
+        id:w.address,
+        handle:w.name||'',
+        displayName:w.name||'',
+        wallet:w.address,
+        verified:false,
+        pnl7d:0,
+        pnl30d:Number(w.seedPnl30d||0),
+        smartScore:Number(w.seedPnl30d||0)>0?Math.log10(1+Number(w.seedPnl30d||0))*20:0,
+        source:w.source||'tracked-wallet'
+      };
+    });
+
+    return {
+      ok:true,
+      configured:true,
+      fallback:true,
+      source:'tracked-wallets-onchain',
+      generatedAt:new Date().toISOString(),
+      cacheHours:0.08,
+      traders,
+      tokens,
+      disclaimer:'اسمارت‌مانی fallback از کیف‌پول‌های ردیابی‌شده و جریان آن‌چین خود رادار ساخته می‌شود؛ تضمین سود آینده نیست.'
+    };
   }
+
+  if(!key){
+    try{
+      const data=await fallbackFromTracked();
+      smartMoneyCache={at:Date.now(),data};
+      return data;
+    }catch(e){
+      return {ok:false,configured:false,source:'tracked-wallets-onchain',message:'داده اسمارت‌مانی داخلی فعلاً در دسترس نیست',traders:[],tokens:[]};
+    }
+  }
+
   if(smartMoneyCache.data&&Date.now()-smartMoneyCache.at<SMART_MONEY_CACHE_MS)return smartMoneyCache.data;
   const auth={authorization:'Bearer '+key};
-  const [b7,b30]=await Promise.all([
-    jfetch('https://api.fomoapi.io/v2/leaderboard/7d?limit=30',{headers:auth},12000),
-    jfetch('https://api.fomoapi.io/v2/leaderboard/30d?limit=30',{headers:auth},12000)
-  ]);
-  const m=new Map();
-  const ingest=(board,window)=>{
-    for(const r of (board?.traders||[])){
-      const wallet=r?.wallets?.solana;
-      if(!wallet||r?.verified!==true||num(r.pnlUsd)<=0)continue;
-      const id=r.userId||r.handle||wallet;
-      const x=m.get(id)||{id,handle:r.handle||'',displayName:r.displayName||r.handle||'',wallet,verified:true,pnl7d:0,pnl30d:0,volume7d:0,volume30d:0,rank7d:null,rank30d:null};
-      if(window==='7d'){x.pnl7d=num(r.pnlUsd);x.volume7d=num(r.volumeUsd);x.rank7d=r.rank??null}
-      else{x.pnl30d=num(r.pnlUsd);x.volume30d=num(r.volumeUsd);x.rank30d=r.rank??null}
-      m.set(id,x);
-    }
-  };
-  ingest(b7,'7d'); ingest(b30,'30d');
-  let traders=[...m.values()].map(x=>{
-    const consistency=(x.pnl7d>0?1:0)+(x.pnl30d>0?1:0);
-    const score=(consistency*100)+Math.log10(1+Math.max(0,x.pnl7d))*12+Math.log10(1+Math.max(0,x.pnl30d))*10;
-    return {...x,consistency,smartScore:+score.toFixed(1)};
-  }).filter(x=>x.consistency>=1).sort((a,b)=>b.smartScore-a.smartScore).slice(0,3);
+  try{
+    const [b7,b30]=await Promise.all([
+      jfetch('https://api.fomoapi.io/v2/leaderboard/7d?limit=30',{headers:auth},12000),
+      jfetch('https://api.fomoapi.io/v2/leaderboard/30d?limit=30',{headers:auth},12000)
+    ]);
+    const m=new Map();
+    const ingest=(board,window)=>{
+      for(const r of (board?.traders||[])){
+        const wallet=r?.wallets?.solana;
+        if(!wallet||r?.verified!==true||num(r.pnlUsd)<=0)continue;
+        const id=r.userId||r.handle||wallet;
+        const x=m.get(id)||{id,handle:r.handle||'',displayName:r.displayName||r.handle||'',wallet,verified:true,pnl7d:0,pnl30d:0,volume7d:0,volume30d:0,rank7d:null,rank30d:null};
+        if(window==='7d'){x.pnl7d=num(r.pnlUsd);x.volume7d=num(r.volumeUsd);x.rank7d=r.rank??null}
+        else{x.pnl30d=num(r.pnlUsd);x.volume30d=num(r.volumeUsd);x.rank30d=r.rank??null}
+        m.set(id,x);
+      }
+    };
+    ingest(b7,'7d'); ingest(b30,'30d');
+    let traders=[...m.values()].map(x=>{
+      const consistency=(x.pnl7d>0?1:0)+(x.pnl30d>0?1:0);
+      const score=(consistency*100)+Math.log10(1+Math.max(0,x.pnl7d))*12+Math.log10(1+Math.max(0,x.pnl30d))*10;
+      return {...x,consistency,smartScore:+score.toFixed(1)};
+    }).filter(x=>x.consistency>=1).sort((a,b)=>b.smartScore-a.smartScore).slice(0,3);
 
-  smartTraderHandles=new Set(traders.map(x=>String(x.handle||'').toLowerCase()).filter(Boolean));
-  const tokenMap=new Map();
-  for(const tr of traders){
-    let bal;
+    smartTraderHandles=new Set(traders.map(x=>String(x.handle||'').toLowerCase()).filter(Boolean));
+    const tokenMap=new Map();
+    for(const tr of traders){
+      let bal;
+      try{
+        bal=await jfetch('https://api.fomoapi.io/v2/users/'+encodeURIComponent(tr.id)+'/balances?chain=solana',{headers:auth},12000);
+      }catch{
+        try{bal=await jfetch('https://api.fomoapi.io/v2/users/'+encodeURIComponent(tr.handle)+'/balances?chain=solana',{headers:auth},12000)}catch{continue}
+      }
+      for(const h of (bal?.holdings||[])){
+        const address=h?.token?.address;
+        const symbol=String(h?.token?.symbol||'').toUpperCase();
+        if(!address||['SOL','WSOL','USDC','USDT'].includes(symbol))continue;
+        const value=num(h.valueUsd);
+        if(value<25)continue;
+        const old=tokenMap.get(address)||{address,symbol:symbol||'?',name:h?.token?.name||'',smartMoneyCount:0,totalValueUsd:0,traders:[],change24h:num(h.change24h),marketCap:0,liquidity:0,security:null,source:'fomoapi'};
+        old.smartMoneyCount+=1;
+        old.totalValueUsd+=value;
+        old.traders.push({handle:tr.handle||tr.displayName,wallet:tr.wallet,valueUsd:value,pnl7d:tr.pnl7d,pnl30d:tr.pnl30d});
+        tokenMap.set(address,old);
+      }
+    }
+
+    let tokens=[...tokenMap.values()].sort((a,b)=>(b.smartMoneyCount-a.smartMoneyCount)||(b.totalValueUsd-a.totalValueUsd)).slice(0,12);
+    for(const t of tokens){
+      try{
+        const p=await pairFor(t.address);
+        if(p){t.marketCap=num(p.marketCap||p.fdv);t.liquidity=num(p.liquidity?.usd);t.dexUrl=p.url||'';t.volume5m=num(p.volume?.m5);t.txns5m=num(p.txns?.m5?.buys)+num(p.txns?.m5?.sells)}
+        t.security=await security(t.address);
+      }catch{}
+    }
+    tokens.sort((a,b)=>{
+      const qa=(a.security?.holderStrong?2:a.security?.holderPolicyPassed?1:0)+(a.security?.mintDisabled&&a.security?.freezeDisabled?2:0);
+      const qb=(b.security?.holderStrong?2:b.security?.holderPolicyPassed?1:0)+(b.security?.mintDisabled&&b.security?.freezeDisabled?2:0);
+      return (b.smartMoneyCount-a.smartMoneyCount)||(qb-qa)||(b.totalValueUsd-a.totalValueUsd);
+    });
+    const data={ok:true,configured:true,fallback:false,source:'fomoapi',generatedAt:new Date().toISOString(),cacheHours:6,traders,tokens,disclaimer:'Smart Money یعنی کیف‌پول‌های سودده/تأییدشده در leaderboard؛ تضمین سود آینده یا سالم بودن توکن نیست.'};
+    smartMoneyCache={at:Date.now(),data};
+    return data;
+  }catch(e){
+    // External provider failed: degrade gracefully to tracked-wallet fallback.
     try{
-      bal=await jfetch('https://api.fomoapi.io/v2/users/'+encodeURIComponent(tr.id)+'/balances?chain=solana',{headers:auth},12000);
+      const data=await fallbackFromTracked();
+      data.providerError=String(e?.message||e);
+      smartMoneyCache={at:Date.now(),data};
+      return data;
     }catch{
-      try{bal=await jfetch('https://api.fomoapi.io/v2/users/'+encodeURIComponent(tr.handle)+'/balances?chain=solana',{headers:auth},12000)}catch{continue}
-    }
-    for(const h of (bal?.holdings||[])){
-      const address=h?.token?.address;
-      const symbol=String(h?.token?.symbol||'').toUpperCase();
-      if(!address||['SOL','WSOL','USDC','USDT'].includes(symbol))continue;
-      const value=num(h.valueUsd);
-      if(value<25)continue;
-      const old=tokenMap.get(address)||{address,symbol:symbol||'?',name:h?.token?.name||'',smartMoneyCount:0,totalValueUsd:0,traders:[],change24h:num(h.change24h),marketCap:0,liquidity:0,security:null};
-      old.smartMoneyCount+=1;
-      old.totalValueUsd+=value;
-      old.traders.push({handle:tr.handle||tr.displayName,wallet:tr.wallet,valueUsd:value,pnl7d:tr.pnl7d,pnl30d:tr.pnl30d});
-      tokenMap.set(address,old);
+      return {ok:false,configured:false,source:'fomoapi',message:'منبع خارجی و fallback داخلی هر دو فعلاً در دسترس نیستند',traders:[],tokens:[]};
     }
   }
-
-  let tokens=[...tokenMap.values()].sort((a,b)=>(b.smartMoneyCount-a.smartMoneyCount)||(b.totalValueUsd-a.totalValueUsd)).slice(0,12);
-  for(const t of tokens){
-    try{
-      const p=await pairFor(t.address);
-      if(p){t.marketCap=num(p.marketCap||p.fdv);t.liquidity=num(p.liquidity?.usd);t.dexUrl=p.url||'';t.volume5m=num(p.volume?.m5);t.txns5m=num(p.txns?.m5?.buys)+num(p.txns?.m5?.sells)}
-      t.security=await security(t.address);
-    }catch{}
-  }
-  tokens.sort((a,b)=>{
-    const qa=(a.security?.holderStrong?2:a.security?.holderPolicyPassed?1:0)+(a.security?.mintDisabled&&a.security?.freezeDisabled?2:0);
-    const qb=(b.security?.holderStrong?2:b.security?.holderPolicyPassed?1:0)+(b.security?.mintDisabled&&b.security?.freezeDisabled?2:0);
-    return (b.smartMoneyCount-a.smartMoneyCount)||(qb-qa)||(b.totalValueUsd-a.totalValueUsd);
-  });
-  const data={ok:true,configured:true,source:'fomoapi',generatedAt:new Date().toISOString(),cacheHours:6,traders,tokens,disclaimer:'Smart Money یعنی کیف‌پول‌های سودده/تأییدشده در leaderboard؛ تضمین سود آینده یا سالم بودن توکن نیست.'};
-  smartMoneyCache={at:Date.now(),data};
-  return data;
 }
 
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -2442,13 +2540,33 @@ function renderWhales(){
   }).join(''):'<div class="empty">با فیلتر فعلی خرید نهنگ تازه‌ای نمایش داده نمی‌شود.</div>';
 }
 function renderSmart(){
-  var r=smart&&smart.tokens?smart.tokens:[];r=r.filter(function(x){return passesSignalFilters(findToken(x.address))}).sort(function(a,b){return tokenStrength(findToken(b.address))-tokenStrength(findToken(a.address))});
-  document.getElementById('smartStatus').textContent=smart&&smart.configured?'پوزیشن‌های فعلی کیف‌پول‌های سودده':'منبع کامل اسمارت‌مانی نیاز به API key دارد.';
+  var r=smart&&smart.tokens?smart.tokens:[];
+  r=r.filter(function(x){
+    var base=findToken(x.address);
+    return !base||passesSignalFilters(base);
+  }).sort(function(a,b){
+    var ba=findToken(a.address),bb=findToken(b.address);
+    return tokenStrength(bb)-tokenStrength(ba)||(Number(b.netFlowUsd||0)-Number(a.netFlowUsd||0));
+  });
+
+  var status=document.getElementById('smartStatus');
+  if(smart&&smart.fallback){
+    status.textContent='فعال با داده داخلی رادار · کیف‌پول‌های ردیابی‌شده و جریان آن‌چین';
+  }else if(smart&&smart.configured){
+    status.textContent='فعال با منبع FOMO API + داده رادار';
+  }else{
+    status.textContent='داده اسمارت‌مانی فعلاً در دسترس نیست.';
+  }
+
   document.getElementById('smartList').innerHTML=r.length?r.slice(0,20).map(function(t){
     var s=t.security||{},base=findToken(t.address);
-    return '<div class="row"><div class="asset"><b>🧠 '+esc(t.symbol||'?')+' · '+esc(t.name||'')+'</b><small>'+esc(short(t.address))+'</small>'+socialButtons(base)+'</div>'+
-    '<div class="cell"><small>کیف‌پول</small><b>'+Number(t.smartMoneyCount||0)+'</b></div><div class="cell"><small>ارزش پوزیشن</small><b>'+money(t.totalValueUsd)+'</b></div>'+
-    '<div class="cell"><small>نقدینگی</small><b>'+money(t.liquidity)+'</b></div><div class="cell hide-sm"><small>Top10</small><b>'+pct(s.top10)+'</b></div>'+
+    return '<div class="row"><div class="asset"><b>🧠 '+esc(t.symbol||'?')+' · '+esc(t.name||'')+'</b>'+
+      (base?tradePlanChips(base):'')+
+      '<small>'+esc(short(t.address))+' · '+esc(t.source==='tracked-wallets-onchain'?'داده داخلی on-chain':'FOMO API')+'</small>'+socialButtons(base)+'</div>'+
+    '<div class="cell"><small>کیف‌پول خریدار</small><b>'+Number(t.smartMoneyCount||0)+'</b></div>'+
+    '<div class="cell"><small>ارزش پوزیشن</small><b>'+money(t.totalValueUsd)+'</b></div>'+
+    '<div class="cell"><small>جریان خالص</small><b>'+money(t.netFlowUsd||0)+'</b></div>'+
+    '<div class="cell hide-sm"><small>خریدار 1000$+</small><b>'+Number(t.buyers1000Count||0)+'</b></div>'+
     '<div class="cell hide-md"><small>امنیت</small><b><span class="badge '+secClass(s.tier)+'">'+esc(faSec(s.tier))+'</span></b></div>'+
     '<div class="actions"><a class="action" target="_blank" rel="noopener" href="'+esc(dexUrl(t.address,t.dexUrl))+'">📈 چارت</a><button class="detail-btn" data-mint="'+esc(t.address)+'">جزئیات</button></div></div>';
   }).join(''):'<div class="empty">فعلاً پوزیشن اسمارت‌مانی قابل‌نمایش نیست.</div>';
