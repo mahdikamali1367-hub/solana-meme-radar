@@ -1118,7 +1118,7 @@ async function buildFresh(){
     orderFlowPolicy:{buyerPower:'buy transaction count / total buy+sell transactions; not dollar buy volume',strongBuyer:'5m >=55% and 1h >=51% when available',volumeQuality:'absolute volume + tx count + volume/liquidity sanity check'},
     knowledgeEngine:{marketQuality:'transparency + liquidity + data coverage',chartDiscipline:'trend + FOMO + pump/dump guard',academy:'automated Solana RPC + Token-2022 extension audit + RugCheck full/summary + Jupiter sell-route quote + DexScreener sell evidence; unavailable evidence stays UNKNOWN'},
     ageBuckets:{fresh:'0-24h',day:'24h-7d',week:'7d-30d discovery horizon'},
-    entryExitPolicy:{entry:'buyer power > seller + >=1 tracked net buyer >=100 USD + holder policy pass + no detected bot-wash + full DEXScreener momentum filter (liq 40k-500k, MC 150k-2m, age 1-48h, vol24 >=150k, tx24 >=500, vol5 8k-80k, vol1h 60k-500k, tx5 >=40, tx1h >=300, pc5 1-8%, pc1h 5-25%, buy/sell count >=1.4); critical safety/live-exit overrides remain',exit:'live exit/whale sell/seller dominance/Trust Guard block; price invalidation is a risk reference, not guaranteed execution'},
+    entryExitPolicy:{entry:'buyer power > seller power + >=1 tracked net buyer >=100 USD + holder policy pass + no detected bot-wash; DEXScreener momentum is advisory/ranking only; critical safety/live-exit overrides remain',exit:'live exit/whale sell/seller dominance/Trust Guard block; price invalidation is a risk reference, not guaranteed execution'},
     trustGuard:{strongSignalRequires:'2+ holder snapshots, 2 consecutive good scans, >=45 seconds stable confirmation, buyer strength, healthy volume, no holder-outflow risk',downgrade:'holder movement, seller dominance, whale/tracked exits or pump cooldown immediately remove strong status'},
     signalWindows:{short:'5m-1h',medium:'1h-6h',long:'6h-24h',securityGate:'HIGH/MAX requires zero manual, zero unknown and zero failed automated security checks; unknown evidence cannot receive strong approval'},
     disclaimer:'قانون هولدرها: هولدر شماره 1 باید کمتر از 10% و هرکدام از هولدرهای شماره 2 تا 10 باید کمتر از 5% داشته باشند. مجموع Top10 فقط جهت اطلاع نمایش داده می‌شود و شرط رد نیست. Organic Activity یک تخمین ضدربات/ضدواش است. هیچ فیلتر آن‌چین کلاهبرداری را 100% رد نمی‌کند.'};
@@ -1879,7 +1879,7 @@ html,body,.shell,.panel,.list{overflow-anchor:none}
 </section>
 <details class="accordion" open>
     <summary>🔥 پیشنهادهای اولویت‌دار</summary>
-    <div class="accordion-body"><p class="muted" style="font-size:11px">منطق ورود: قانون هولدر پاس + قدرت خریدار بیشتر از فروشنده + حداقل یک خریدار ردیابی‌شده 100$+ + نبود Bot/Wash + عبور از فیلتر مومنتوم DEXScreener.</p><div class="subfilters">
+    <div class="accordion-body"><p class="muted" style="font-size:11px">منطق ورود: قدرت خریدار باید از فروشنده بیشتر باشد، حداقل یک خریدار ردیابی‌شده 100$+ وجود داشته باشد، قانون هولدر پاس شود و Bot/Wash رد شود. فیلتر مومنتوم DEXScreener دیگر شرط قفل‌کننده نیست و فقط قدرت/کیفیت سیگنال را رتبه‌بندی می‌کند.</p><div class="subfilters">
 <label>کوتاه‌مدت<select class="signal-filter" data-filter="short"><option value="">همه</option><option value="STRONG">قوی</option><option value="POSITIVE">مثبت</option><option value="NEUTRAL">خنثی</option><option value="WAIT_DATA">داده ناکافی</option><option value="AVOID">ورود نکن</option><option value="BLOCKED">مسدود امنیتی</option></select></label>
 <label>میان‌مدت<select class="signal-filter" data-filter="medium"><option value="">همه</option><option value="STRONG">قوی</option><option value="POSITIVE">مثبت</option><option value="NEUTRAL">خنثی</option><option value="WAIT_DATA">داده ناکافی</option><option value="AVOID">ورود نکن</option><option value="BLOCKED">مسدود امنیتی</option></select></label>
 <label>بلندمدت<select class="signal-filter" data-filter="long"><option value="">همه</option><option value="STRONG">قوی</option><option value="POSITIVE">مثبت</option><option value="NEUTRAL">خنثی</option><option value="WAIT_DATA">داده ناکافی</option><option value="AVOID">ورود نکن</option><option value="BLOCKED">مسدود امنیتی</option></select></label>
@@ -2297,10 +2297,10 @@ function entryQualityGate(t){
   var buyerDominant=buyerPower>sellerPower;
   if(!buyerDominant)reasons.push('قدرت خریدار از فروشنده بیشتر نیست');
 
-  if(!momentum.ok)reasons.push('فیلتر مومنتوم DEX کامل پاس نشده ('+momentum.passed+'/'+momentum.total+')');
-
+  // Momentum is advisory/ranking only. Do not block a valid entry solely because
+  // the token misses one or more DEXScreener momentum thresholds.
   return {
-    ok:buyer100Ok&&botFree&&buyerDominant&&momentum.ok,
+    ok:buyer100Ok&&botFree&&buyerDominant,
     buyer100Ok,botFree,buyerDominant,momentum,
     buyers100Count:buyers100.length,
     buyers100Usd:buyers100.reduce(function(a,x){return a+Number(x.buyUsd||0)},0),
@@ -2357,7 +2357,7 @@ function tradePlan(t){
     var edge=buyerPower-sellerPower;
     return {
       status:'ENTRY',
-      confidence:buyerPower>=60?'HIGH':'MEDIUM',
+      confidence:(buyerPower>=60&&q.momentum&&q.momentum.score>=70)?'HIGH':buyerPower>=55?'MEDIUM':'EARLY',
       entry:p,entryLow,entryHigh,exit:invalidation,
       reason:'ورود تأیید شد: قدرت خریدار '+buyerPower+'% در برابر فروشنده '+sellerPower+'% · '+q.buyers100Count+' خریدار 100$+ · مومنتوم DEX '+q.momentum.passed+'/'+q.momentum.total+' · بدون الگوی Bot/Wash',
       riskPct:riskPct*100,buyerPower,sellerPower,edge,quality:q
@@ -2441,7 +2441,7 @@ function featuredRows(){
     return {token:t,score:s,why:w,whale:wh,smart:sm,tracked:tr};
   }).filter(function(x){
     var tp=tradePlan(x.token);
-    return holderPolicyOk(x.token)&&tp.status==='ENTRY';
+    return tp.status==='ENTRY';
   }).sort(function(a,b){
     var ac=tradePlan(a.token).confidence==='HIGH'?1:0,bc=tradePlan(b.token).confidence==='HIGH'?1:0;
     return (bc-ac)||(b.score-a.score);
