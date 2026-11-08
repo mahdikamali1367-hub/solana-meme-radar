@@ -1586,6 +1586,14 @@ dialog{width:min(720px,94vw);max-height:88vh;border:1px solid #36506e;border-rad
   <summary>🏆 بهترین سیگنال کل رادار</summary>
   <div class="accordion-body" id="championBox"></div>
 </details>
+<details class="accordion highlight" open>
+  <summary>🐋 پیشنهادهای نهنگ‌ها و همه خریدهای زنده</summary>
+  <div class="accordion-body">
+    <p class="muted" style="font-size:11px">خریدهای نهنگ از جریان زنده API جمع می‌شوند و فقط رویدادهای تازه در پنجره ۳۰ دقیقه‌ای لحاظ می‌شوند. «اولویت بررسی» تضمین رشد یا سود نیست.</p>
+    <div id="whaleTopSummary"></div>
+    <div class="list" id="whaleTopList"></div>
+  </div>
+</details>
   <details class="accordion highlight" open>
     <summary>📈 بازده واقعی ۲۴ساعته سیگنال‌های رادار</summary>
     <div class="accordion-body">
@@ -2048,37 +2056,50 @@ function renderFeatured(){
 function renderWhales(){
   var agg=live&&live.whaleByToken?live.whaleByToken:[];
   var total=live?Number(live.totalWhaleBuyUsd||0):0;
-  var sum=document.getElementById('whaleSummary');
-  if(sum){
-    var top=agg[0]||null;
-    sum.innerHTML='<div class="whale-summary">'+
-      '<div class="whale-stat"><small>کل حجم خرید نهنگ‌ها</small><b>'+money(total)+'</b></div>'+
-      '<div class="whale-stat"><small>بیشترین خرید روی</small><b>'+(top?esc(top.token||short(top.tokenAddress)):'—')+'</b></div>'+
-      '<div class="whale-stat"><small>حجم توکن اول</small><b>'+(top?money(top.totalBuyUsd):'—')+'</b></div>'+
-    '</div>'+
-    (agg.length?'<div class="list">'+agg.slice(0,8).map(function(a,i){
-      var t=findToken(a.tokenAddress);
-      return '<div class="row"><div class="asset"><b>#'+(i+1)+' 🐋 '+esc(a.token||t&&t.symbol||'?')+'</b><small>'+Number(a.uniqueTraders||0)+' نهنگ · '+Number(a.buyCount||0)+' خرید</small>'+socialButtons(t)+'</div>'+
-      '<div class="cell"><small>کل خرید</small><b>'+money(a.totalBuyUsd)+'</b></div>'+
-      '<div class="cell"><small>تعداد نهنگ</small><b>'+Number(a.uniqueTraders||0)+'</b></div>'+
-      '<div class="cell"><small>تعداد خرید</small><b>'+Number(a.buyCount||0)+'</b></div>'+
-      '<div class="cell hide-sm"><small>امنیت</small><b><span class="badge '+secClass(t?.security?.tier)+'">'+esc(faSec(t?.security?.tier))+'</span></b></div>'+
-      '<div class="cell hide-md"><small>قدرت سیگنال</small><b>'+Math.round(tokenStrength(t))+'</b></div>'+
-      '<div class="actions"><a class="action" target="_blank" rel="noopener" href="'+esc(dexUrl(a.tokenAddress,''))+'">📈 چارت</a></div></div>';
-    }).join('')+'</div>':'');
-  }
   var r=live&&live.whaleBuys?live.whaleBuys:[];
-  r=r.filter(function(e){return passesSignalFilters(findToken(e.tokenAddress))}).sort(function(a,b){return Number(b.tradeUsd||0)-Number(a.tradeUsd||0)});
+  r=r.slice().sort(function(a,b){return Number(b.tradeUsd||0)-Number(a.tradeUsd||0)});
+
+  var summaryHtml=(function(){
+    var top=agg[0]||null;
+    return '<div class="whale-summary">'+
+      '<div class="whale-stat"><small>کل حجم خرید نهنگ‌ها · ۳۰ دقیقه</small><b>'+money(total)+'</b></div>'+
+      '<div class="whale-stat"><small>بیشترین خرید روی</small><b>'+(top?esc(top.token||short(top.tokenAddress)):'—')+'</b></div>'+
+      '<div class="whale-stat"><small>تعداد خریدهای نهنگ</small><b>'+r.length+'</b></div>'+
+    '</div>';
+  })();
+
+  var rankedHtml=agg.length?'<div class="list">'+agg.slice(0,12).map(function(a,i){
+    var t=findToken(a.tokenAddress),sec=t&&t.security?t.security:{},tp=t?tradePlan(t):null;
+    var strength=t?Math.round(tokenStrength(t)):0;
+    return '<div class="row"><div class="asset"><b>#'+(i+1)+' 🐋 '+esc(a.token||t&&t.symbol||'?')+'</b>'+whaleTrendBadge(t)+socialTrendBadges(t)+(t?tradePlanChips(t):'')+
+      '<small>'+Number(a.uniqueTraders||0)+' نهنگ · '+Number(a.buyCount||0)+' خرید · منبع: Live whale API</small>'+socialButtons(t)+'</div>'+
+      '<div class="cell"><small>کل خرید</small><b>'+money(a.totalBuyUsd)+'</b></div>'+
+      '<div class="cell"><small>نهنگ یکتا</small><b>'+Number(a.uniqueTraders||0)+'</b></div>'+
+      '<div class="cell"><small>امنیت</small><b><span class="badge '+secClass(sec.tier)+'">'+esc(faSec(sec.tier))+'</span></b></div>'+
+      '<div class="cell hide-sm"><small>قدرت رادار</small><b>'+strength+'/100</b></div>'+
+      '<div class="cell hide-md"><small>وضعیت</small><b>'+(tp?esc(tp.label||'بررسی'):'بررسی')+'</b></div>'+
+      '<div class="actions"><a class="action" target="_blank" rel="noopener" href="'+esc(dexUrl(a.tokenAddress,t&&t.dexUrl))+'">📈 چارت</a><button class="detail-btn" data-mint="'+esc(a.tokenAddress)+'">جزئیات</button></div></div>';
+  }).join('')+'</div>':'<div class="empty">فعلاً خرید نهنگ تازه‌ای در پنجره ۳۰ دقیقه‌ای ثبت نشده.</div>';
+
+  var topSummary=document.getElementById('whaleTopSummary');
+  var topList=document.getElementById('whaleTopList');
+  if(topSummary)topSummary.innerHTML=summaryHtml;
+  if(topList)topList.innerHTML=rankedHtml;
+
+  var sum=document.getElementById('whaleSummary');
+  if(sum)sum.innerHTML=summaryHtml+rankedHtml;
+
   document.getElementById('kWhales').textContent=r.length;
-  document.getElementById('whaleList').innerHTML=r.length?r.slice(0,20).map(function(e){
+  var filtered=r.filter(function(e){return passesSignalFilters(findToken(e.tokenAddress))});
+  document.getElementById('whaleList').innerHTML=filtered.length?filtered.map(function(e){
     var t=findToken(e.tokenAddress),sec=t&&t.security?t.security:{};
-    return '<div class="row"><div class="asset"><b>🐋 '+esc(e.token||t&&t.symbol||'?')+'</b><small>'+esc(short(e.tokenAddress))+' · '+esc(e.trader||'نامشخص')+'</small>'+socialButtons(t)+'</div>'+
+    return '<div class="row"><div class="asset"><b>🐋 '+esc(e.token||t&&t.symbol||'?')+'</b><small>'+esc(short(e.tokenAddress))+' · '+esc(e.trader||'نامشخص')+' · Live whale API</small>'+socialButtons(t)+'</div>'+
     '<div class="cell"><small>خرید</small><b>'+money(e.tradeUsd)+'</b></div><div class="cell"><small>پوزیشن</small><b>'+money(e.positionValueUsd)+'</b></div>'+
     '<div class="cell"><small>امنیت</small><b><span class="badge '+secClass(sec.tier)+'">'+esc(faSec(sec.tier))+'</span></b></div>'+
     '<div class="cell hide-sm"><small>زمان</small><b>'+new Date(Number(e.ts||Date.now())).toLocaleTimeString('fa-IR')+'</b></div>'+
     '<div class="cell hide-md"><small>خروج</small><b>'+exitFor(e.tokenAddress).length+'</b></div>'+
-    '<div class="actions"><a class="action" target="_blank" rel="noopener" href="'+esc(dexUrl(e.tokenAddress,''))+'">📈 چارت</a><button class="detail-btn" data-mint="'+esc(e.tokenAddress)+'">جزئیات</button></div></div>';
-  }).join(''):'<div class="empty">فعلاً خرید نهنگ تازه‌ای ثبت نشده.</div>';
+    '<div class="actions"><a class="action" target="_blank" rel="noopener" href="'+esc(dexUrl(e.tokenAddress,t&&t.dexUrl))+'">📈 چارت</a><button class="detail-btn" data-mint="'+esc(e.tokenAddress)+'">جزئیات</button></div></div>';
+  }).join(''):'<div class="empty">با فیلتر فعلی خرید نهنگ تازه‌ای نمایش داده نمی‌شود.</div>';
 }
 function renderSmart(){
   var r=smart&&smart.tokens?smart.tokens:[];r=r.filter(function(x){return passesSignalFilters(findToken(x.address))}).sort(function(a,b){return tokenStrength(findToken(b.address))-tokenStrength(findToken(a.address))});
