@@ -473,9 +473,9 @@ button,input,select{background:#101c31;color:#fff;border:1px solid #29415f;borde
 #status{color:#9db0cc}.warn{background:#271b0d;border:1px solid #5d4120;padding:10px;border-radius:10px;color:#ffd087;margin-bottom:14px}.sources{font-size:11px;color:#8fa3c2;margin-bottom:15px}
 @media(max-width:650px){.stats{grid-template-columns:1fr 1fr}.summary{grid-template-columns:1fr 1fr}.wrap{padding:12px}}
 </style></head><body><div class="wrap"><h1>🚀 رادار یکپارچه سولانا</h1><div class="sub">میم‌کوین‌ها + اسمارت‌مانی + نهنگ‌ها + هولدرهای بزرگ + هشدار خروج — همه در یک صفحه</div>
-<div class="warn">📈 روی دکمه «مشاهده چارت در DexScreener» هر ارز بزن تا مستقیم چارتش باز شود.<br><br>فیلتر امنیت + ضدربات فعال است. مجموع Top10 باید بین ۱۰٪ تا ۲۰٪ باشد؛ بزرگ‌ترین هولدر و Top5 هم سقف جداگانه دارند. MAX SECURITY فقط با فعالیت PROBABLE ORGANIC و شرایط امنیتی کامل داده می‌شود.</div>
+<div class="warn">🔥 بخش «پیشنهادهای برتر برای بررسی» فقط امتیاز مومنتوم ۹۰/۱۰۰+ را نشان می‌دهد؛ این عدد احتمال ۹۰٪ پامپ نیست.<br><br>📈 روی دکمه «مشاهده چارت در DexScreener» هر ارز بزن تا مستقیم چارتش باز شود.<br><br>فیلتر امنیت + ضدربات فعال است. مجموع Top10 باید بین ۱۰٪ تا ۲۰٪ باشد؛ بزرگ‌ترین هولدر و Top5 هم سقف جداگانه دارند. MAX SECURITY فقط با فعالیت PROBABLE ORGANIC و شرایط امنیتی کامل داده می‌شود.</div>
 <div class="summary"><div class="sum"><div class="k">تعداد ارزهای دیده‌شده</div><div class="big" id="sCount">–</div></div><div class="sum"><div class="k">ترند قوی ≥ ۵۰</div><div class="big" id="sTrend">–</div></div><div class="sum"><div class="k">زیر نظر قوی</div><div class="big" id="sStrong">–</div></div><div class="sum"><div class="k">بروزرسانی</div><div class="big">60s</div></div></div>
-<div id="sources" class="sources"></div><div style="margin:18px 0"><h2 style="margin:0 0 8px">⭐ سیگنال‌های مشترک</h2><div class="sub">ارزهایی که همزمان در چند منبع دیده می‌شوند</div><div id="unifiedGrid" class="grid"></div></div><div style="margin:18px 0"><h2 style="margin:0 0 8px">🧠 اسمارت‌مانی — کیف‌پول‌های سودده روی چه ارزهایی سوارند</h2><div class="sub" id="smartStatus">در حال بررسی کیف‌پول‌های سودده...</div><div id="smartGrid" class="grid"></div></div><div style="margin:18px 0"><h2 style="margin:0 0 8px">🐋 خریدهای نهنگ‌ها</h2><div class="sub" id="whaleStatus">خریدهای بزرگ سولانا در حال بررسی است...</div><div id="whaleGrid" class="grid"></div></div><div style="margin:18px 0"><h2 style="margin:0 0 8px">⚡ جریان زنده خرید/فروش و هشدار خروج</h2><div class="sub" id="liveSmartStatus">در حال اتصال به جریان خرید/فروش سولانا...</div><div id="liveExitBanner"></div><div id="liveSmartGrid" class="grid"></div></div><div style="margin:18px 0"><h2 style="margin:0 0 8px">🪙 میم‌کوین‌های زیر نظر</h2><div class="sub">امنیت، هولدرها، فعالیت طبیعی و ترند اجتماعی</div></div>
+<div id="sources" class="sources"></div><div style="margin:18px 0"><h2 style="margin:0 0 8px">🔥 پیشنهادهای برتر برای بررسی</h2><div class="sub" id="featuredStatus">فقط ارزهایی با امتیاز مومنتوم خیلی بالا نمایش داده می‌شوند؛ امتیاز ۹۰/۱۰۰ به معنی ۹۰٪ احتمال پامپ نیست.</div><div id="featuredGrid" class="grid"></div></div><div style="margin:18px 0"><h2 style="margin:0 0 8px">⭐ سیگنال‌های مشترک</h2><div class="sub">ارزهایی که همزمان در چند منبع دیده می‌شوند</div><div id="unifiedGrid" class="grid"></div></div><div style="margin:18px 0"><h2 style="margin:0 0 8px">🧠 اسمارت‌مانی — کیف‌پول‌های سودده روی چه ارزهایی سوارند</h2><div class="sub" id="smartStatus">در حال بررسی کیف‌پول‌های سودده...</div><div id="smartGrid" class="grid"></div></div><div style="margin:18px 0"><h2 style="margin:0 0 8px">🐋 خریدهای نهنگ‌ها</h2><div class="sub" id="whaleStatus">خریدهای بزرگ سولانا در حال بررسی است...</div><div id="whaleGrid" class="grid"></div></div><div style="margin:18px 0"><h2 style="margin:0 0 8px">⚡ جریان زنده خرید/فروش و هشدار خروج</h2><div class="sub" id="liveSmartStatus">در حال اتصال به جریان خرید/فروش سولانا...</div><div id="liveExitBanner"></div><div id="liveSmartGrid" class="grid"></div></div><div style="margin:18px 0"><h2 style="margin:0 0 8px">🪙 میم‌کوین‌های زیر نظر</h2><div class="sub">امنیت، هولدرها، فعالیت طبیعی و ترند اجتماعی</div></div>
 <div class="bar"><button onclick="load()">↻ بروزرسانی</button><button onclick="enableExitNotifications()">🔔 فعال‌کردن هشدار خروج</button><input id="q" placeholder="جستجو نام / نماد / آدرس توکن" oninput="render()"><select id="vf" onchange="render()"><option value="">همه وضعیت‌ها</option><option>STRONG WATCH</option><option>WATCH</option><option>LOW SIGNAL</option><option>SKIP</option></select><select id="sf" onchange="render()"><option value="0">همه امتیازهای ترند</option><option value="50">Trend ≥ 50</option><option value="70">Trend ≥ 70</option></select><select id="secf" onchange="render()"><option value="">همه سطح‌های امنیت</option><option>MAX SECURITY</option><option>HIGH</option><option>REVIEW</option><option>REJECT</option></select><select id="actf" onchange="render()"><option value="">همه نوع فعالیت</option><option>PROBABLE ORGANIC</option><option>MIXED</option><option>BOT RISK</option></select><span id="status">در حال بارگذاری...</span></div>
 <div id="grid" class="grid"></div></div><script>
 let data=[],smartData=null,liveData=null; const $=s=>document.querySelector(s);
@@ -489,7 +489,7 @@ const money=n=>'$'+Number(n||0).toLocaleString(undefined,{maximumFractionDigits:
 const pct=n=>n==null?'نامشخص':Number(n).toFixed(1)+'%';
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 async function enableExitNotifications(){if('Notification' in window){await Notification.requestPermission();}}
-async function load(){status.textContent='در حال دریافت داده زنده...';try{const r=await fetch('/api/v1/tokens');const d=await r.json();data=d.tokens||[];status.textContent='آخرین بروزرسانی: '+new Date(d.generatedAt).toLocaleTimeString('fa-IR');sCount.textContent=d.count||0;sTrend.textContent=d.trending||0;sStrong.textContent=d.strong||0;sources.textContent='منابع داده: '+Object.entries(d.sourceStatus||{}).map(([k,v])=>k+'='+v).join(' | ');render();renderUnified()}catch(e){status.textContent='خطا در دریافت داده';}}
+async function load(){status.textContent='در حال دریافت داده زنده...';try{const r=await fetch('/api/v1/tokens');const d=await r.json();data=d.tokens||[];status.textContent='آخرین بروزرسانی: '+new Date(d.generatedAt).toLocaleTimeString('fa-IR');sCount.textContent=d.count||0;sTrend.textContent=d.trending||0;sStrong.textContent=d.strong||0;sources.textContent='منابع داده: '+Object.entries(d.sourceStatus||{}).map(([k,v])=>k+'='+v).join(' | ');render();renderFeatured();renderUnified()}catch(e){status.textContent='خطا در دریافت داده';}}
 function render(){
  const q=$('#q').value.toLowerCase(),v=$('#vf').value,min=Number($('#sf').value||0),secf=$('#secf').value,actf=$('#actf').value;
  const rows=data.filter(t=>(!v||t.verdict===v)&&(!secf||t.security.tier===secf)&&(!actf||t.activity?.label===actf)&&t.trend.score>=min&&(!q||[t.name,t.symbol,t.mint].join(' ').toLowerCase().includes(q)));
@@ -515,6 +515,160 @@ function render(){
 }
 load();setInterval(load,60000);
 
+
+
+function renderFeatured(){
+ const smartMap=new Map((smartData?.tokens||[]).map(t=>[t.address,t]));
+ const whaleMap=new Map();
+ for(const e of (liveData?.whaleBuys||[])){
+  const k=e.tokenAddress;if(!k)continue;
+  const x=whaleMap.get(k)||{count:0,usd:0,traders:new Set()};
+  x.count++;x.usd+=Number(e.tradeUsd||0);if(e.trader)x.traders.add(e.trader);whaleMap.set(k,x);
+ }
+ const exitMap=new Map();
+ for(const e of (liveData?.exits||[])){
+  const k=e.tokenAddress;if(!k)continue;
+  const x=exitMap.get(k)||{count:0,usd:0};x.count++;x.usd+=Number(e.tradeUsd||0);exitMap.set(k,x);
+ }
+ const rows=(data||[]).map(t=>{
+  let score=0;const why=[];
+  const sec=t.security?.tier||'REVIEW';
+  if(sec==='MAX SECURITY'){score+=18;why.push('امنیت خیلی بالا')}else if(sec==='HIGH'){score+=12;why.push('امنیت بالا')}
+  if((t.activity?.score||0)>=72){score+=12;why.push('فعالیت طبیعی قوی')}
+  if((t.trend?.score||0)>=60){score+=10;why.push('ترند اجتماعی قوی')}else if((t.trend?.score||0)>=45)score+=5;
+  if((t.liquidity||0)>=10000){score+=8;why.push('نقدینگی مناسب')}
+  if((t.volume5m||0)>=5000){score+=10;why.push('حجم ۵دقیقه بالا')}
+  if((t.txns5m||0)>=50)score+=7;
+  const sell=Math.max(1,t.sells5m||0),br=(t.buys5m||0)/sell;
+  if(br>=1.5){score+=10;why.push('فشار خرید قوی')}else if(br>=1.15)score+=5;
+  const pc=Number(t.priceChange5m||0);
+  if(pc>=2&&pc<=12){score+=8;why.push('مومنتوم مثبت بدون کشیدگی زیاد')}
+  else if(pc>20){score-=15;why.push('پامپ کوتاه‌مدت زیاد؛ ریسک تعقیب')}
+  else if(pc<-8){score-=10;why.push('افت کوتاه‌مدت')}
+  if(t.security?.holderStrong){score+=7;why.push('توزیع هولدر خوب')}
+  const sm=smartMap.get(t.mint);
+  if(sm){score+=Math.min(12,6+(sm.smartMoneyCount||0)*2);why.push('اسمارت‌مانی روی توکن است')}
+  const wh=whaleMap.get(t.mint);
+  if(wh){
+    score+=Math.min(18,8+Math.min(10,Math.log10(1+wh.usd)*3));
+    why.push('خرید نهنگ '+money(wh.usd));
+  }
+  const ex=exitMap.get(t.mint);
+  if(ex){score-=Math.min(35,15+ex.count*8);why.push('فشار خروج دیده شده')}
+  score=Math.max(0,Math.min(100,Math.round(score)));
+  return {...t,momentumScore:score,why,smartInfo:sm||null,whaleInfo:wh||null,exitInfo:ex||null};
+ }).filter(t=>t.momentumScore>=90&&!t.exitInfo&&t.security?.tier!=='REJECT'&&t.activity?.label!=='BOT RISK')
+   .sort((a,b)=>b.momentumScore-a.momentumScore).slice(0,6);
+
+ featuredStatus.textContent=rows.length
+  ?'این‌ها امتیاز مومنتوم ۹۰/۱۰۰ یا بیشتر دارند؛ این امتیاز احتمال قطعی پامپ نیست.'
+  :'فعلاً هیچ میم‌کوینی شرایط سخت‌گیرانه ۹۰/۱۰۰ را ندارد؛ چیزی را به زور پیشنهاد نمی‌دهم.';
+ featuredGrid.innerHTML=rows.map(t=>{
+  const wh=t.whaleInfo;
+  const smart=t.smartInfo;
+  return '<div class="card"><div class="top"><div><div class="name">🔥 '+esc(t.name)+' <small>
+ const map=new Map();
+ for(const t of (data||[])){
+  const k=t.mint; if(!k)continue;
+  map.set(k,{address:k,symbol:t.symbol,name:t.name,meme:true,security:t.security,trend:t.trend,verdict:t.verdict,score:1,dexUrl:t.dexUrl||''});
+ }
+ for(const t of (smartData?.tokens||[])){
+  const k=t.address;if(!k)continue;
+  const x=map.get(k)||{address:k,symbol:t.symbol,name:t.name,score:0};
+  x.smart=true;x.smartMoneyCount=t.smartMoneyCount||0;x.smartValue=t.totalValueUsd||0;x.security=x.security||t.security;x.dexUrl=x.dexUrl||t.dexUrl||'';x.score+=2+(t.smartMoneyCount||0);map.set(k,x);
+ }
+ for(const e of (liveData?.whaleBuys||[])){
+  const k=e.tokenAddress;if(!k)continue;
+  const x=map.get(k)||{address:k,symbol:e.token,name:e.token,score:0};
+  x.whale=true;x.whaleUsd=(x.whaleUsd||0)+num(e.tradeUsd);x.whaleCount=(x.whaleCount||0)+1;x.score+=2;map.set(k,x);
+ }
+ const rows=[...map.values()].filter(x=>(x.smart||x.whale)&&x.meme).sort((a,b)=>b.score-a.score).slice(0,12);
+ unifiedGrid.innerHTML=rows.map(x=>{
+  const reasons=[x.meme?'میم‌کوین رادار':'',x.smart?('اسمارت‌مانی ×'+x.smartMoneyCount):'',x.whale?('خرید نهنگ ×'+x.whaleCount):''].filter(Boolean);
+  return '<div class="card"><div class="top"><div><div class="name">'+esc(x.symbol||x.name||'?')+'</div><div class="mint">'+esc(x.address)+'</div></div><span class="badge strong">تأیید چندمنبعی</span></div>'+
+   '<div class="chips">'+reasons.map(r=>'<span class="chip">'+esc(r)+'</span>').join('')+'</div>'+
+   '<div class="stats"><div class="stat"><div class="k">ارزش پوزیشن اسمارت‌مانی</div><div class="v">'+money(x.smartValue||0)+'</div></div><div class="stat"><div class="k">خرید نهنگ</div><div class="v">'+money(x.whaleUsd||0)+'</div></div><div class="stat"><div class="k">امنیت</div><div class="v">'+esc(faSecurity(x.security?.tier||'REVIEW'))+'</div></div></div>'+
+   '<div class="links" style="margin-top:10px"><a target="_blank" rel="noopener" href="'+esc(x.dexUrl||dexSearch(x.address))+'">📈 مشاهده چارت در DexScreener</a><a target="_blank" rel="noopener" href="https://solscan.io/token/'+esc(x.address)+'">سول‌اسکن</a></div></div>'
+ }).join('')||'<p>فعلاً ارز مشترک بین میم‌کوین + اسمارت‌مانی + خرید نهنگ پیدا نشده.</p>';
+}
+
+async function loadSmart(){
+ try{
+  const r=await fetch('/api/v1/smart-money');const d=await r.json();smartData=d;
+  if(!d.configured){smartStatus.textContent='برای ردیابی زنده Smart Money، FOMO_API_KEY رایگان را در Render اضافه کن.';smartGrid.innerHTML='';return}
+  smartStatus.textContent='آخرین تصویر اسمارت‌مانی: '+new Date(d.generatedAt).toLocaleString('fa-IR')+' | '+d.traders.length+' کیف‌پول سودده منتخب';
+  smartGrid.innerHTML=(d.tokens||[]).map(t=>{
+   const hs=t.security||{};const pass=hs.mintDisabled===true&&hs.freezeDisabled===true&&hs.holderPolicyPassed;
+   const tr=(t.traders||[]).map(x=>'<span class="chip">'+esc(x.handle||'wallet')+' '+money(x.valueUsd)+'</span>').join('');
+   return '<div class="card"><div class="top"><div><div class="name">'+esc(t.symbol||'?')+'</div><div class="mint">'+esc(t.address)+'</div></div><span class="badge '+(pass?'strong':'watch')+'">'+(pass?'امنیت تأیید':'نیاز به بررسی')+'</span></div>'+
+   '<div class="stats"><div class="stat"><div class="k">کیف‌پول اسمارت‌مانی</div><div class="v">'+t.smartMoneyCount+'</div></div><div class="stat"><div class="k">ارزش پوزیشن فعلی</div><div class="v">'+money(t.totalValueUsd)+'</div></div><div class="stat"><div class="k">Market Cap</div><div class="v">'+money(t.marketCap)+'</div></div><div class="stat"><div class="k">Liquidity</div><div class="v">'+money(t.liquidity)+'</div></div><div class="stat"><div class="k">Top10</div><div class="v">'+pct(hs.top10)+'</div></div><div class="stat"><div class="k">بزرگ‌ترین هولدر</div><div class="v">'+pct(hs.largestHolder)+'</div></div></div>'+
+   '<div class="chips">'+tr+'</div><div class="links" style="margin-top:10px"><a target="_blank" rel="noopener" href="'+esc(t.dexUrl||dexSearch(t.address))+'">📈 مشاهده چارت در DexScreener</a><a target="_blank" rel="noopener" href="https://solscan.io/token/'+esc(t.address)+'">سول‌اسکن</a></div></div>'
+  }).join('')||'<p>فعلاً پوزیشن Solana قابل‌نمایش پیدا نشد.</p>';
+ }catch(e){smartStatus.textContent='Smart Money فعلاً در دسترس نیست.'}
+}
+
+loadSmart();setInterval(loadSmart,6*60*60*1000);
+
+let seenLiveEventIds=new Set();
+async function loadLiveSmart(){
+ try{
+  const r=await fetch('/api/v1/smart-money-live');const d=await r.json();liveData=d;
+  const delay=d.delaySeconds==null?'نامشخص':(d.delaySeconds+'s');
+  liveSmartStatus.textContent=(d.connected?'● متصل':'○ قطع')+' | تأخیر: '+delay+(d.keyConfigured?' | کلید API فعال':' | بدون کلید/حالت محدود');
+  const clusters=(d.exitClusters||[]).slice(0,5);
+  liveExitBanner.innerHTML=clusters.filter(x=>x.severity==='MULTI-WALLET EXIT').map(x=>'<div class="warn" style="border-color:#a43848;color:#ff9bad">🚨 خروج همزمان چند کیف‌پول: '+esc(x.token)+' — '+x.uniqueSellers+' تریدر در ۳۰ دقیقه اخیر شروع به فروش کرده‌اند.</div>').join('');
+  const whales=(d.whaleBuys||[]).slice(0,12);
+  whaleStatus.textContent='خرید نهنگ = معامله ≥ ۵٬۰۰۰ دلار یا پوزیشن ≥ ۲۵٬۰۰۰ دلار | '+whales.length+' خرید بزرگ اخیر';
+  whaleGrid.innerHTML=whales.map(e=>'<div class="card"><div class="top"><div><div class="name">🐋 '+esc(e.token)+'</div><div class="mint">'+esc(e.tokenAddress||'')+'</div></div><span class="badge strong">خرید نهنگ</span></div><div class="stats"><div class="stat"><div class="k">تریدر</div><div class="v">'+esc(e.trader)+'</div></div><div class="stat"><div class="k">اندازه خرید</div><div class="v">'+(e.tradeUsd!=null?money(e.tradeUsd):'نامشخص')+'</div></div><div class="stat"><div class="k">ارزش پوزیشن</div><div class="v">'+(e.positionValueUsd!=null?money(e.positionValueUsd):'نامشخص')+'</div></div></div><div class="links" style="margin-top:10px"><a target="_blank" rel="noopener" href="https://solscan.io/token/'+esc(e.tokenAddress||'')+'">سول‌اسکن</a></div></div>').join('')||'<p>فعلاً خرید نهنگ تازه‌ای ثبت نشده.</p>';
+  renderFeatured();renderUnified();
+  const events=(d.events||[]).slice(0,18);
+  liveSmartGrid.innerHTML=events.map(e=>{
+   const sell=e.alertType==='sell';
+   const cls=sell?'skip':'strong';
+   const sev=faSeverity(e.severity||e.alertType.toUpperCase());
+   const when=new Date(e.ts).toLocaleTimeString('fa-IR');
+   const amount=e.tradeUsd!=null?money(e.tradeUsd):'اندازه نامشخص';
+   const remain=e.positionVerified?(e.exitStatus+' | باقی‌مانده '+money(e.remainingValueUsd||0)):'';
+   return '<div class="card"><div class="top"><div><div class="name">'+(sell?'🔴':'🟢')+' '+esc(e.token)+'</div><div class="mint">'+esc(e.tokenAddress||'')+'</div></div><span class="badge '+cls+'">'+esc(sev)+'</span></div>'+
+    '<div class="stats"><div class="stat"><div class="k">تریدر</div><div class="v">'+esc(e.trader)+'</div></div><div class="stat"><div class="k">جهت</div><div class="v">'+esc(faSide(e.alertType))+'</div></div><div class="stat"><div class="k">اندازه معامله</div><div class="v">'+amount+'</div></div><div class="stat"><div class="k">زمان</div><div class="v">'+when+'</div></div><div class="stat"><div class="k">اسمارت‌مانی ردیابی‌شده</div><div class="v">'+(e.trackedSmart?'بله':'—')+'</div></div><div class="stat"><div class="k">وضعیت پوزیشن</div><div class="v">'+esc(remain||'در انتظار/نامشخص')+'</div></div></div>'+
+    '<div class="links" style="margin-top:10px"><a target="_blank" rel="noopener" href="'+esc(dexSearch(e.tokenAddress||''))+'">📈 مشاهده چارت در DexScreener</a><a target="_blank" rel="noopener" href="https://solscan.io/token/'+esc(e.tokenAddress||'')+'">توکن در سول‌اسکن</a>'+(e.txHash?'<a target="_blank" rel="noopener" href="https://solscan.io/tx/'+esc(e.txHash)+'">تراکنش</a>':'')+'</div></div>'
+  }).join('')||'<p>هنوز رویداد خرید/فروش جدیدی دریافت نشده.</p>';
+
+  for(const e of events){
+   if(seenLiveEventIds.has(e.eventId))continue;
+   seenLiveEventIds.add(e.eventId);
+   if(e.alertType==='sell'&&Notification?.permission==='granted'){
+    new Notification('هشدار خروج اسمارت‌مانی: '+e.token,{body:faSeverity(e.severity||'SELL')+' — '+e.trader});
+   }
+  }
+ }catch(e){liveSmartStatus.textContent='جریان زنده فعلاً در دسترس نیست.'}
+}
+
+loadLiveSmart();setInterval(loadLiveSmart,5000);
+</script></body></html>`;
+
+createServer(async(req,res)=>{
+  const url=new URL(req.url,'http://localhost');
+  try{
+    if(url.pathname==='/api/health'){res.writeHead(200,{'content-type':'application/json',...headers});return res.end(JSON.stringify({ok:true,time:new Date().toISOString()}))}
+    if(url.pathname==='/api/v1/smart-money'){const sm=await buildSmartMoney();res.writeHead(200,{'content-type':'application/json; charset=utf-8','cache-control':'no-store',...headers});return res.end(JSON.stringify(sm))}
+    if(url.pathname==='/api/v1/smart-money-live'){const sm=liveSmartMoneyPayload();res.writeHead(200,{'content-type':'application/json; charset=utf-8','cache-control':'no-store',...headers});return res.end(JSON.stringify(sm))}
+    if(url.pathname==='/api/v1/tokens'||url.pathname==='/api/radar'||url.pathname==='/api/v1/trending'){
+      const d=await build(); let body=d;
+      if(url.pathname==='/api/v1/trending')body={...d,tokens:[...d.tokens].sort((a,b)=>b.trend.score-a.trend.score)};
+      res.writeHead(200,{'content-type':'application/json; charset=utf-8','cache-control':'no-store',...headers});return res.end(JSON.stringify(body));
+    }
+    if(url.pathname==='/'){res.writeHead(200,{'content-type':'text/html; charset=utf-8','cache-control':'no-store',...headers});return res.end(html())}
+    res.writeHead(404,headers);res.end('Not found');
+  }catch(e){res.writeHead(502,{'content-type':'application/json',...headers});res.end(JSON.stringify({ok:false,error:String(e?.message||e)}))}
+}).listen(PORT,'0.0.0.0',()=>console.log('Solana Meme Radar v3 live on '+PORT));
++esc(t.symbol)+'</small></div><div class="mint">'+esc(t.mint)+'</div></div><span class="badge strong">امتیاز '+t.momentumScore+'/100</span></div>'+
+   '<div class="stats"><div class="stat"><div class="k">خرید نهنگ</div><div class="v">'+money(wh?.usd||0)+'</div></div><div class="stat"><div class="k">تعداد خرید نهنگ</div><div class="v">'+(wh?.count||0)+'</div></div><div class="stat"><div class="k">کیف‌پول اسمارت‌مانی</div><div class="v">'+(smart?.smartMoneyCount||0)+'</div></div>'+
+   '<div class="stat"><div class="k">تغییر ۵ دقیقه</div><div class="v">'+Number(t.priceChange5m||0).toFixed(1)+'%</div></div><div class="stat"><div class="k">حجم ۵ دقیقه</div><div class="v">'+money(t.volume5m)+'</div></div><div class="stat"><div class="k">امنیت</div><div class="v">'+esc(faSecurity(t.security?.tier||'REVIEW'))+'</div></div></div>'+
+   '<div class="chips">'+t.why.slice(0,6).map(x=>'<span class="chip">'+esc(x)+'</span>').join('')+'</div>'+
+   '<div class="links" style="margin-top:10px"><a target="_blank" rel="noopener" href="'+esc(t.dexUrl||dexSearch(t.mint))+'">📈 مشاهده چارت در DexScreener</a><a target="_blank" rel="noopener" href="https://solscan.io/token/'+esc(t.mint)+'">سول‌اسکن</a></div></div>'
+ }).join('');
+}
 
 function renderUnified(){
  const map=new Map();
