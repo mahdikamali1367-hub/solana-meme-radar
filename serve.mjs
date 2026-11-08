@@ -1118,7 +1118,7 @@ async function buildFresh(){
     orderFlowPolicy:{buyerPower:'buy transaction count / total buy+sell transactions; not dollar buy volume',strongBuyer:'5m >=55% and 1h >=51% when available',volumeQuality:'absolute volume + tx count + volume/liquidity sanity check'},
     knowledgeEngine:{marketQuality:'transparency + liquidity + data coverage',chartDiscipline:'trend + FOMO + pump/dump guard',academy:'automated Solana RPC + Token-2022 extension audit + RugCheck full/summary + Jupiter sell-route quote + DexScreener sell evidence; unavailable evidence stays UNKNOWN'},
     ageBuckets:{fresh:'0-24h',day:'24h-7d',week:'7d-30d discovery horizon'},
-    entryExitPolicy:{entry:'buyer power > seller power; $500+ tracked-wallet filter is display-only; critical safety/live-exit overrides remain',exit:'live exit/whale sell/seller dominance/Trust Guard block; price invalidation is a risk reference, not guaranteed execution'},
+    entryExitPolicy:{entry:'holder policy pass + txns5m>=50 + >=1 tracked net buyer with cumulative buy>=1000 USD and current holding>0 + PROBABLE ORGANIC/no detected bot-wash pattern + buyer power > seller in every available 5m/1h/6h window; critical safety/live-exit overrides remain',exit:'live exit/whale sell/seller dominance/Trust Guard block; price invalidation is a risk reference, not guaranteed execution'},
     trustGuard:{strongSignalRequires:'2+ holder snapshots, 2 consecutive good scans, >=45 seconds stable confirmation, buyer strength, healthy volume, no holder-outflow risk',downgrade:'holder movement, seller dominance, whale/tracked exits or pump cooldown immediately remove strong status'},
     signalWindows:{short:'5m-1h',medium:'1h-6h',long:'6h-24h',securityGate:'HIGH/MAX requires zero manual, zero unknown and zero failed automated security checks; unknown evidence cannot receive strong approval'},
     disclaimer:'قانون هولدرها: هولدر شماره 1 باید کمتر از 10% و هرکدام از هولدرهای شماره 2 تا 10 باید کمتر از 5% داشته باشند. مجموع Top10 فقط جهت اطلاع نمایش داده می‌شود و شرط رد نیست. Organic Activity یک تخمین ضدربات/ضدواش است. هیچ فیلتر آن‌چین کلاهبرداری را 100% رد نمی‌کند.'};
@@ -1148,7 +1148,10 @@ async function buildMarketLive(){
         priceChange5m:num(p.priceChange?.m5),priceChange1h:num(p.priceChange?.h1),priceChange6h:num(p.priceChange?.h6),priceChange24h:num(p.priceChange?.h24),
         dexUrl:p.url||t.dexUrl||''
       };
-      patch.flow=flowQuality({...t,...patch});
+      var merged={...t,...patch};
+      patch.flow=flowQuality(merged);
+      patch.activity=activityScore(merged);
+      patch.chart=chartDiscipline({...merged,flow:patch.flow,activity:patch.activity});
       rows.push(patch);
     }
     const data={ok:true,generatedAt:new Date().toISOString(),refreshMs:2000,tokens:rows};
@@ -1762,7 +1765,7 @@ html,body,.shell,.panel,.list{overflow-anchor:none}
 </section>
 <details class="accordion" open>
     <summary>🔥 پیشنهادهای اولویت‌دار</summary>
-    <div class="accordion-body"><p class="muted" style="font-size:11px">منطق ورود: اگر قدرت خریدار از فروشنده بیشتر باشد نقطه ورود فعال می‌شود، به شرط اینکه قانون هولدر سراسری پاس شده باشد: هولدر #1 کمتر از 10% و هرکدام از #2 تا #10 کمتر از 5%. شرط خریدار ۵۰۰$+ در سیگنال ورود نقشی ندارد. هشدار امنیتی جدی همچنان ورود را مسدود می‌کند.</p><div class="subfilters">
+    <div class="accordion-body"><p class="muted" style="font-size:11px">منطق ورود: قانون هولدر پاس + حداقل 50 تراکنش در 5 دقیقه + حداقل یک خریدار ردیابی‌شده با خرید خالص 1000$+ + نبود الگوی ربات/Wash + قدرت خریدار بالاتر از فروشنده در تمام بازه‌های موجود (5m/1h/6h).</p><div class="subfilters">
 <label>کوتاه‌مدت<select class="signal-filter" data-filter="short"><option value="">همه</option><option value="STRONG">قوی</option><option value="POSITIVE">مثبت</option><option value="NEUTRAL">خنثی</option><option value="WAIT_DATA">داده ناکافی</option><option value="AVOID">ورود نکن</option><option value="BLOCKED">مسدود امنیتی</option></select></label>
 <label>میان‌مدت<select class="signal-filter" data-filter="medium"><option value="">همه</option><option value="STRONG">قوی</option><option value="POSITIVE">مثبت</option><option value="NEUTRAL">خنثی</option><option value="WAIT_DATA">داده ناکافی</option><option value="AVOID">ورود نکن</option><option value="BLOCKED">مسدود امنیتی</option></select></label>
 <label>بلندمدت<select class="signal-filter" data-filter="long"><option value="">همه</option><option value="STRONG">قوی</option><option value="POSITIVE">مثبت</option><option value="NEUTRAL">خنثی</option><option value="WAIT_DATA">داده ناکافی</option><option value="AVOID">ورود نکن</option><option value="BLOCKED">مسدود امنیتی</option></select></label>
@@ -2019,19 +2022,16 @@ function kolTrendScore(t){
 }
 function largeBuyerFlow(t){
   var tr=t?findTracked(t.mint):null;
+  var buyers1000=tr&&Array.isArray(tr.convictionHolders)?tr.convictionHolders:[];
   return {
     buyers:Number(tr?.largeBuyer500Count||0),
     sellers:Number(tr?.netSellerWalletCount||0),
     buyerUsd:Number(tr?.largeBuyer500Usd||0),
     sellerUsd:Number(tr?.netSellerUsd||0),
-    dominant:tr?.largeBuyer500Dominant===true
+    dominant:tr?.largeBuyer500Dominant===true,
+    buyers1000:buyers1000.length,
+    buyers1000Usd:buyers1000.reduce(function(a,x){return a+Number(x.buyUsd||0)},0)
   };
-}
-function holderPolicyOk(t){
-  var s=t&&t.security?t.security:{};
-  return s.holderPolicyPassed===true&&
-    Number(s.largestHolder||0)<10&&
-    Number(s.maxOtherHolder||0)<5;
 }
 function passesSignalFilters(t){
   var any=signalFilters.short||signalFilters.medium||signalFilters.long||signalFilters.security||signalFilters.holders||signalFilters.bigbuyers;
@@ -2083,9 +2083,51 @@ function fmtPrice(v){
   if(n>=0.0001)return 'USD '+n.toFixed(8);
   return 'USD '+n.toPrecision(5);
 }
+function entryQualityGate(t){
+  if(!t)return {ok:false,reasons:['توکن نامشخص']};
+  var fl=t.flow||{},act=t.activity||{},tr=findTracked(t.mint),reasons=[];
+  var tx5=Number(t.txns5m||0);
+
+  // "High transactions": use 50+ transactions in the latest 5-minute window.
+  var txOk=tx5>=50;
+  if(!txOk)reasons.push('تراکنش 5m کمتر از 50 است');
+
+  // $1000+ real tracked buyer: cumulative buy >= $1000, buy > sell, and still holding.
+  var buyers1000=tr&&Array.isArray(tr.convictionHolders)?tr.convictionHolders:[];
+  var buyer1000Ok=buyers1000.length>=1;
+  if(!buyer1000Ok)reasons.push('خریدار ردیابی‌شده 1000$+ تأیید نشده');
+
+  // Reject detected bot/wash behavior. This is a detection rule, not a guarantee that no bot exists.
+  var botFree=act.label==='PROBABLE ORGANIC'&&
+    !(act.flags||[]).some(function(x){return /ربات|wash|فرکانس بسیار بالا|تراکنش‌های بسیار ریز/i.test(String(x))});
+  if(!botFree)reasons.push('فعالیت کاملاً ارگانیک/بدون الگوی ربات تأیید نشده');
+
+  // Buyer strength must be above sellers in every available observed window.
+  var windows=[
+    ['5m',fl.buyerPower5m],
+    ['1h',fl.buyerPower1h],
+    ['6h',fl.buyerPower6h]
+  ];
+  var observed=windows.filter(function(x){return x[1]!=null&&Number.isFinite(Number(x[1]))});
+  var buyerAlways=observed.length>0&&observed.every(function(x){return Number(x[1])>50});
+  if(!buyerAlways){
+    var bad=observed.filter(function(x){return Number(x[1])<=50}).map(function(x){return x[0]});
+    reasons.push(bad.length?'قدرت خریدار در '+bad.join('/')+' از فروشنده بیشتر نیست':'قدرت خریدار کافی نیست');
+  }
+
+  return {
+    ok:txOk&&buyer1000Ok&&botFree&&buyerAlways,
+    txOk,buyer1000Ok,botFree,buyerAlways,
+    tx5,
+    buyers1000Count:buyers1000.length,
+    buyers1000Usd:buyers1000.reduce(function(a,x){return a+Number(x.buyUsd||0)},0),
+    reasons:reasons
+  };
+}
+
 function tradePlan(t){
   if(!t)return {status:'WAIT',entry:null,entryLow:null,entryHigh:null,exit:null,reason:'داده کافی نیست'};
-  var sec=t.security||{},fl=t.flow||{};
+  var sec=t.security||{},fl=t.flow||{},q=entryQualityGate(t);
   var ws=whaleSellsFor(t.mint),ex=exitFor(t.mint);
   var p=Number(t.priceUsd||0);
   var buyerPower=Number(fl.buyerPower||0);
@@ -2094,7 +2136,6 @@ function tradePlan(t){
   var invalidation=p>0?p*(1-riskPct):null;
   var entryLow=p>0?p*0.99:null,entryHigh=p>0?p*1.01:null;
 
-  // Only critical contract/holder/liquidity risks and live sell/exit events override flow.
   var criticalSecurity=
     sec.mintDisabled===false||
     sec.freezeDisabled===false||
@@ -2108,15 +2149,23 @@ function tradePlan(t){
   if(criticalSecurity||ws.count>0||ex.length>0){
     return {
       status:'EXIT',entry:null,entryLow:null,entryHigh:null,exit:invalidation,
-      reason:criticalSecurity?'ریسک امنیتی جدی فعال است':'فروش نهنگ یا هشدار خروج زنده ثبت شده',
-      riskPct:riskPct*100,buyerPower,sellerPower
+      reason:criticalSecurity?'ریسک امنیتی/هولدر جدی فعال است':'فروش نهنگ یا هشدار خروج زنده ثبت شده',
+      riskPct:riskPct*100,buyerPower,sellerPower,quality:q
     };
   }
 
   if(!p){
     return {
       status:'WAIT',entry:null,entryLow:null,entryHigh:null,exit:null,
-      reason:'قیمت معتبر هنوز دریافت نشده',riskPct:riskPct*100,buyerPower,sellerPower
+      reason:'قیمت معتبر هنوز دریافت نشده',riskPct:riskPct*100,buyerPower,sellerPower,quality:q
+    };
+  }
+
+  if(!q.ok){
+    return {
+      status:'WAIT',entry:null,entryLow:null,entryHigh:null,exit:invalidation,
+      reason:q.reasons.slice(0,3).join(' • '),
+      riskPct:riskPct*100,buyerPower,sellerPower,quality:q
     };
   }
 
@@ -2124,26 +2173,17 @@ function tradePlan(t){
     var edge=buyerPower-sellerPower;
     return {
       status:'ENTRY',
-      confidence:buyerPower>=60?'HIGH':buyerPower>=55?'MEDIUM':'EARLY',
+      confidence:buyerPower>=60?'HIGH':'MEDIUM',
       entry:p,entryLow,entryHigh,exit:invalidation,
-      reason:'قدرت خریدار بیشتر است: '+buyerPower+'% خریدار در برابر '+sellerPower+'% فروشنده · برتری '+edge+'%',
-      riskPct:riskPct*100,buyerPower,sellerPower,edge
-    };
-  }
-
-  if(sellerPower>buyerPower){
-    var sellEdge=sellerPower-buyerPower;
-    return {
-      status:'EXIT',entry:null,entryLow:null,entryHigh:null,exit:invalidation,
-      reason:'قدرت فروشنده بیشتر است: '+sellerPower+'% فروشنده در برابر '+buyerPower+'% خریدار · برتری '+sellEdge+'%',
-      riskPct:riskPct*100,buyerPower,sellerPower,edge:-sellEdge
+      reason:'ورود تأیید شد: '+q.tx5+' تراکنش/5m · '+q.buyers1000Count+' خریدار 1000$+ · فعالیت ارگانیک · قدرت خریدار در همه بازه‌های موجود بالاتر از فروشنده',
+      riskPct:riskPct*100,buyerPower,sellerPower,edge,quality:q
     };
   }
 
   return {
-    status:'WAIT',entry:null,entryLow:null,entryHigh:null,exit:invalidation,
-    reason:'قدرت خریدار و فروشنده برابر است',
-    riskPct:riskPct*100,buyerPower,sellerPower,edge:0
+    status:'EXIT',entry:null,entryLow:null,entryHigh:null,exit:invalidation,
+    reason:'قدرت فروشنده از خریدار بیشتر شده است',
+    riskPct:riskPct*100,buyerPower,sellerPower,quality:q
   };
 }
 function tradePlanChips(t){
@@ -2151,7 +2191,9 @@ function tradePlanChips(t){
   if(p.status==='ENTRY'){
     var zone=(p.entryLow&&p.entryHigh)?fmtPrice(p.entryLow)+' تا '+fmtPrice(p.entryHigh):fmtPrice(p.entry);
     var label=p.confidence==='HIGH'?'🟢 نقطه ورود قوی':p.confidence==='MEDIUM'?'🟢 نقطه ورود فعال':'🟡 ورود زودهنگام';
-    return '<span class="entry-chip entry-ready">'+label+' · '+zone+'</span><span class="entry-chip entry-exit">🛑 خروج/ابطال · '+fmtPrice(p.exit)+'</span>';
+    return '<span class="entry-chip entry-ready">'+label+' · '+zone+'</span>'+
+      (p.quality?'<span class="entry-chip entry-ready">⚡ '+Number(p.quality.tx5||0)+' tx/5m · 💵 '+Number(p.quality.buyers1000Count||0)+' خریدار 1000$+</span>':'')+
+      '<span class="entry-chip entry-exit">🛑 خروج/ابطال · '+fmtPrice(p.exit)+'</span>';
   }
   if(p.status==='EXIT')return '<span class="entry-chip entry-exit">🔴 خروج / ورود نکن'+(p.exit?' · '+fmtPrice(p.exit):'')+'</span>';
   return '<span class="entry-chip entry-wait">⏳ '+esc(p.reason||'در انتظار تأیید')+'</span>'+(p.exit?'<span class="entry-chip entry-exit">حد ابطال مرجع · '+fmtPrice(p.exit)+'</span>':'');
