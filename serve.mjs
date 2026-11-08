@@ -819,6 +819,16 @@ async function buildTrackedWallets(){
     a.convictionHolderCount=a.convictionHolders.length;
     a.convictionBuyUsd=a.convictionHolders.reduce((n,x)=>n+x.buyUsd,0);
     a.convictionSellUsd=a.convictionHolders.reduce((n,x)=>n+x.sellUsd,0);
+    const flowWallets=[...holderFlow.values()];
+    a.largeBuyers500=flowWallets.filter(x=>x.buyUsd>=500&&x.buyUsd>x.sellUsd)
+      .sort((x,y)=>(y.buyUsd-y.sellUsd)-(x.buyUsd-x.sellUsd));
+    a.netSellerWallets=flowWallets.filter(x=>x.sellUsd>0&&x.sellUsd>=x.buyUsd)
+      .sort((x,y)=>(y.sellUsd-y.buyUsd)-(x.sellUsd-x.buyUsd));
+    a.largeBuyer500Count=a.largeBuyers500.length;
+    a.netSellerWalletCount=a.netSellerWallets.length;
+    a.largeBuyer500Usd=a.largeBuyers500.reduce((n,x)=>n+x.buyUsd,0);
+    a.netSellerUsd=a.netSellerWallets.reduce((n,x)=>n+x.sellUsd,0);
+    a.largeBuyer500Dominant=a.largeBuyer500Count>a.netSellerWalletCount;
     a.uniqueBuyers=a.buyers.size;a.uniqueSellers=a.sellers.size;a.buyers=[...a.buyers];a.sellers=[...a.sellers];
     a.netFlowUsd=a.buyUsd-a.sellUsd;
     a.consensus=a.uniqueBuyers>=2&&a.netFlowUsd>0;
@@ -1246,7 +1256,8 @@ dialog{width:min(720px,94vw);max-height:88vh;border:1px solid #36506e;border-rad
 <label>بلندمدت<select class="signal-filter" data-filter="long"><option value="">همه</option><option value="STRONG">قوی</option><option value="POSITIVE">مثبت</option><option value="NEUTRAL">خنثی</option><option value="WAIT_DATA">داده ناکافی</option><option value="AVOID">ورود نکن</option><option value="BLOCKED">مسدود امنیتی</option></select></label>
 <label>امنیت<select class="signal-filter" data-filter="security"><option value="">همه</option><option value="MAX SECURITY">خیلی بالا</option><option value="HIGH">بالا</option><option value="REVIEW">نیاز به بررسی</option><option value="REJECT">رد</option></select></label>
 <label>هولدر ردیابی‌شده ۱۰۰۰$+<select class="signal-filter" data-filter="holders"><option value="">همه</option><option value="1">حداقل ۱ هولدر</option><option value="2">حداقل ۲ هولدر</option><option value="3">حداقل ۳ هولدر</option></select></label>
-</div><p class="muted" style="font-size:11px">رتبه هر گروه با مدل امتیاز مخصوص همان سن محاسبه می‌شود. فیلتر هولدر ۱۰۰۰$+ فقط کیف‌پول‌های تحت ردیابی و تراکنش‌های قابل‌تشخیص ۴۸ ساعت اخیر را بررسی می‌کند؛ خرید باید حداقل ۱۰۰۰ دلار، فروش کمتر از خرید و موجودی فعلی مثبت باشد.</p></div>
+<label>خریدار ۵۰۰$+ بیشتر از فروشنده<select class="signal-filter" data-filter="bigbuyers"><option value="">همه</option><option value="yes">فقط خریدار غالب</option></select></label>
+</div><p class="muted" style="font-size:11px">رتبه هر گروه با مدل امتیاز مخصوص همان سن محاسبه می‌شود. فیلترها فقط کیف‌پول‌های تحت ردیابی و تراکنش‌های قابل‌تشخیص ۴۸ ساعت اخیر را بررسی می‌کنند. هولدر ۱۰۰۰$+: خرید حداقل ۱۰۰۰ دلار، فروش کمتر از خرید و موجودی فعلی مثبت. خریدار ۵۰۰$+: خرید تجمعی حداقل ۵۰۰ دلار و خرید بیشتر از فروش همان کیف‌پول؛ تعدادشان باید از کیف‌پول‌های فروشنده خالص بیشتر باشد.</p></div>
   </details>
   <details class="accordion" open>
     <summary>⚡ توکن‌های تازه و ترند — کمتر از ۲۴ ساعت</summary>
@@ -1269,7 +1280,7 @@ dialog{width:min(720px,94vw);max-height:88vh;border:1px solid #36506e;border-rad
 </dialog>
 
 <script>
-var tokens=[],smart=null,live=null,tracked=null,conviction=null,activeTab='featured',signalFilters={short:'',medium:'',long:'',security:'',holders:''};
+var tokens=[],smart=null,live=null,tracked=null,conviction=null,activeTab='featured',signalFilters={short:'',medium:'',long:'',security:'',holders:'',bigbuyers:''};
 function esc(v){return String(v==null?'':v).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]})}
 function money(v){var n=Number(v||0);if(!Number.isFinite(n))return '—';return '$'+n.toLocaleString(undefined,{maximumFractionDigits:n<1?4:0})}
 function pct(v){return v==null?'—':Number(v).toFixed(1)+'%'}
@@ -1317,7 +1328,7 @@ function bucketScore(t,bucket){
   else if(bucket==='day')score=security*.22+sh*.10+md*.18+lg*.15+buyer*.12+volume*.12+social*.06+market*.05;
   else score=security*.28+sh*.05+md*.13+lg*.22+buyer*.10+volume*.08+social*.04+market*.10;
   var wh=whaleFor(t.mint),tr=findTracked(t.mint),sm=smartFor(t.mint);
-  if(wh.count)score+=3;if(tr&&Number(tr.uniqueBuyers||0)>=2&&Number(tr.netFlowUsd||0)>0)score+=3;if(tr&&Number(tr.convictionHolderCount||0)>=1)score+=Math.min(5,Number(tr.convictionHolderCount||0)*2);if(sm)score+=2;
+  if(wh.count)score+=3;if(tr&&Number(tr.uniqueBuyers||0)>=2&&Number(tr.netFlowUsd||0)>0)score+=3;if(tr&&Number(tr.convictionHolderCount||0)>=1)score+=Math.min(5,Number(tr.convictionHolderCount||0)*2);if(tr?.largeBuyer500Dominant)score+=5;else if(Number(tr?.netSellerWalletCount||0)>Number(tr?.largeBuyer500Count||0))score-=4;if(sm)score+=2;
   if(exitFor(t.mint).length)score-=18;
   if(fl.sellerDominant)score-=8;
   if(fl.volumeLabel==='SUSPICIOUS')score-=12;
@@ -1340,15 +1351,26 @@ function qualifyingTrackedHolders(t){
   var tr=t?findTracked(t.mint):null;
   return tr&&Array.isArray(tr.convictionHolders)?tr.convictionHolders:[];
 }
+function largeBuyerFlow(t){
+  var tr=t?findTracked(t.mint):null;
+  return {
+    buyers:Number(tr?.largeBuyer500Count||0),
+    sellers:Number(tr?.netSellerWalletCount||0),
+    buyerUsd:Number(tr?.largeBuyer500Usd||0),
+    sellerUsd:Number(tr?.netSellerUsd||0),
+    dominant:tr?.largeBuyer500Dominant===true
+  };
+}
 function passesSignalFilters(t){
-  var any=signalFilters.short||signalFilters.medium||signalFilters.long||signalFilters.security||signalFilters.holders;
+  var any=signalFilters.short||signalFilters.medium||signalFilters.long||signalFilters.security||signalFilters.holders||signalFilters.bigbuyers;
   if(!t)return !any;
-  var sg=t.signals||{},sec=t.security||{};
+  var sg=t.signals||{},sec=t.security||{},bf=largeBuyerFlow(t);
   if(signalFilters.short&&sg.short?.label!==signalFilters.short)return false;
   if(signalFilters.medium&&sg.medium?.label!==signalFilters.medium)return false;
   if(signalFilters.long&&sg.long?.label!==signalFilters.long)return false;
   if(signalFilters.security&&sec.tier!==signalFilters.security)return false;
   if(signalFilters.holders&&qualifyingTrackedHolders(t).length<Number(signalFilters.holders))return false;
+  if(signalFilters.bigbuyers==='yes'&&!bf.dominant)return false;
   return true;
 }
 function socialButtons(t){
@@ -1405,7 +1427,7 @@ function tokenRow(t,bucket){
   '<div class="cell"><small>کوتاه / میان / بلند</small><b>'+Number(sh.score||0)+' / '+Number(md.score||0)+' / '+Number(lg.score||0)+'</b></div>'+
   '<div class="cell"><small>قدرت خریدار</small><b><span class="badge '+pressureClass(t)+'">'+(fl.buyerPower==null?'—':Number(fl.buyerPower)+'%')+'</span></b></div>'+
   '<div class="cell hide-sm"><small>امنیت</small><b><span class="badge '+secClass(s.tier)+'">'+esc(faSec(s.tier))+'</span></b></div>'+
-  '<div class="cell hide-md"><small>حجم / هولدر $1k+</small><b><span class="badge '+volumeClass(fl.volumeLabel)+'">'+esc(faVolume(fl.volumeLabel))+'</span> · '+qualifyingTrackedHolders(t).length+'</b></div>'+
+  '<div class="cell hide-md"><small>خریدار $500+ / فروشنده</small><b><span class="badge '+(largeBuyerFlow(t).dominant?'good':'mid')+'">'+largeBuyerFlow(t).buyers+' / '+largeBuyerFlow(t).sellers+'</span></b></div>'+
   '<div class="actions"><a class="action" target="_blank" rel="noopener" href="'+esc(dexUrl(t.mint,t.dexUrl))+'">📈 چارت</a><button class="detail-btn" data-mint="'+esc(t.mint)+'">جزئیات</button></div></div>';
 }
 
@@ -1417,7 +1439,8 @@ function beginnerDecision(t,overallScore){
   var flow=t.flow||{};
   var safe=(sec.tier==='MAX SECURITY'||sec.tier==='HIGH')&&Number(t.liquidity||0)>=10000&&t.activity?.label!=='BOT RISK';
   var flowOk=(flow.volumeLabel==='STRONG'||flow.volumeLabel==='GOOD')&&flow.buyerDominant===true;
-  if(safe&&flowOk&&strongWindows>=2&&Number(overallScore||0)>=78)return {label:'شرایط ورود قوی',cls:'decision-buy',reason:'امنیت بالا + حجم خوب + قدرت خریدار غالب + حداقل دو بازه زمانی قوی + بدون هشدار خروج'};
+  var bf=largeBuyerFlow(t),trackedOk=(bf.buyers+bf.sellers===0)||bf.dominant;
+  if(safe&&flowOk&&trackedOk&&strongWindows>=2&&Number(overallScore||0)>=78)return {label:'شرایط ورود قوی',cls:'decision-buy',reason:'امنیت بالا + حجم خوب + قدرت خریدار غالب + خریدارهای ۵۰۰$+ بیشتر از فروشنده‌ها (اگر داده ردیابی موجود باشد) + حداقل دو بازه زمانی قوی'};
   return {label:'صبر کن',cls:'decision-wait',reason:'برای مبتدی بهتر است تا تکمیل تأییدها صبر شود'};
 }
 function overallCandidates(){
@@ -1620,6 +1643,7 @@ function openDetail(m){
     if(ac.checks&&ac.checks.length)h+='<details class="accordion"><summary>🛡 چک‌لیست امنیتی</summary><div class="accordion-body">'+ac.checks.map(function(c){return '<div class="check"><span>'+esc(c.name)+'</span>'+stateLabel(c.state)+'</div>'}).join('')+'</div></details>';
   }
   if(tr)h+='<div class="note"><b>کیف‌پول‌های برتر:</b> '+Number(tr.uniqueBuyers||0)+' خریدار، '+Number(tr.uniqueSellers||0)+' فروشنده، جریان خالص '+money(tr.netFlowUsd)+'، هولدینگ '+money(tr.currentHoldingUsd)+'</div>';
+  if(tr){var bf=largeBuyerFlow(t);h+='<div class="note"><b>خریدارهای ردیابی‌شده ۵۰۰$+:</b> '+bf.buyers+' کیف‌پول ('+money(bf.buyerUsd)+') · <b>فروشنده خالص:</b> '+bf.sellers+' کیف‌پول ('+money(bf.sellerUsd)+') · '+(bf.dominant?'<span class="pass">✓ خریدارها بیشترند</span>':'<span class="manual">خریدارها بیشتر نیستند</span>')+'</div>';}
   if(tr&&tr.convictionHolders&&tr.convictionHolders.length)h+='<details class="accordion"><summary>💎 هولدرهای ردیابی‌شده با خرید ۱۰۰۰$+ و فروش کمتر</summary><div class="accordion-body">'+tr.convictionHolders.map(function(x){return '<div class="check"><span>'+esc(x.wallet)+' · خرید '+money(x.buyUsd)+' · فروش '+money(x.sellUsd)+'</span><span class="pass">هولد فعلی '+money(x.currentHoldingUsd)+'</span></div>'}).join('')+'<div class="note">بر اساس Swapهای قابل‌تشخیص ۴۸ ساعت اخیر کیف‌پول‌های تحت ردیابی؛ پوشش کل بازار نیست.</div></div></details>';
   if(sm)h+='<div class="note"><b>اسمارت‌مانی:</b> '+Number(sm.smartMoneyCount||0)+' کیف‌پول · '+money(sm.totalValueUsd)+' پوزیشن</div>';
   if(wh.count)h+='<div class="note"><b>نهنگ:</b> '+wh.count+' خرید بزرگ · '+money(wh.usd)+'</div>';if(t)h+=socialButtons(t);
