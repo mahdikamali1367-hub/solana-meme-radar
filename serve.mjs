@@ -1119,7 +1119,7 @@ async function buildFresh(){
     orderFlowPolicy:{buyerPower:'buy transaction count / total buy+sell transactions; not dollar buy volume',strongBuyer:'5m >=55% and 1h >=51% when available',volumeQuality:'absolute volume + tx count + volume/liquidity sanity check'},
     knowledgeEngine:{marketQuality:'transparency + liquidity + data coverage',chartDiscipline:'trend + FOMO + pump/dump guard',academy:'automated Solana RPC + Token-2022 extension audit + RugCheck full/summary + Jupiter sell-route quote + DexScreener sell evidence; unavailable evidence stays UNKNOWN'},
     ageBuckets:{fresh:'0-24h',day:'24h-7d',week:'7d-30d discovery horizon'},
-    entryExitPolicy:{entry:'HIGH/MAX security + GOOD/STRONG volume + buyer strength + adequate liquidity + confirmed or early-confirmed Trust Guard + anti-FOMO price condition',exit:'live exit/whale sell/seller dominance/Trust Guard block; price invalidation is a risk reference, not guaranteed execution'},
+    entryExitPolicy:{entry:'buyer power > seller power; $500+ tracked-wallet filter is display-only; critical safety/live-exit overrides remain',exit:'live exit/whale sell/seller dominance/Trust Guard block; price invalidation is a risk reference, not guaranteed execution'},
     trustGuard:{strongSignalRequires:'2+ holder snapshots, 2 consecutive good scans, >=45 seconds stable confirmation, buyer strength, healthy volume, no holder-outflow risk',downgrade:'holder movement, seller dominance, whale/tracked exits or pump cooldown immediately remove strong status'},
     signalWindows:{short:'5m-1h',medium:'1h-6h',long:'6h-24h',securityGate:'HIGH/MAX requires zero manual, zero unknown and zero failed automated security checks; unknown evidence cannot receive strong approval'},
     disclaimer:'قانون هولدرها: هولدر شماره 1 باید کمتر از 10% و هرکدام از هولدرهای شماره 2 تا 10 باید کمتر از 5% داشته باشند. مجموع Top10 فقط جهت اطلاع نمایش داده می‌شود و شرط رد نیست. Organic Activity یک تخمین ضدربات/ضدواش است. هیچ فیلتر آن‌چین کلاهبرداری را 100% رد نمی‌کند.'};
@@ -1763,7 +1763,7 @@ html,body,.shell,.panel,.list{overflow-anchor:none}
 </section>
 <details class="accordion" open>
     <summary>🔥 پیشنهادهای اولویت‌دار</summary>
-    <div class="accordion-body"><p class="muted" style="font-size:11px">منطق ورود: هر وقت قدرت خریدار از فروشنده بیشتر باشد، نقطه ورود فعال می‌شود؛ اگر فروشنده بیشتر باشد، خروج/ورود نکن نمایش داده می‌شود. هشدار امنیتی جدی همچنان ورود را مسدود می‌کند.</p><div class="subfilters">
+    <div class="accordion-body"><p class="muted" style="font-size:11px">منطق ورود: فقط قدرت خرید/فروش تعیین‌کننده است؛ هر وقت قدرت خریدار از فروشنده بیشتر باشد، نقطه ورود فعال می‌شود. شرط خریدار ۵۰۰$+ در سیگنال ورود نقشی ندارد و فقط یک فیلتر نمایشی اختیاری است. هشدار امنیتی جدی همچنان ورود را مسدود می‌کند.</p><div class="subfilters">
 <label>کوتاه‌مدت<select class="signal-filter" data-filter="short"><option value="">همه</option><option value="STRONG">قوی</option><option value="POSITIVE">مثبت</option><option value="NEUTRAL">خنثی</option><option value="WAIT_DATA">داده ناکافی</option><option value="AVOID">ورود نکن</option><option value="BLOCKED">مسدود امنیتی</option></select></label>
 <label>میان‌مدت<select class="signal-filter" data-filter="medium"><option value="">همه</option><option value="STRONG">قوی</option><option value="POSITIVE">مثبت</option><option value="NEUTRAL">خنثی</option><option value="WAIT_DATA">داده ناکافی</option><option value="AVOID">ورود نکن</option><option value="BLOCKED">مسدود امنیتی</option></select></label>
 <label>بلندمدت<select class="signal-filter" data-filter="long"><option value="">همه</option><option value="STRONG">قوی</option><option value="POSITIVE">مثبت</option><option value="NEUTRAL">خنثی</option><option value="WAIT_DATA">داده ناکافی</option><option value="AVOID">ورود نکن</option><option value="BLOCKED">مسدود امنیتی</option></select></label>
@@ -1901,7 +1901,7 @@ html,body,.shell,.panel,.list{overflow-anchor:none}
 <label>بلندمدت<select class="signal-filter" data-filter="long"><option value="">همه</option><option value="STRONG">قوی</option><option value="POSITIVE">مثبت</option><option value="NEUTRAL">خنثی</option><option value="WAIT_DATA">داده ناکافی</option><option value="AVOID">ورود نکن</option><option value="BLOCKED">مسدود امنیتی</option></select></label>
 <label>امنیت<select class="signal-filter" data-filter="security"><option value="">همه</option><option value="MAX SECURITY">خیلی بالا</option><option value="HIGH">بالا</option><option value="REVIEW">نیاز به بررسی</option><option value="REJECT">رد</option></select></label>
 <label>هولدر ردیابی‌شده ۱۰۰۰$+<select class="signal-filter" data-filter="holders"><option value="">همه</option><option value="1">حداقل ۱ هولدر</option><option value="2">حداقل ۲ هولدر</option><option value="3">حداقل ۳ هولدر</option></select></label>
-<label>خریدار ۵۰۰$+ بیشتر از فروشنده<select class="signal-filter" data-filter="bigbuyers"><option value="">همه</option><option value="yes">فقط خریدار غالب</option></select></label>
+<label>خریدار ۵۰۰$+ بیشتر از فروشنده (فقط فیلتر نمایش)<select class="signal-filter" data-filter="bigbuyers"><option value="">همه</option><option value="yes">فقط خریدار غالب</option></select></label>
 </div><p class="muted" style="font-size:11px">قانون اجباری هولدر برای همه توکن‌ها: هولدر #1 کمتر از 10% و هرکدام از هولدرهای #2 تا #10 کمتر از 5%. رتبه هر گروه با مدل امتیاز مخصوص همان سن محاسبه می‌شود. فیلترها فقط کیف‌پول‌های تحت ردیابی و تراکنش‌های قابل‌تشخیص ۴۸ ساعت اخیر را بررسی می‌کنند. هولدر ۱۰۰۰$+: خرید حداقل ۱۰۰۰ دلار، فروش کمتر از خرید و موجودی فعلی مثبت. خریدار ۵۰۰$+: خرید تجمعی حداقل ۵۰۰ دلار و خرید بیشتر از فروش همان کیف‌پول؛ تعدادشان باید از کیف‌پول‌های فروشنده خالص بیشتر باشد.</p></div>
   </details>
   <details class="accordion" open>
@@ -1980,7 +1980,7 @@ function bucketScore(t,bucket){
   else if(bucket==='day')score=security*.22+sh*.10+md*.18+lg*.15+buyer*.12+volume*.12+social*.06+market*.05;
   else score=security*.28+sh*.05+md*.13+lg*.22+buyer*.10+volume*.08+social*.04+market*.10;
   var wh=whaleFor(t.mint),tr=findTracked(t.mint),sm=smartFor(t.mint);
-  if(wh.count)score+=3;if(t.kolTrend?.kolCount>=2)score+=Math.min(7,t.kolTrend.kolCount*2);else if(t.kolTrend?.kolCount===1)score+=2;if(t.kolTrend?.xMentionCount>0)score+=Math.min(5,t.kolTrend.xMentionCount*2);if(tr&&Number(tr.uniqueBuyers||0)>=2&&Number(tr.netFlowUsd||0)>0)score+=3;if(tr&&Number(tr.convictionHolderCount||0)>=1)score+=Math.min(5,Number(tr.convictionHolderCount||0)*2);if(tr?.largeBuyer500Dominant)score+=5;else if(Number(tr?.netSellerWalletCount||0)>Number(tr?.largeBuyer500Count||0))score-=4;if(sm)score+=2;
+  if(wh.count)score+=3;if(t.kolTrend?.kolCount>=2)score+=Math.min(7,t.kolTrend.kolCount*2);else if(t.kolTrend?.kolCount===1)score+=2;if(t.kolTrend?.xMentionCount>0)score+=Math.min(5,t.kolTrend.xMentionCount*2);if(tr&&Number(tr.uniqueBuyers||0)>=2&&Number(tr.netFlowUsd||0)>0)score+=3;if(tr&&Number(tr.convictionHolderCount||0)>=1)score+=Math.min(5,Number(tr.convictionHolderCount||0)*2);if(sm)score+=2;
   if(exitFor(t.mint).length)score-=18;
   if(fl.sellerDominant)score-=8;
   if(fl.volumeLabel==='SUSPICIOUS')score-=12;
@@ -2271,7 +2271,7 @@ function overallCandidates(){
     var sm=smartFor(t.mint),wh=whaleFor(t.mint),tr=findTracked(t.mint);
     if(wh.count){score+=Math.min(8,3+wh.count*2);reasons.push('خرید نهنگ')}
     if(sm){score+=4;reasons.push('اسمارت‌مانی')}
-    if(tr&&Number(tr.uniqueBuyers||0)>Number(tr.uniqueSellers||0)){score+=4;reasons.push('کیف‌پول‌های ردیابی‌شده خریدار غالب')}
+    if(tr&&Number(tr.uniqueBuyers||0)>Number(tr.uniqueSellers||0)){score+=2;reasons.push('کیف‌پول‌های ردیابی‌شده خریدار غالب')}
 
     var shortScore=Number(sg.short?.score||0),medScore=Number(sg.medium?.score||0);
     score+=Math.min(6,(shortScore+medScore)/40);
