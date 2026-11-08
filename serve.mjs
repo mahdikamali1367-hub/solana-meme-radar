@@ -6,8 +6,10 @@ const CACHE_MS=55_000;
 const SOCIAL_QUERY_CACHE_MS=2*60*60*1000;
 const socialQueryCache=new Map();
 const SECURITY_CACHE_MS=5*60*1000;
+const EXTERNAL_SECURITY_CACHE_MS=10*60*1000;
 let cache={at:0,data:null};
 const securityCache=new Map();
+const externalSecurityCache=new Map();
 let smartMoneyCache={at:0,data:null};
 const SMART_MONEY_CACHE_MS=6*60*60*1000;
 let smartTraderHandles=new Set();
@@ -426,34 +428,151 @@ function chartDiscipline(t){
   return {trend,fomoRisk,pumpDumpRisk,volumePace,volumeTrend,buyRatio,warnings,note:'تشخیص حمایت/مقاومت و الگوی کندل نیازمند مشاهده چارت DexScreener است'};
 }
 
-function academyGuard(t){
-  const checks=[]; const sec=t.security||{},chart=t.chart||{},mq=t.marketQuality||{};
-  const state=(ok,bad)=>ok?'pass':bad?'fail':'manual';
-  checks.push({name:'Mint authority لغو شده',state:state(sec.mintDisabled===true,sec.mintDisabled===false)});
-  checks.push({name:'Freeze authority غیرفعال',state:state(sec.freezeDisabled===true,sec.freezeDisabled===false)});
-  checks.push({name:'هولدر #1 <10% و هر هولدر #2 تا #10 <5%',state:state(sec.holderPolicyPassed===true,sec.holderPolicyPassed===false)});
-  checks.push({name:'نقدینگی سالم نسبت به Market Cap',state:mq.liqRatio>=0.05?'pass':mq.liqRatio>0&&mq.liqRatio<0.02?'fail':'manual'});
-  checks.push({name:'حجم در حال رشد، نه محو شدن',state:chart.volumeTrend==='RISING'?'pass':chart.volumeTrend==='FADING'?'fail':'manual'});
-  checks.push({name:'فعالیت غیررباتی',state:t.activity?.label==='PROBABLE ORGANIC'?'pass':t.activity?.label==='BOT RISK'?'fail':'manual'});
-  checks.push({name:'حجم معاملات سالم',state:(t.flow?.volumeLabel==='STRONG'||t.flow?.volumeLabel==='GOOD')?'pass':t.flow?.volumeLabel==='SUSPICIOUS'?'fail':'manual'});
-  checks.push({name:'قدرت خریدار بیشتر از فروشنده',state:t.flow?.buyerDominant?'pass':t.flow?.sellerDominant?'fail':'manual'});
-  checks.push({name:'شبکه اجتماعی/جامعه قابل مشاهده',state:(t.socialSources||[]).length>=2&&t.trend?.score>=40?'pass':'manual'});
-  checks.push({name:'Liquidity Lock/Burn تأیید شده',state:'manual'});
-  checks.push({name:'Dev holding پایین تأیید شده',state:'manual'});
-  checks.push({name:'Bundle/Sniper/Insider پایین',state:'manual'});
-  checks.push({name:'تست فروش کوچک برای Honeypot',state:'manual'});
-  const pass=checks.filter(x=>x.state==='pass').length;
-  const fail=checks.filter(x=>x.state==='fail').length;
-  const manual=checks.length-pass-fail;
-  const criticalFail=
-    sec.mintDisabled===false||sec.freezeDisabled===false||sec.holderPolicyPassed===false||
-    t.activity?.label==='BOT RISK'||chart.pumpDumpRisk==='HIGH'||t.flow?.volumeLabel==='SUSPICIOUS'||(mq.liqRatio>0&&mq.liqRatio<0.02);
-  const blocked=criticalFail||fail>=2;
-  const score=Math.round(pass/checks.length*100);
-  const label=blocked?'BLOCK':fail===0&&pass>=6?'BASIC PASS':fail===0?'NEEDS REVIEW':'CAUTION';
-  return {score,label,pass,fail,manual,blocked,checks,source:'memecoin-academy-derived rules; manual checks remain manual'};
+
+function auditState(state,detail,source){return {state,detail:detail||'',source:source||''}}
+function pick(obj,...keys){for(const k of keys){if(obj&&obj[k]!=null)return obj[k]}return null}
+function textRisk(r){return ((r?.name||'')+' '+(r?.description||'')+' '+(r?.value||'')).toLowerCase()}
+async function externalSecurityAudit(t){
+  const mint=t.mint,old=externalSecurityCache.get(mint);
+  if(old&&Date.now()-old.at<EXTERNAL_SECURITY_CACHE_MS)return old.data;
+  let report=null,error=null;
+  try{report=await jfetch('https://api.rugcheck.xyz/v1/tokens/'+encodeURIComponent(mint)+'/report',{},12000)}
+  catch(e){error=String(e?.message||e)}
+  if(!report){
+    const data={
+      available:false,error,
+      lp:auditState('unknown','RugCheck در دسترس نبود','RugCheck'),
+      dev:auditState('unknown','داده سازنده در دسترس نبود','RugCheck'),
+      insider:auditState('unknown','گراف Insider در دسترس نبود','RugCheck'),
+      sell:auditState('unknown','بررسی مسیر فروش انجام نشد','RugCheck/Jupiter'),
+      overall:auditState('unknown','امتیاز RugCheck در دسترس نبود','RugCheck')
+    };
+    externalSecurityCache.set(mint,{at:Date.now(),data});return data;
+  }
+
+  const risks=Array.isArray(report.risks)?report.risks:[];
+  const riskTexts=risks.map(textRisk);
+  const risky=(re)=>risks.filter(r=>re.test(textRisk(r)));
+  const markets=Array.isArray(report.markets)?report.markets:[];
+  const lockPcts=markets.map(m=>num(pick(m?.lp,'lpLockedPct','lp_locked_pct'),NaN)).filter(Number.isFinite);
+  let lpLockedPct=lockPcts.length?Math.max(...lockPcts):num(pick(report,'lpLockedPct','lp_locked_pct'),NaN);
+  let lp;
+  if(Number.isFinite(lpLockedPct)){
+    if(lpLockedPct>=80)lp=auditState('pass','LP قفل/سوخته: '+lpLockedPct.toFixed(1)+'%','RugCheck');
+    else if(lpLockedPct<50)lp=auditState('fail','LP قفل‌شده فقط '+lpLockedPct.toFixed(1)+'%','RugCheck');
+    else lp=auditState('warn','LP قفل‌شده '+lpLockedPct.toFixed(1)+'%؛ بهتر است بالاتر باشد','RugCheck');
+  }else{
+    const lpRisks=risky(/liquidity.*lock|lp.*lock|unlocked liquidity|liquidity.*unlocked/);
+    lp=lpRisks.length?auditState('fail',lpRisks[0].name||'ریسک LP','RugCheck'):auditState('unknown','درصد LP Lock گزارش نشده','RugCheck');
+  }
+
+  const creator=String(pick(report,'creator')||'');
+  const top=Array.isArray(pick(report,'topHolders','top_holders'))?pick(report,'topHolders','top_holders'):[];
+  let creatorPct=null,creatorBound=null;
+  if(creator&&top.length){
+    const h=top.find(x=>String(x?.owner||x?.address||'')===creator);
+    if(h&&Number.isFinite(Number(h.pct)))creatorPct=num(h.pct);
+    else if(top.length>=10){
+      const vals=top.map(x=>num(x?.pct,NaN)).filter(Number.isFinite).sort((a,b)=>b-a);
+      if(vals.length>=10)creatorBound=vals[9];
+    }
+  }
+  const devRisks=risky(/creator|developer|dev wallet|dev holding/);
+  let dev;
+  if(creatorPct!=null){
+    dev=creatorPct<5?auditState('pass','Dev holding '+creatorPct.toFixed(2)+'%','RugCheck'):
+        creatorPct>=10?auditState('fail','Dev holding بالا: '+creatorPct.toFixed(2)+'%','RugCheck'):
+        auditState('warn','Dev holding '+creatorPct.toFixed(2)+'%','RugCheck');
+  }else if(creator&&creatorBound!=null&&creatorBound<5){
+    dev=auditState('pass','کیف‌پول سازنده خارج Top10 است؛ سقف تقریبی <'+creatorBound.toFixed(2)+'%','RugCheck');
+  }else if(devRisks.some(r=>/danger|critical|high/i.test(String(r.level||'')))){
+    dev=auditState('fail',devRisks[0].name||'ریسک سازنده','RugCheck');
+  }else{
+    dev=auditState('unknown',creator?'درصد دقیق Dev holding قابل اثبات نیست':'Creator مشخص نیست','RugCheck');
+  }
+
+  const graphCount=num(pick(report,'graphInsidersDetected','graph_insiders_detected'),NaN);
+  const insiderTop=top.filter(x=>x?.insider===true).length;
+  const insiderRisks=risky(/insider|sniper|bundle|bundled|connected wallet/);
+  const severeInsider=insiderRisks.some(r=>/danger|critical|high/i.test(String(r.level||'')));
+  let insider;
+  if(severeInsider||insiderTop>=2||(Number.isFinite(graphCount)&&graphCount>=2)){
+    insider=auditState('fail','Insider/Sniper مشکوک: '+(Number.isFinite(graphCount)?graphCount:insiderTop)+' مورد','RugCheck');
+  }else if(insiderTop===1||(Number.isFinite(graphCount)&&graphCount===1)||insiderRisks.length){
+    insider=auditState('warn','یک سیگنال Insider/Sniper نیازمند احتیاط','RugCheck');
+  }else if(Number.isFinite(graphCount)){
+    insider=auditState('pass','Insider graph: موردی شناسایی نشد','RugCheck');
+  }else{
+    insider=auditState('unknown','گراف Insider نتیجه قطعی نداده','RugCheck');
+  }
+
+  const rugScore=num(pick(report,'score_normalised','scoreNormalised'),NaN);
+  const rugged=pick(report,'rugged')===true;
+  let overall;
+  if(rugged)overall=auditState('fail','RugCheck: rugged=true','RugCheck');
+  else if(Number.isFinite(rugScore))overall=rugScore<=20?auditState('pass','RugCheck risk '+rugScore+'/100 (کمتر بهتر)','RugCheck'):
+       rugScore>=45?auditState('fail','RugCheck risk '+rugScore+'/100','RugCheck'):
+       auditState('warn','RugCheck risk '+rugScore+'/100','RugCheck');
+  else overall=auditState('unknown','امتیاز نرمال RugCheck گزارش نشده','RugCheck');
+
+  const sellRisks=risky(/honeypot|cannot sell|unable to sell|sell restriction|transfer fee|permanent delegate|non-transferable/);
+  const severeSell=sellRisks.some(r=>/danger|critical|high/i.test(String(r.level||'')));
+  let sell=severeSell?auditState('fail',sellRisks[0].name||'ریسک فروش','RugCheck'):null;
+  if(!sell){
+    const key=process.env.JUPITER_API_KEY;
+    const decimals=Math.max(0,Math.min(12,num(pick(report?.token,'decimals'),6)));
+    if(key){
+      try{
+        const amount=(1000n*(10n**BigInt(decimals))).toString();
+        const u='https://api.jup.ag/swap/v1/quote?inputMint='+encodeURIComponent(mint)+'&outputMint='+encodeURIComponent(WSOL_MINT)+'&amount='+amount+'&slippageBps=500&instructionVersion=V2';
+        const q=await jfetch(u,{headers:{'x-api-key':key}},10000);
+        const impact=Math.abs(num(q?.priceImpactPct))*100;
+        if(q?.outAmount&&num(q.outAmount)>0){
+          sell=impact<=10?auditState('pass','مسیر فروش Jupiter موجود؛ impact تقریبی '+impact.toFixed(2)+'%','Jupiter quote'):
+               auditState('warn','مسیر فروش موجود ولی impact '+impact.toFixed(2)+'%','Jupiter quote');
+        }else sell=auditState('fail','Jupiter مسیر فروش پیدا نکرد','Jupiter quote');
+      }catch(e){sell=auditState('unknown','Jupiter quote ناموفق؛ معامله‌ای انجام نشد','Jupiter quote')}
+    }else{
+      sell=sellRisks.length?auditState('warn','RugCheck ریسک فروش/fee گزارش کرده: '+(sellRisks[0].name||''),'RugCheck'):
+        auditState('unknown','RugCheck ریسک Honeypot شدید ندارد؛ برای quote فروش، JUPITER_API_KEY لازم است','RugCheck');
+    }
+  }
+
+  const data={available:true,lp,dev,insider,sell,overall,rugcheckScore:Number.isFinite(rugScore)?rugScore:null,creator,rawRiskCount:risks.length};
+  externalSecurityCache.set(mint,{at:Date.now(),data});return data;
 }
 
+function academyGuard(t){
+  const checks=[]; const sec=t.security||{},chart=t.chart||{},mq=t.marketQuality||{},ext=t.externalSecurity||{};
+  const state=(ok,bad)=>ok?'pass':bad?'fail':'unknown';
+  checks.push({name:'Mint authority لغو شده',state:state(sec.mintDisabled===true,sec.mintDisabled===false),detail:'Solana RPC'});
+  checks.push({name:'Freeze authority غیرفعال',state:state(sec.freezeDisabled===true,sec.freezeDisabled===false),detail:'Solana RPC'});
+  checks.push({name:'هولدر #1 <10% و هر هولدر #2 تا #10 <5%',state:state(sec.holderPolicyPassed===true,sec.holderPolicyPassed===false),detail:'Owner-aggregated holders'});
+  checks.push({name:'نقدینگی سالم نسبت به Market Cap',state:mq.liqRatio>=0.05?'pass':mq.liqRatio>0&&mq.liqRatio<0.02?'fail':'warn',detail:'Liq/MC '+(mq.liqRatio*100).toFixed(1)+'%'});
+  checks.push({name:'حجم در حال رشد، نه محو شدن',state:chart.volumeTrend==='RISING'?'pass':chart.volumeTrend==='FADING'?'fail':'warn',detail:'Volume trend '+chart.volumeTrend});
+  checks.push({name:'فعالیت غیررباتی',state:t.activity?.label==='PROBABLE ORGANIC'?'pass':t.activity?.label==='BOT RISK'?'fail':'warn',detail:t.activity?.label||'UNKNOWN'});
+  checks.push({name:'حجم معاملات سالم',state:(t.flow?.volumeLabel==='STRONG'||t.flow?.volumeLabel==='GOOD')?'pass':t.flow?.volumeLabel==='SUSPICIOUS'?'fail':'warn',detail:t.flow?.volumeLabel||'UNKNOWN'});
+  checks.push({name:'قدرت خریدار بیشتر از فروشنده',state:t.flow?.buyerDominant?'pass':t.flow?.sellerDominant?'fail':'warn',detail:'Buyer power '+num(t.flow?.buyerPower)+'%'});
+  checks.push({name:'شبکه اجتماعی/جامعه قابل مشاهده',state:(t.socialSources||[]).length>=2&&t.trend?.score>=40?'pass':'warn',detail:(t.socialSources||[]).length+' شبکه'});
+  checks.push({name:'Liquidity Lock/Burn خودکار',state:ext.lp?.state||'unknown',detail:ext.lp?.detail||'داده ناکافی'});
+  checks.push({name:'Dev holding خودکار',state:ext.dev?.state||'unknown',detail:ext.dev?.detail||'داده ناکافی'});
+  checks.push({name:'Bundle/Sniper/Insider خودکار',state:ext.insider?.state||'unknown',detail:ext.insider?.detail||'داده ناکافی'});
+  checks.push({name:'Sellability / Honeypot خودکار',state:ext.sell?.state||'unknown',detail:ext.sell?.detail||'داده ناکافی'});
+  checks.push({name:'RugCheck ریسک کلی',state:ext.overall?.state||'unknown',detail:ext.overall?.detail||'داده ناکافی'});
+  const pass=checks.filter(x=>x.state==='pass').length;
+  const fail=checks.filter(x=>x.state==='fail').length;
+  const warn=checks.filter(x=>x.state==='warn').length;
+  const unknown=checks.filter(x=>x.state==='unknown').length;
+  const externalCritical=['lp','dev','insider','sell','overall'].some(k=>ext[k]?.state==='fail');
+  const criticalFail=
+    sec.mintDisabled===false||sec.freezeDisabled===false||sec.holderPolicyPassed===false||
+    t.activity?.label==='BOT RISK'||chart.pumpDumpRisk==='HIGH'||t.flow?.volumeLabel==='SUSPICIOUS'||
+    (mq.liqRatio>0&&mq.liqRatio<0.02)||externalCritical;
+  const blocked=criticalFail||fail>=2;
+  const score=Math.round((pass+warn*0.45)/checks.length*100);
+  const label=blocked?'BLOCK':fail===0&&warn<=2&&unknown===0?'AUTO PASS':fail===0?'NEEDS REVIEW':'CAUTION';
+  return {score,label,pass,fail,warn,unknown,manual:0,blocked,checks,source:'automated on-chain + RugCheck + optional Jupiter quote; unknown stays unknown, never auto-passes'};
+}
 
 function securityGate(t){
   const sec=t.security||{},mq=t.marketQuality||{},act=t.activity||{},chart=t.chart||{},academy=t.academy||{};
@@ -475,7 +594,7 @@ function securityGate(t){
   if(chart.fomoRisk==='HIGH')cautions.push('ریسک FOMO بالا');
   const blocked=hard.length>0;
   const level=blocked?'BLOCK':cautions.length?'CAUTION':'PASS';
-  return {level,blocked,hard,cautions,automaticChecks:6,manualChecks:num(academy.manual)};
+  return {level,blocked,hard,cautions,automaticChecks:(academy.checks||[]).length,unknownChecks:num(academy.unknown),manualChecks:0};
 }
 function signalLabel(score,gate,confidence){
   if(gate.blocked)return 'BLOCKED';
@@ -612,6 +731,7 @@ async function build(){
     t.socialHeat=socialHeatScore(t);
     t.marketQuality=marketQualityScore(t);
     t.chart=chartDiscipline(t);
+    t.externalSecurity=await externalSecurityAudit(t);
     t.academy=academyGuard(t);
     t.signals=multiHorizonSignals(t);
     t.verdict=verdict(t); out.push(t); await sleep(55);
@@ -637,6 +757,7 @@ async function build(){
     }
     t.marketQuality=marketQualityScore(t);
     t.chart=chartDiscipline(t);
+    if(!t.externalSecurity)t.externalSecurity=await externalSecurityAudit(t);
     t.academy=academyGuard(t);
     t.signals=multiHorizonSignals(t);
     t.verdict=verdict(t);
@@ -650,7 +771,7 @@ async function build(){
     holderPolicy:{hardRules:{holder1MustBeBelowPct:10,holders2to10EachMustBeBelowPct:5,exclusive:true},gradeA:{holder1MaxPct:5,holders2to10EachMaxPct:2.5},gradeB:{holder1MaxPct:7.5,holders2to10EachMaxPct:4},gradeC:{holder1MaxPct:10,holders2to10EachMaxPct:5},unknownFailsStrong:true},
     activityPolicy:{probableOrganicMin:72,highSecurityMin:58,method:'aggregate heuristics; not proof of human identity'},
     orderFlowPolicy:{buyerPower:'buy transaction count / total buy+sell transactions; not dollar buy volume',strongBuyer:'5m >=55% and 1h >=51% when available',volumeQuality:'absolute volume + tx count + volume/liquidity sanity check'},
-    knowledgeEngine:{marketQuality:'transparency + liquidity + data coverage',chartDiscipline:'trend + FOMO + pump/dump guard',academy:'rug/honeypot/MEV/sniper/risk checklist; unknown checks stay manual'},
+    knowledgeEngine:{marketQuality:'transparency + liquidity + data coverage',chartDiscipline:'trend + FOMO + pump/dump guard',academy:'automated on-chain + RugCheck + optional Jupiter sell-route quote; unavailable evidence stays UNKNOWN, never PASS'},
     ageBuckets:{fresh:'0-24h',day:'24h-7d',week:'7d-30d discovery horizon'},
     signalWindows:{short:'5m-1h',medium:'1h-6h',long:'6h-24h',securityGate:'explicit failures block; unknown security data becomes CAUTION and caps confidence instead of auto-reject'},
     disclaimer:'قانون هولدرها: هولدر شماره 1 حداکثر 10% و هرکدام از هولدرهای شماره 2 تا 10 حداکثر 5% می‌توانند داشته باشند. مجموع Top10 فقط جهت اطلاع نمایش داده می‌شود و شرط رد نیست. Organic Activity یک تخمین ضدربات/ضدواش است. هیچ فیلتر آن‌چین کلاهبرداری را 100% رد نمی‌کند.'};
@@ -1632,7 +1753,7 @@ function renderAlerts(){
   document.getElementById('kExits').textContent=c.length;document.getElementById('alerts').innerHTML=c.map(function(x){return '<div class="alert">🚨 خروج همزمان چند کیف‌پول از <b>'+esc(x.token||short(x.tokenAddress))+'</b> · '+Number(x.uniqueSellers||0)+' فروشنده</div>'}).join('');
 }
 function renderAll(){document.getElementById('kTokens').textContent=tokens.length;renderChampion();renderAlerts();renderFeatured();renderWhales();renderSmart();renderSocialTrends();renderWallets();renderConviction();renderTokens()}
-function stateLabel(v){return v==='pass'?'<span class="pass">✓ تأیید</span>':v==='fail'?'<span class="fail">✕ رد</span>':'<span class="manual">◌ دستی</span>'}
+function stateLabel(v){return v==='pass'?'<span class="pass">✓ تأیید خودکار</span>':v==='fail'?'<span class="fail">✕ رد خودکار</span>':v==='warn'?'<span class="manual">△ هشدار</span>':'<span class="manual">? داده ناکافی</span>'}
 function openDetail(m){
   var t=findToken(m),tr=findTracked(m),sm=smartFor(m),wh=whaleFor(m),name=t?(t.symbol+' · '+t.name):(tr?(tr.symbol+' · '+tr.name):short(m)),h='';
   document.getElementById('detailTitle').textContent=name;
@@ -1640,7 +1761,7 @@ function openDetail(m){
     var s=t.security||{},a=t.activity||{},mq=t.marketQuality||{},ch=t.chart||{},ac=t.academy||{};
     h+='<div class="modal-grid"><div class="box"><small>امنیت</small><b>'+esc(faSec(s.tier))+' · '+Number(s.score||0)+'/100</b></div><div class="box"><small>فعالیت</small><b>'+esc(faAct(a.label))+' · '+Number(a.score||0)+'/100</b></div><div class="box"><small>ترند</small><b>'+Number(t.trend&&t.trend.score||0)+'/100</b></div><div class="box"><small>Market Cap</small><b>'+money(t.marketCap)+'</b></div><div class="box"><small>Liquidity</small><b>'+money(t.liquidity)+'</b></div><div class="box"><small>Vol 5m</small><b>'+money(t.volume5m)+'</b></div><div class="box"><small>هولدر #1</small><b>'+pct(s.largestHolder)+'</b></div><div class="box"><small>بیشترین 2-10</small><b>'+pct(s.maxOtherHolder)+'</b></div><div class="box"><small>Top10</small><b>'+pct(s.top10)+'</b></div><div class="box"><small>کیفیت بازار</small><b>'+Number(mq.score||0)+'/100</b></div><div class="box"><small>FOMO</small><b>'+esc(ch.fomoRisk||'—')+'</b></div><div class="box"><small>Pump/Dump</small><b>'+esc(ch.pumpDumpRisk||'—')+'</b></div></div>';
     h+='<details class="accordion" open><summary>👥 هولدرهای بزرگ</summary><div class="accordion-body">'+(s.topHolders&&s.topHolders.length?s.topHolders.slice(0,10).map(function(x,i){return '<div class="holder"><span>#'+(i+1)+' · '+pct(x.pct)+'</span><a target="_blank" rel="noopener" href="https://solscan.io/account/'+esc(x.owner)+'">'+esc(short(x.owner))+'</a></div>'}).join(''):'<div class="note">داده هولدر موجود نیست.</div>')+'</div></details>';
-    if(ac.checks&&ac.checks.length)h+='<details class="accordion"><summary>🛡 چک‌لیست امنیتی</summary><div class="accordion-body">'+ac.checks.map(function(c){return '<div class="check"><span>'+esc(c.name)+'</span>'+stateLabel(c.state)+'</div>'}).join('')+'</div></details>';
+    if(ac.checks&&ac.checks.length)h+='<details class="accordion"><summary>🛡 چک‌لیست امنیتی</summary><div class="accordion-body">'+ac.checks.map(function(c){return '<div class="check"><span>'+esc(c.name)+(c.detail?'<small style="display:block;color:var(--muted);margin-top:3px">'+esc(c.detail)+'</small>':'')+'</span>'+stateLabel(c.state)+'</div>'}).join('')+'</div></details>';
   }
   if(tr)h+='<div class="note"><b>کیف‌پول‌های برتر:</b> '+Number(tr.uniqueBuyers||0)+' خریدار، '+Number(tr.uniqueSellers||0)+' فروشنده، جریان خالص '+money(tr.netFlowUsd)+'، هولدینگ '+money(tr.currentHoldingUsd)+'</div>';
   if(tr){var bf=largeBuyerFlow(t);h+='<div class="note"><b>خریدارهای ردیابی‌شده ۵۰۰$+:</b> '+bf.buyers+' کیف‌پول ('+money(bf.buyerUsd)+') · <b>فروشنده خالص:</b> '+bf.sellers+' کیف‌پول ('+money(bf.sellerUsd)+') · '+(bf.dominant?'<span class="pass">✓ خریدارها بیشترند</span>':'<span class="manual">خریدارها بیشتر نیستند</span>')+'</div>';}
