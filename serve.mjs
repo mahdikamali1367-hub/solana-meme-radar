@@ -1559,7 +1559,8 @@ header{position:sticky;top:0;z-index:20;background:rgba(7,16,29,.94);backdrop-fi
 button,input,select,a.action{border:1px solid var(--line);background:#101d31;color:var(--text);border-radius:9px;padding:8px 10px;font:inherit}button{cursor:pointer}.primary{background:#153d32;border-color:#2f6d57;color:#8dffc8}.muted{color:var(--muted)}
 .kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:11px}.kpi{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:10px}.kpi small{color:var(--muted);font-size:11px}.kpi b{display:block;font-size:21px;margin-top:3px}
 .champion{background:linear-gradient(135deg,#102b27,#101f35);border:1px solid #34745e;border-radius:14px;padding:12px;margin-bottom:10px}.champion h2{font-size:15px;margin:0 0 6px}.champion .score{font-size:24px;font-weight:900;color:var(--good)}.champion-grid{display:grid;grid-template-columns:1.4fr repeat(4,.7fr) auto;gap:8px;align-items:center}.decision-banner{border-radius:11px;padding:10px 12px;margin-bottom:10px;font-weight:900;font-size:16px}.decision-buy{background:#123a2d;color:var(--good);border:1px solid #34745e}.decision-wait{background:#3b3317;color:var(--warn);border:1px solid #6d5d24}.decision-stop{background:#421a24;color:var(--bad);border:1px solid #743040}.beginner-note{font-size:11px;color:var(--muted);margin-top:4px;line-height:1.55}.whale-summary{display:grid;grid-template-columns:repeat(3,1fr);gap:7px;margin:7px 0 10px}.whale-stat{background:#101d31;border:1px solid var(--line);border-radius:10px;padding:9px}.whale-stat small{display:block;color:var(--muted);font-size:10px}.whale-stat b{display:block;margin-top:3px;font-size:14px}.alerts{display:grid;gap:6px;margin-bottom:9px}.alert{padding:8px 10px;border:1px solid #703343;background:#25151d;color:#ffb0bd;border-radius:10px;font-size:12px}
-.tabs{display:flex;gap:6px;overflow:auto;scrollbar-width:none;margin-bottom:10px}.tab{white-space:nowrap}.tab.active{background:#193759;border-color:#3d709f;color:#c0e1ff}
+.tabs{display:flex;gap:6px;overflow:auto;scrollbar-width:none;margin-bottom:10px}.tab{white-space:nowrap}.top-tabs{position:sticky;top:58px;z-index:18;background:rgba(7,16,29,.96);padding:8px 0 10px;margin-top:-2px;border-bottom:1px solid var(--line);backdrop-filter:blur(10px)}
+.tab.active{background:#193759;border-color:#3d709f;color:#c0e1ff}
 .toolbar{display:flex;gap:7px;flex-wrap:wrap;margin-bottom:10px}.toolbar input{flex:1;min-width:220px}.toolbar select{min-width:140px}.subfilters{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:7px;margin:8px 0 11px}.subfilters label{font-size:12px;color:var(--muted);font-weight:800}.subfilters select{width:100%;margin-top:4px;padding:8px}.social-actions{display:flex;gap:5px;flex-wrap:wrap;margin-top:5px}.social-actions a{font-size:11px;text-decoration:none;padding:5px 7px;border:1px solid var(--line);border-radius:8px;color:#b5ddff;background:#10243b}
 .accordion{background:var(--panel);border:1px solid var(--line);border-radius:12px;margin-bottom:9px;overflow:hidden}
 .accordion>summary{list-style:none;cursor:pointer;padding:14px 15px;font-weight:900;font-size:16px;display:flex;align-items:center;justify-content:space-between;gap:8px;user-select:none}
@@ -1584,6 +1585,14 @@ dialog{width:min(720px,94vw);max-height:88vh;border:1px solid #36506e;border-rad
 </header>
 
 <main class="shell">
+<nav class="tabs top-tabs" id="tabs">
+  <button class="tab active" data-tab="featured">🔥 پیشنهادها</button>
+  <button class="tab" data-tab="whales">🐋 نهنگ‌ها</button>
+  <button class="tab" data-tab="tokens">🪙 توکن‌ها</button>
+  <button class="tab" data-tab="smart">🧠 اسمارت‌مانی</button>
+  <button class="tab" data-tab="social">📣 ترند اجتماعی</button>
+  <button class="tab" data-tab="wallets">🏆 کیف‌پول‌ها</button>
+</nav>
 <details class="accordion highlight" open>
   <summary>🏆 بهترین سیگنال کل رادار</summary>
   <div class="accordion-body" id="championBox"></div>
@@ -1620,14 +1629,7 @@ dialog{width:min(720px,94vw);max-height:88vh;border:1px solid #36506e;border-rad
   <div class="accordion-body"><div class="alerts" id="alerts"></div></div>
 </details>
 
-<nav class="tabs" id="tabs">
-  <button class="tab active" data-tab="featured">🔥 پیشنهادها</button>
-  <button class="tab" data-tab="whales">🐋 نهنگ‌ها</button>
-  <button class="tab" data-tab="smart">🧠 اسمارت‌مانی</button>
-  <button class="tab" data-tab="social">📣 ترند اجتماعی</button>
-  <button class="tab" data-tab="wallets">🏆 کیف‌پول‌ها</button>
-  <button class="tab" data-tab="tokens">🪙 همه توکن‌ها</button>
-</nav>
+
 
 <details class="accordion">
   <summary>🔎 جستجو و فیلترها</summary>
