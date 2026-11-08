@@ -17,6 +17,12 @@ const SMART_MONEY_CACHE_MS=6*60*60*1000;
 let smartTraderHandles=new Set();
 let liveFomoState={connected:false,realtime:false,delaySeconds:null,updatedAt:null,events:[],lastError:null};
 let liveFomoSocket=null;
+const liveSseClients=new Set();
+function broadcastLiveState(kind='update'){
+  if(!liveSseClients.size)return;
+  const payload='event: '+kind+'\ndata: '+JSON.stringify(liveSmartMoneyPayload())+'\n\n';
+  for(const res of [...liveSseClients]){try{res.write(payload)}catch{liveSseClients.delete(res)}}
+}
 
 const SPL_TOKEN_PROGRAM='TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA';
 const TOKEN_2022_PROGRAM='TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb';
@@ -1347,6 +1353,7 @@ async function verifySellPosition(evt){
     if(!h||num(h.valueUsd)<25)evt.exitStatus='POSITION CLOSED / NEAR ZERO';
     else evt.exitStatus='POSITION REDUCED / STILL HOLDING';
     liveFomoState.updatedAt=new Date().toISOString();
+    broadcastLiveState('position');
   }catch{
     evt.positionVerified=false;
   }
@@ -1378,6 +1385,7 @@ function pushLiveFomoEvent(m){
     if(x.alertType==='sell')x.severity=liveEventSeverity(x);
   }
   liveFomoState.updatedAt=new Date().toISOString();
+  broadcastLiveState('market');
   if(e.alertType==='sell')verifySellPosition(e);
 }
 function startLiveFomoStream(){
@@ -1388,7 +1396,7 @@ function startLiveFomoStream(){
     const url='wss://api.fomoapi.io/ws/alerts?chain=solana'+(key?'&key='+encodeURIComponent(key):'');
     const ws=new WebSocket(url);
     liveFomoSocket=ws;
-    ws.onopen=()=>{liveFomoState.connected=true;liveFomoState.lastError=null;liveFomoState.updatedAt=new Date().toISOString()};
+    ws.onopen=()=>{liveFomoState.connected=true;liveFomoState.lastError=null;liveFomoState.updatedAt=new Date().toISOString();broadcastLiveState('status')};
     ws.onmessage=(ev)=>{
       try{
         const m=JSON.parse(String(ev.data));
@@ -1396,6 +1404,7 @@ function startLiveFomoStream(){
           liveFomoState.realtime=!!m.realtime;
           liveFomoState.delaySeconds=m.delaySeconds??null;
           liveFomoState.updatedAt=new Date().toISOString();
+          broadcastLiveState('status');
           return;
         }
         pushLiveFomoEvent(m);
@@ -1405,6 +1414,7 @@ function startLiveFomoStream(){
     ws.onclose=()=>{
       liveFomoState.connected=false;
       liveFomoState.updatedAt=new Date().toISOString();
+      broadcastLiveState('status');
       setTimeout(startLiveFomoStream,5000);
     };
   }catch(e){
@@ -2244,18 +2254,42 @@ async function loadAll(){
   tokens=r[0]&&r[0].tokens?r[0].tokens:[];smart=r[1];live=r[2];tracked=r[3];conviction=r[4];
   document.getElementById('updated').textContent='آخرین بروزرسانی: '+new Date().toLocaleTimeString('fa-IR');b.disabled=false;b.textContent='↻ بروزرسانی';renderAll();
 }
-async function loadLiveEverySecond(){
-  var x=await safeJson('/api/v1/smart-money-live');
+var liveStream=null,liveStreamConnected=false,liveFallbackTimer=null;
+function applyLivePayload(x,label){
   if(!x)return;
   live=x;
   renderAlerts();renderWhales();renderChampion();renderFeatured();renderSocialTrends();renderPerformance24();renderKolTrends();renderTokens();
-  document.getElementById('updated').textContent='زنده: '+new Date().toLocaleTimeString('fa-IR');
+  document.getElementById('updated').textContent=(label||'زنده')+': '+new Date().toLocaleTimeString('fa-IR');
+}
+async function pollLiveFallback(){
+  if(liveStreamConnected)return;
+  var x=await safeJson('/api/v1/smart-money-live');
+  applyLivePayload(x,'fallback');
+}
+function startLivePush(){
+  if(typeof EventSource==='undefined'){liveFallbackTimer=setInterval(pollLiveFallback,1000);return}
+  try{
+    liveStream=new EventSource('/api/v1/live-stream');
+    var handler=function(ev){try{applyLivePayload(JSON.parse(ev.data),'push زنده')}catch(e){}};
+    liveStream.addEventListener('snapshot',handler);
+    liveStream.addEventListener('market',handler);
+    liveStream.addEventListener('position',handler);
+    liveStream.addEventListener('status',handler);
+    liveStream.onopen=function(){liveStreamConnected=true;document.getElementById('updated').textContent='اتصال زنده برقرار'};
+    liveStream.onerror=function(){
+      liveStreamConnected=false;
+      if(!liveFallbackTimer)liveFallbackTimer=setInterval(pollLiveFallback,1000);
+    };
+  }catch(e){
+    liveStreamConnected=false;
+    if(!liveFallbackTimer)liveFallbackTimer=setInterval(pollLiveFallback,1000);
+  }
 }
 document.addEventListener('click',function(e){var d=e.target.closest('.detail-btn');if(!d)return;openDetail(d.getAttribute('data-mint')||'')});
 document.getElementById('tabs').addEventListener('click',function(e){var b=e.target.closest('[data-tab]');if(!b)return;activeTab=b.dataset.tab;document.querySelectorAll('.tab').forEach(function(x){x.classList.toggle('active',x===b)});document.querySelectorAll('.panel').forEach(function(x){x.classList.remove('active')});document.getElementById(activeTab+'Panel').classList.add('active')});
 document.addEventListener('change',function(e){var sfel=e.target.closest('.signal-filter');if(!sfel)return;signalFilters[sfel.dataset.filter]=sfel.value;document.querySelectorAll('.signal-filter[data-filter="'+sfel.dataset.filter+'"]').forEach(function(x){if(x!==sfel)x.value=sfel.value});renderChampion();renderFeatured();renderWhales();renderSmart();renderTokens()});
 document.getElementById('search').addEventListener('input',renderTokens);document.getElementById('securityFilter').addEventListener('change',renderTokens);document.getElementById('activityFilter').addEventListener('change',renderTokens);document.getElementById('refresh').addEventListener('click',loadAll);document.getElementById('closeDetail').addEventListener('click',function(){document.getElementById('detailDialog').close()});document.getElementById('detailDialog').addEventListener('click',function(e){if(e.target===this)this.close()});
-loadAll();setInterval(loadLiveEverySecond,1000);setInterval(loadAll,60000);
+loadAll();startLivePush();setInterval(loadAll,60000);
 </script>
 </body>
 </html>`;
@@ -2267,6 +2301,20 @@ createServer(async(req,res)=>{
     if(url.pathname==='/api/v1/conviction-wallets'){const cw=await buildConvictionWallets();res.writeHead(200,{'content-type':'application/json; charset=utf-8','cache-control':'no-store',...headers});return res.end(JSON.stringify(cw))}
     if(url.pathname==='/api/v1/tracked-wallets'){const tw=await buildTrackedWallets();res.writeHead(200,{'content-type':'application/json; charset=utf-8','cache-control':'no-store',...headers});return res.end(JSON.stringify(tw))}
     if(url.pathname==='/api/v1/smart-money'){const sm=await buildSmartMoney();res.writeHead(200,{'content-type':'application/json; charset=utf-8','cache-control':'no-store',...headers});return res.end(JSON.stringify(sm))}
+    if(url.pathname==='/api/v1/live-stream'){
+      res.writeHead(200,{
+        'content-type':'text/event-stream; charset=utf-8',
+        'cache-control':'no-cache, no-transform',
+        'connection':'keep-alive',
+        'x-accel-buffering':'no',
+        ...headers
+      });
+      res.write('retry: 1000\nevent: snapshot\ndata: '+JSON.stringify(liveSmartMoneyPayload())+'\n\n');
+      liveSseClients.add(res);
+      const heartbeat=setInterval(()=>{try{res.write(': ping '+Date.now()+'\n\n')}catch{}},15000);
+      req.on('close',()=>{clearInterval(heartbeat);liveSseClients.delete(res)});
+      return;
+    }
     if(url.pathname==='/api/v1/smart-money-live'){const sm=liveSmartMoneyPayload();res.writeHead(200,{'content-type':'application/json; charset=utf-8','cache-control':'no-store',...headers});return res.end(JSON.stringify(sm))}
     if(url.pathname==='/api/v1/tokens'||url.pathname==='/api/radar'||url.pathname==='/api/v1/trending'){
       const d=await build(); let body=d;
