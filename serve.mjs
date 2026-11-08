@@ -10,6 +10,8 @@ const EXTERNAL_SECURITY_CACHE_MS=10*60*1000;
 let cache={at:0,data:null};
 const securityCache=new Map();
 const externalSecurityCache=new Map();
+const holderBehaviorState=new Map();
+const signalConfirmState=new Map();
 let smartMoneyCache={at:0,data:null};
 const SMART_MONEY_CACHE_MS=6*60*60*1000;
 let smartTraderHandles=new Set();
@@ -325,9 +327,98 @@ async function security(mint){
     holderPolicyPassed=['A','B','C'].includes(holderGrade);
     holderStrong=['A','B'].includes(holderGrade);
   }
-  const result={score:clamp(score),coverage,mintDisabled,freezeDisabled,top5,top10,largestHolder,maxOtherHolder,holderGrade,holderPolicyPassed,holderStrong,ownerAggregationComplete,topHolders,tokenProgram,tokenExtensions,flags};
+  const result={score:clamp(score),coverage,mintDisabled,freezeDisabled,top5,top10,largestHolder,maxOtherHolder,holderGrade,holderPolicyPassed,holderStrong,ownerAggregationComplete,topHolders,tokenProgram,tokenExtensions,flags,checkedAt:Date.now()};
   securityCache.set(mint,{at:Date.now(),data:result});
   return result;
+}
+
+
+function holderBehaviorAudit(t){
+  const sec=t.security||{},mint=t.mint,checkedAt=num(sec.checkedAt);
+  let state=holderBehaviorState.get(mint)||{snapshots:[]};
+  const holders=(sec.topHolders||[]).map(h=>({owner:String(h.owner||''),pct:num(h.pct)})).filter(h=>h.owner&&h.pct>=0);
+  if(checkedAt&&holders.length&&(!state.snapshots.length||state.snapshots[state.snapshots.length-1].at!==checkedAt)){
+    state.snapshots.push({at:checkedAt,holders,top10:num(sec.top10),top1:num(sec.largestHolder)});
+    if(state.snapshots.length>8)state.snapshots=state.snapshots.slice(-8);
+    holderBehaviorState.set(mint,state);
+  }
+  let outflowPct=0,top1DropPct=0,movedHolders=0,observedMinutes=0;
+  if(state.snapshots.length>=2){
+    const prev=state.snapshots[state.snapshots.length-2],cur=state.snapshots[state.snapshots.length-1];
+    observedMinutes=Math.max(0,(cur.at-prev.at)/60000);
+    const cm=new Map(cur.holders.map(h=>[h.owner,h.pct]));
+    for(let i=0;i<prev.holders.length;i++){
+      const p=prev.holders[i],now=cm.get(p.owner)||0,drop=Math.max(0,p.pct-now);
+      if(drop>=0.10)movedHolders++;
+      outflowPct+=drop;
+      if(i===0)top1DropPct=drop;
+    }
+  }
+  const sellRatio=(num(t.sells5m)+1)/(num(t.buys5m)+1);
+  const marketWeak=sellRatio>=0.85||num(t.priceChange5m)<-2;
+  const risk=state.snapshots.length>=2&&(
+    top1DropPct>=0.75||
+    outflowPct>=1.5||
+    (outflowPct>=0.50&&marketWeak)
+  );
+  const stable=state.snapshots.length>=2&&!risk&&outflowPct<0.50&&sellRatio<=0.80;
+  return {
+    snapshots:state.snapshots.length,
+    observedMinutes:+observedMinutes.toFixed(1),
+    outflowPct:+outflowPct.toFixed(3),
+    top1DropPct:+top1DropPct.toFixed(3),
+    movedHolders,
+    sellBuyRatio:+sellRatio.toFixed(2),
+    status:risk?'RISK':stable?'STABLE':'WAIT',
+    note:risk?'حرکت/خروج هولدر بزرگ همراه فشار فروش دیده شده':stable?'دو snapshot هولدر پایدار و فشار فروش کنترل‌شده':'برای تأیید پایداری هولدر داده بیشتری لازم است'
+  };
+}
+function preSignalConfirmation(t){
+  const mint=t.mint,h=t.holderBehavior||holderBehaviorAudit(t);
+  const sec=t.security||{},fl=t.flow||{},chart=t.chart||{};
+  const reasons=[],blocks=[];
+  const sellRatio=(num(t.sells5m)+1)/(num(t.buys5m)+1);
+  if(sec.holderPolicyPassed!==true)blocks.push('قانون هولدر تأیید نشده');
+  if(h.status==='RISK')blocks.push('خروج/حرکت هولدر بزرگ');
+  if(fl.sellerDominant)blocks.push('فروشنده‌ها غالب‌اند');
+  if(sellRatio>1.05)blocks.push('فروش 5m از خرید بیشتر شده');
+  if(chart.pumpDumpRisk==='HIGH')blocks.push('Pump/Dump risk بالا');
+  if(num(t.priceChange5m)<-8)blocks.push('افت سریع قیمت');
+  if(num(t.priceChange5m)>15)reasons.push('بعد از پامپ کوتاه‌مدت نیاز به cooldown');
+  if(num(t.priceChange1h)>55)reasons.push('حرکت 1h بیش‌ازحد کشیده');
+  if(!(fl.volumeLabel==='GOOD'||fl.volumeLabel==='STRONG'))reasons.push('حجم هنوز تأیید قوی نیست');
+  if(!fl.buyerDominant)reasons.push('قدرت خریدار هنوز غالب نیست');
+  if(h.snapshots<2)reasons.push('کمتر از دو snapshot هولدر');
+  if(h.status!=='STABLE')reasons.push('پایداری هولدر هنوز تأیید نشده');
+
+  const baseGood=!blocks.length&&
+    sec.holderPolicyPassed===true&&
+    (fl.volumeLabel==='GOOD'||fl.volumeLabel==='STRONG')&&
+    fl.buyerDominant===true&&
+    sellRatio<=0.80&&
+    num(t.priceChange5m)<=15&&
+    num(t.priceChange1h)<=55&&
+    h.status==='STABLE';
+
+  let st=signalConfirmState.get(mint)||{firstGoodAt:null,goodScans:0,lastObservedAt:0};
+  const now=Date.now();
+  if(now-st.lastObservedAt>30_000){
+    if(baseGood){
+      if(!st.firstGoodAt)st.firstGoodAt=now;
+      st.goodScans++;
+    }else{
+      st.firstGoodAt=null;st.goodScans=0;
+    }
+    st.lastObservedAt=now;
+    signalConfirmState.set(mint,st);
+  }
+  const confirmedMinutes=st.firstGoodAt?Math.max(0,(now-st.firstGoodAt)/60000):0;
+  const confirmed=baseGood&&st.goodScans>=3&&confirmedMinutes>=2&&h.snapshots>=2;
+  const status=blocks.length?'BLOCK':confirmed?'CONFIRMED':'WAIT';
+  return {
+    status,goodScans:st.goodScans,confirmedMinutes:+confirmedMinutes.toFixed(1),
+    holderSnapshots:h.snapshots,reasons:[...new Set(reasons)].slice(0,6),blocks:[...new Set(blocks)].slice(0,6)
+  };
 }
 
 async function blueskySignal(t){
@@ -892,7 +983,7 @@ function verdict(t){
   const sec=assessSecurity(t);
   t.security.tier=sec.tier;
   const early=t.ageMinutes<=20&&t.marketCap>=12000&&t.marketCap<=250000&&t.volume5m>=5000&&t.txns5m>=50;
-  const strong=early&&sec.maxOk&&t.trend.score>=55&&t.buys5m>t.sells5m;
+  const strong=early&&sec.maxOk&&t.preSignalGuard?.status==='CONFIRMED'&&t.trend.score>=55&&t.buys5m>t.sells5m;
   if(strong)return 'STRONG WATCH';
   if(sec.tier==='REJECT')return 'SKIP';
   if(sec.tier==='MAX SECURITY'||sec.tier==='HIGH')return t.trend.score>=35?'WATCH':'LOW SIGNAL';
@@ -932,6 +1023,8 @@ async function build(){
     t.chart=chartDiscipline(t);
     t.externalSecurity=await externalSecurityAudit(t);
     t.academy=academyGuard(t);
+    t.holderBehavior=holderBehaviorAudit(t);
+    t.preSignalGuard=preSignalConfirmation(t);
     t.signals=multiHorizonSignals(t);
     t.verdict=verdict(t); out.push(t); await sleep(55);
   }
@@ -958,6 +1051,8 @@ async function build(){
     t.chart=chartDiscipline(t);
     if(!t.externalSecurity)t.externalSecurity=await externalSecurityAudit(t);
     t.academy=academyGuard(t);
+    t.holderBehavior=holderBehaviorAudit(t);
+    t.preSignalGuard=preSignalConfirmation(t);
     t.signals=multiHorizonSignals(t);
     t.verdict=verdict(t);
   }
@@ -972,6 +1067,7 @@ async function build(){
     orderFlowPolicy:{buyerPower:'buy transaction count / total buy+sell transactions; not dollar buy volume',strongBuyer:'5m >=55% and 1h >=51% when available',volumeQuality:'absolute volume + tx count + volume/liquidity sanity check'},
     knowledgeEngine:{marketQuality:'transparency + liquidity + data coverage',chartDiscipline:'trend + FOMO + pump/dump guard',academy:'automated Solana RPC + Token-2022 extension audit + RugCheck full/summary + Jupiter sell-route quote + DexScreener sell evidence; unavailable evidence stays UNKNOWN'},
     ageBuckets:{fresh:'0-24h',day:'24h-7d',week:'7d-30d discovery horizon'},
+    trustGuard:{strongSignalRequires:'2+ holder snapshots, 3 consecutive good scans, >=2 minutes stable confirmation, buyer dominance, healthy volume, no holder-outflow risk',downgrade:'holder movement, seller dominance, whale/tracked exits or pump cooldown immediately remove strong status'},
     signalWindows:{short:'5m-1h',medium:'1h-6h',long:'6h-24h',securityGate:'HIGH/MAX requires zero manual, zero unknown and zero failed automated security checks; unknown evidence cannot receive strong approval'},
     disclaimer:'قانون هولدرها: هولدر شماره 1 حداکثر 10% و هرکدام از هولدرهای شماره 2 تا 10 حداکثر 5% می‌توانند داشته باشند. مجموع Top10 فقط جهت اطلاع نمایش داده می‌شود و شرط رد نیست. Organic Activity یک تخمین ضدربات/ضدواش است. هیچ فیلتر آن‌چین کلاهبرداری را 100% رد نمی‌کند.'};
   cache={at:Date.now(),data};return data;
@@ -1658,7 +1754,7 @@ function ageText(t){
 function bucketScore(t,bucket){
   if(!t)return 0;
   var sec=t.security||{},sg=t.signals||{},fl=t.flow||{},mq=t.marketQuality||{},sh=Number(sg.short?.score||0),md=Number(sg.medium?.score||0),lg=Number(sg.long?.score||0);
-  if(t.securityGate?.blocked||sec.tier==='REJECT')return Math.min(39,Math.round((sh+md+lg)/12));
+  if(t.securityGate?.blocked||sec.tier==='REJECT'||trustGuard(t).status==='BLOCK')return Math.min(39,Math.round((sh+md+lg)/12));
   var security=sec.tier==='MAX SECURITY'?100:sec.tier==='HIGH'?86:sec.tier==='REVIEW'?55:20;
   var buyer=Number(fl.buyerPower||50),volume=Number(fl.volumeScore||0),social=Number(t.socialHeat?.score||0),market=Number(mq.score||0);
   var score=0;
@@ -1670,9 +1766,11 @@ function bucketScore(t,bucket){
   if(exitFor(t.mint).length)score-=18;
   if(fl.sellerDominant)score-=8;
   if(fl.volumeLabel==='SUSPICIOUS')score-=12;
-  return Math.max(0,Math.min(100,Math.round(score)));
+  score=Math.max(0,Math.min(100,Math.round(score)));if(trustGuard(t).status==='WAIT')score=Math.min(score,74);return score;
 }
 function bucketSignalLabel(score,t){
+  if(t&&trustGuard(t).status==='BLOCK')return 'ریسک خروج / ورود نکن';
+  if(t&&trustGuard(t).status==='WAIT'&&score>=65)return 'در انتظار تأیید';
   if(t&&t.securityGate?.blocked)return 'رد امنیتی';
   if(score>=85)return 'سیگنال بسیار قوی';
   if(score>=75)return 'سیگنال قوی';
@@ -1692,7 +1790,7 @@ function qualifyingTrackedHolders(t){
 function kolTrendSafe(t){
   if(!t||!t.kolTrend)return false;
   var sec=t.security||{},ac=t.academy||{},gate=t.securityGate||{};
-  return !gate.blocked&&!ac.blocked&&Number(ac.manual||0)===0&&Number(ac.unknown||0)===0&&Number(ac.fail||0)===0&&sec.holderPolicyPassed===true&&(sec.tier==='MAX SECURITY'||sec.tier==='HIGH');
+  return trustGuard(t).status==='CONFIRMED'&&!gate.blocked&&!ac.blocked&&Number(ac.manual||0)===0&&Number(ac.unknown||0)===0&&Number(ac.fail||0)===0&&sec.holderPolicyPassed===true&&(sec.tier==='MAX SECURITY'||sec.tier==='HIGH');
 }
 function kolTrendScore(t){
   if(!t||!t.kolTrend)return 0;
@@ -1735,6 +1833,22 @@ function findToken(m){return tokens.find(function(x){return x.mint===m})||null}
 function findTracked(m){return tracked&&tracked.tokens?tracked.tokens.find(function(x){return x.mint===m}):null}
 function smartFor(m){return smart&&smart.tokens?smart.tokens.find(function(x){return x.address===m}):null}
 function whaleFor(m){var r=live&&live.whaleBuys?live.whaleBuys.filter(function(x){return x.tokenAddress===m}):[];return {count:r.length,usd:r.reduce(function(a,x){return a+Number(x.tradeUsd||0)},0)}}
+function whaleSellsFor(m){var r=live&&live.whaleSells?live.whaleSells.filter(function(x){return x.tokenAddress===m}):[];return {count:r.length,usd:r.reduce(function(a,x){return a+Number(x.tradeUsd||0)},0)}}
+function trustGuard(t){
+  if(!t)return {status:'BLOCK',reasons:['توکن نامشخص']};
+  var pre=t.preSignalGuard||{},tr=findTracked(t.mint),ws=whaleSellsFor(t.mint),ex=exitFor(t.mint),reasons=[];
+  if(pre.status==='BLOCK')reasons=reasons.concat(pre.blocks||[]);
+  if(ex.length)reasons.push('هشدار خروج زنده');
+  if(ws.count)reasons.push('فروش نهنگ ثبت شده');
+  if(tr&&Number(tr.uniqueSellers||0)>=2)reasons.push('چند کیف‌پول برتر در حال فروش');
+  if(tr&&Number(tr.netFlowUsd||0)<-500)reasons.push('جریان خالص کیف‌پول‌های برتر منفی');
+  if(reasons.length)return {status:'BLOCK',reasons:reasons.slice(0,6)};
+  if(pre.status!=='CONFIRMED')return {status:'WAIT',reasons:(pre.reasons||['در انتظار تأیید چند اسکن']).slice(0,6)};
+  return {status:'CONFIRMED',reasons:['پایداری هولدر و جریان خرید چند اسکن متوالی تأیید شده']};
+}
+function trustLabel(t){var g=trustGuard(t);return g.status==='CONFIRMED'?'✓ تأیید چندمرحله‌ای':g.status==='BLOCK'?'✕ ریسک خروج':'⏳ در انتظار تأیید'}
+function trustClass(t){var g=trustGuard(t);return g.status==='CONFIRMED'?'good':g.status==='BLOCK'?'bad':'mid'}
+
 function isTrendingToken(t){
   if(!t)return false;
   return Number(t.trend?.score||0)>=60||Number(t.socialHeat?.score||0)>=55||Number(t.kolTrend?.score||0)>=55;
@@ -1788,7 +1902,7 @@ function featuredRows(){
     if(exitFor(t.mint).length)s-=28;
     s=Math.max(0,Math.min(100,Math.round(s)));
     return {token:t,score:s,why:w,whale:wh,smart:sm,tracked:tr};
-  }).filter(function(x){return x.score>=90&&(!x.token.chart||x.token.chart.pumpDumpRisk!=='HIGH')&&(!x.token.academy||!x.token.academy.blocked)&&!exitFor(x.token.mint).length})
+  }).filter(function(x){return x.score>=90&&trustGuard(x.token).status==='CONFIRMED'&&(!x.token.chart||x.token.chart.pumpDumpRisk!=='HIGH')&&(!x.token.academy||!x.token.academy.blocked)&&!exitFor(x.token.mint).length})
     .sort(function(a,b){return b.score-a.score}).slice(0,8);
 }
 
@@ -1801,14 +1915,15 @@ function tokenRow(t,bucket){
   '<div class="cell"><small>قدرت خریدار</small><b><span class="badge '+pressureClass(t)+'">'+(fl.buyerPower==null?'—':Number(fl.buyerPower)+'%')+'</span></b></div>'+
   '<div class="cell hide-sm"><small>امنیت</small><b><span class="badge '+secClass(s.tier)+'">'+esc(faSec(s.tier))+'</span></b></div>'+
   '<div class="cell hide-md"><small>خریدار $500+ / فروشنده</small><b><span class="badge '+(largeBuyerFlow(t).dominant?'good':'mid')+'">'+largeBuyerFlow(t).buyers+' / '+largeBuyerFlow(t).sellers+'</span></b></div>'+
-  '<div class="cell"><small>'+esc(return24Period(t))+'</small><b class="'+return24Class(t)+'">'+esc(return24Text(t))+'</b></div>'+
+  '<div class="cell"><small>Trust Guard</small><b><span class="badge '+trustClass(t)+'">'+esc(trustLabel(t))+'</span></b></div><div class="cell"><small>'+esc(return24Period(t))+'</small><b class="'+return24Class(t)+'">'+esc(return24Text(t))+'</b></div>'+
   '<div class="actions"><a class="action" target="_blank" rel="noopener" href="'+esc(dexUrl(t.mint,t.dexUrl))+'">📈 چارت</a><button class="detail-btn" data-mint="'+esc(t.mint)+'">جزئیات</button></div></div>';
 }
 
 function beginnerDecision(t,overallScore){
   if(!t)return {label:'صبر کن',cls:'decision-wait',reason:'فعلاً سیگنال کامل و امنی وجود ندارد'};
   var sec=t.security||{},gate=t.securityGate||{},sg=t.signals||{},wh=whaleFor(t.mint);
-  if(gate.blocked||sec.tier==='REJECT'||exitFor(t.mint).length)return {label:'ورود نکن',cls:'decision-stop',reason:'ریسک امنیتی یا هشدار خروج فعال است'};
+  if(gate.blocked||sec.tier==='REJECT'||trustGuard(t).status==='BLOCK'||exitFor(t.mint).length)return {label:'ورود نکن',cls:'decision-stop',reason:'ریسک امنیتی، فشار فروش یا هشدار خروج فعال است'};
+  if(trustGuard(t).status!=='CONFIRMED')return {label:'صبر کن',cls:'decision-wait',reason:'Trust Guard هنوز پایداری هولدرها و جریان خرید را در چند اسکن تأیید نکرده'};
   var strongWindows=[sg.short,sg.medium,sg.long].filter(function(x){return Number(x?.score||0)>=75&&x?.label!=='BLOCKED'&&x?.label!=='AVOID'}).length;
   var flow=t.flow||{};
   var autoSecure=t.academy&&Number(t.academy.manual||0)===0&&Number(t.academy.unknown||0)===0&&Number(t.academy.fail||0)===0;
@@ -1821,7 +1936,7 @@ function beginnerDecision(t,overallScore){
 function overallCandidates(){
   return tokens.map(function(t){
     var gate=t.securityGate||{},sec=t.security||{},sg=t.signals||{},sh=sg.short||{},md=sg.medium||{},lg=sg.long||{};
-    if(gate.blocked||sec.tier==='REJECT'||exitFor(t.mint).length)return null;
+    if(gate.blocked||sec.tier==='REJECT'||trustGuard(t).status!=='CONFIRMED'||exitFor(t.mint).length)return null;
     if(sec.tier!=='MAX SECURITY'&&sec.tier!=='HIGH')return null;
     if(Number(sh.score||0)<60||Number(md.score||0)<60)return null;
     var score=0;
@@ -1986,7 +2101,7 @@ function renderBucketBest(id,rows,bucket,title){
     '<div><small class="muted">امتیاز نهایی</small><div class="bucket-score">'+bs+'/100</div></div>'+
     '<div class="cell"><small>قدرت خریدار</small><b>'+Number(fl.buyerPower||0)+'%</b></div>'+
     '<div class="cell"><small>حجم</small><b>'+esc(faVolume(fl.volumeLabel))+'</b></div>'+
-    '<div class="cell"><small>امنیت</small><b>'+esc(faSec(t.security?.tier))+'</b></div><div class="cell"><small>هولدر $1k+</small><b>'+qualifyingTrackedHolders(t).length+'</b></div>'+
+    '<div class="cell"><small>امنیت</small><b>'+esc(faSec(t.security?.tier))+'</b></div><div class="cell"><small>Trust Guard</small><b><span class="badge '+trustClass(t)+'">'+esc(trustLabel(t))+'</span></b></div><div class="cell"><small>هولدر $1k+</small><b>'+qualifyingTrackedHolders(t).length+'</b></div>'+
     '<div class="actions"><a class="action" target="_blank" rel="noopener" href="'+esc(dexUrl(t.mint,t.dexUrl))+'">📈 چارت</a><button class="detail-btn" data-mint="'+esc(t.mint)+'">جزئیات</button></div>'+
   '</div></div>';
 }
@@ -1995,7 +2110,7 @@ function renderPerformance24(){
   if(!list||!sum)return;
   var r=tokens.map(function(t){
     var sec=t.security||{},ac=t.academy||{},gate=t.securityGate||{};
-    var safe=!gate.blocked&&!ac.blocked&&Number(ac.fail||0)===0&&sec.holderPolicyPassed===true&&(sec.tier==='MAX SECURITY'||sec.tier==='HIGH');
+    var safe=trustGuard(t).status==='CONFIRMED'&&!gate.blocked&&!ac.blocked&&Number(ac.fail||0)===0&&sec.holderPolicyPassed===true&&(sec.tier==='MAX SECURITY'||sec.tier==='HIGH');
     return {t:t,score:bucketScore(t,ageBucket(t)),ret:return24Value(t),safe:safe};
   }).sort(function(a,b){
     if(a.safe!==b.safe)return a.safe?-1:1;
@@ -2073,6 +2188,7 @@ function openDetail(m){
   if(tr)h+='<div class="note"><b>کیف‌پول‌های برتر:</b> '+Number(tr.uniqueBuyers||0)+' خریدار، '+Number(tr.uniqueSellers||0)+' فروشنده، جریان خالص '+money(tr.netFlowUsd)+'، هولدینگ '+money(tr.currentHoldingUsd)+'</div>';
   if(t&&isTrendingToken(t)&&wh.count)h+='<div class="note"><span class="pass"><b>🐋 ترند + خرید نهنگ:</b></span> '+wh.count+' خرید نهنگ با مجموع '+money(wh.usd)+'</div>';
   if(t&&socialTrendBadges(t))h+='<div class="note"><b>📣 شبکه‌های ترند تأییدشده:</b><div>'+socialTrendBadges(t)+'</div></div>';
+  if(t){var tg=trustGuard(t),hb=t.holderBehavior||{};h+='<div class="note"><b>🛡 Trust Guard:</b> <span class="'+trustClass(t)+'">'+esc(trustLabel(t))+'</span> · snapshot هولدر '+Number(hb.snapshots||0)+' · خروج هولدر '+Number(hb.outflowPct||0).toFixed(2)+'% · نسبت Sell/Buy '+Number(hb.sellBuyRatio||0).toFixed(2)+(tg.reasons&&tg.reasons.length?' · '+esc(tg.reasons.join(' • ')):'')+'</div>';}
   if(t.kolTrend){var k=t.kolTrend;h+='<details class="accordion" open><summary>👑 شواهد KOL</summary><div class="accordion-body"><div class="note"><b>KOLها:</b> '+esc((k.kolNames||[]).join('، ')||'—')+' · معامله اخیر '+Number(k.recentCount||0)+' · هولد '+Number(k.holdingCount||0)+' · اشاره X '+Number(k.xMentionCount||0)+'</div>'+(k.evidence||[]).slice(0,8).map(function(e){return '<div class="check"><span>'+esc(e.kol||'KOL')+' · '+esc(e.type||'')+'</span><span class="manual">'+esc(e.label||'')+'</span></div>'}).join('')+'</div></details>';}
   if(tr){var bf=largeBuyerFlow(t);h+='<div class="note"><b>خریدارهای ردیابی‌شده ۵۰۰$+:</b> '+bf.buyers+' کیف‌پول ('+money(bf.buyerUsd)+') · <b>فروشنده خالص:</b> '+bf.sellers+' کیف‌پول ('+money(bf.sellerUsd)+') · '+(bf.dominant?'<span class="pass">✓ خریدارها بیشترند</span>':'<span class="manual">خریدارها بیشتر نیستند</span>')+'</div>';}
   if(tr&&tr.convictionHolders&&tr.convictionHolders.length)h+='<details class="accordion"><summary>💎 هولدرهای ردیابی‌شده با خرید ۱۰۰۰$+ و فروش کمتر</summary><div class="accordion-body">'+tr.convictionHolders.map(function(x){return '<div class="check"><span>'+esc(x.wallet)+' · خرید '+money(x.buyUsd)+' · فروش '+money(x.sellUsd)+'</span><span class="pass">هولد فعلی '+money(x.currentHoldingUsd)+'</span></div>'}).join('')+'<div class="note">بر اساس Swapهای قابل‌تشخیص ۴۸ ساعت اخیر کیف‌پول‌های تحت ردیابی؛ پوشش کل بازار نیست.</div></div></details>';
