@@ -9,6 +9,9 @@ const SECURITY_CACHE_MS=2*60*1000;
 const EXTERNAL_SECURITY_CACHE_MS=10*60*1000;
 let cache={at:0,data:null};
 let buildInFlight=null;
+let marketLiveCache={at:0,data:null};
+let marketLiveInFlight=null;
+const MARKET_LIVE_CACHE_MS=1500;
 const securityCache=new Map();
 const externalSecurityCache=new Map();
 const holderBehaviorState=new Map();
@@ -1070,7 +1073,7 @@ async function buildFresh(){
   out.sort((a,b)=>(rank[b.verdict]-rank[a.verdict])||(b.trend.score-a.trend.score)||(b.volume5m-a.volume5m));
   const strong=out.filter(x=>x.verdict==='STRONG WATCH').length;
   const trending=out.filter(x=>x.trend.score>=50).length;
-  const data={ok:true,generatedAt:new Date().toISOString(),refreshSeconds:60,count:out.length,strong,trending,tokens:out,
+  const data={ok:true,generatedAt:new Date().toISOString(),refreshSeconds:60,marketLiveRefreshSeconds:2,count:out.length,strong,trending,tokens:out,
     sourceStatus:{dexscreener:'live',solanaRpc:'live',kolExplorer:'live-public profiles + on-chain holdings/trades',kolX:process.env.X_BEARER_TOKEN?'live-api':'on-chain fallback; X API key not configured',bluesky:'live-public',x:process.env.X_BEARER_TOKEN?'live-api':'needs API key',youtube:process.env.YOUTUBE_API_KEY?'live-api':'needs API key',reddit:process.env.REDDIT_CLIENT_ID?'configured':'presence-only',instagram:'presence-only',facebook:'presence-only',tiktok:'presence-only',telegram:'presence-only'},
     holderPolicy:{hardRules:{holder1MustBeBelowPct:10,holders2to10EachMustBeBelowPct:5,exclusive:true},gradeA:{holder1MaxPct:5,holders2to10EachMaxPct:2.5},gradeB:{holder1MaxPct:7.5,holders2to10EachMaxPct:4},gradeC:{holder1MaxPct:10,holders2to10EachMaxPct:5},unknownFailsStrong:true},
     activityPolicy:{probableOrganicMin:72,highSecurityMin:58,method:'aggregate heuristics; not proof of human identity'},
@@ -1083,6 +1086,40 @@ async function buildFresh(){
     disclaimer:'قانون هولدرها: هولدر شماره 1 باید کمتر از 10% و هرکدام از هولدرهای شماره 2 تا 10 باید کمتر از 5% داشته باشند. مجموع Top10 فقط جهت اطلاع نمایش داده می‌شود و شرط رد نیست. Organic Activity یک تخمین ضدربات/ضدواش است. هیچ فیلتر آن‌چین کلاهبرداری را 100% رد نمی‌کند.'};
   cache={at:Date.now(),data};return data;
 }
+async function buildMarketLive(){
+  if(marketLiveCache.data&&Date.now()-marketLiveCache.at<MARKET_LIVE_CACHE_MS)return marketLiveCache.data;
+  if(marketLiveInFlight)return marketLiveInFlight;
+  marketLiveInFlight=(async()=>{
+    const base=cache.data?.tokens||[];
+    if(!base.length)return {ok:true,generatedAt:new Date().toISOString(),tokens:[]};
+    const pairs=await pairsForMany(base.map(t=>t.mint));
+    const rows=[];
+    for(const t of base){
+      const p=pairs.get(t.mint);if(!p)continue;
+      const buys5m=num(p.txns?.m5?.buys),sells5m=num(p.txns?.m5?.sells);
+      const patch={
+        mint:t.mint,
+        priceUsd:num(p.priceUsd),
+        marketCap:num(p.marketCap||p.fdv),
+        liquidity:num(p.liquidity?.usd),
+        volume5m:num(p.volume?.m5),volume1h:num(p.volume?.h1),volume6h:num(p.volume?.h6),volume24h:num(p.volume?.h24),
+        buys5m,sells5m,txns5m:buys5m+sells5m,
+        buys1h:num(p.txns?.h1?.buys),sells1h:num(p.txns?.h1?.sells),txns1h:num(p.txns?.h1?.buys)+num(p.txns?.h1?.sells),
+        buys6h:num(p.txns?.h6?.buys),sells6h:num(p.txns?.h6?.sells),txns6h:num(p.txns?.h6?.buys)+num(p.txns?.h6?.sells),
+        buys24h:num(p.txns?.h24?.buys),sells24h:num(p.txns?.h24?.sells),txns24h:num(p.txns?.h24?.buys)+num(p.txns?.h24?.sells),
+        priceChange5m:num(p.priceChange?.m5),priceChange1h:num(p.priceChange?.h1),priceChange6h:num(p.priceChange?.h6),priceChange24h:num(p.priceChange?.h24),
+        dexUrl:p.url||t.dexUrl||''
+      };
+      patch.flow=flowQuality({...t,...patch});
+      rows.push(patch);
+    }
+    const data={ok:true,generatedAt:new Date().toISOString(),refreshMs:2000,tokens:rows};
+    marketLiveCache={at:Date.now(),data};
+    return data;
+  })();
+  try{return await marketLiveInFlight}finally{marketLiveInFlight=null}
+}
+
 async function build(){
   if(cache.data&&Date.now()-cache.at<CACHE_MS)return cache.data;
   if(buildInFlight)return buildInFlight;
@@ -1576,6 +1613,8 @@ dialog{width:min(720px,94vw);max-height:88vh;border:1px solid #36506e;border-rad
 @media(max-width:620px){.perf-summary{grid-template-columns:1fr 1fr}.whale-summary{grid-template-columns:1fr}.subfilters{grid-template-columns:1fr 1fr}.head{padding:9px 10px}.shell{padding:10px}.brand small,.status{display:none}.row{grid-template-columns:1fr 1fr}.asset,.actions{grid-column:1/-1}.hide-sm{display:none}.modal-grid{grid-template-columns:repeat(2,1fr)}}
 
 .panel{display:none!important}.panel.active{display:block!important}
+
+html,body,.shell,.panel,.list{overflow-anchor:none}
 </style>
 </head>
 <body>
@@ -2419,12 +2458,60 @@ function openDetail(m){
   h+='<div class="links"><a target="_blank" rel="noopener" href="'+esc(dexUrl(m,t&&t.dexUrl))+'">📈 DexScreener</a><a target="_blank" rel="noopener" href="https://solscan.io/token/'+encodeURIComponent(m)+'">Solscan</a><a target="_blank" rel="noopener" href="https://gmgn.ai/sol/token/'+encodeURIComponent(m)+'">GMGN</a><a target="_blank" rel="noopener" href="https://v2.bubblemaps.io/map?address='+encodeURIComponent(m)+'&chain=solana&partnerId=regular">Bubblemaps</a><a target="_blank" rel="noopener" href="https://www.solanatracker.io/rugcheck/'+encodeURIComponent(m)+'">Rugcheck</a></div><div class="note">این رادار ابزار تحقیق است؛ هیچ امتیازی تضمین سود یا نبود کلاهبرداری نیست.</div>';
   document.getElementById('detailBody').innerHTML=h;document.getElementById('detailDialog').showModal();
 }
-var loadAllBusy=false;
+var loadAllBusy=false,marketLiveBusy=false,marketLiveTimer=null;
+
+function preserveViewport(fn){
+  var x=window.scrollX,y=window.scrollY;
+  var active=document.activeElement;
+  var activeId=active&&active.id?active.id:null;
+  fn();
+  // Keep the exact viewport stable even when rows reorder or heights change.
+  window.scrollTo(x,y);
+  requestAnimationFrame(function(){
+    window.scrollTo(x,y);
+    if(activeId){
+      var el=document.getElementById(activeId);
+      if(el&&document.activeElement!==el){try{el.focus({preventScroll:true})}catch(e){}}
+    }
+  });
+}
+
+function renderActivePanel(){
+  preserveViewport(function(){
+    if(activeTab==='featured'){
+      renderTopQuick();renderChampion();renderAlerts();renderFeatured();renderPerformance24();
+    }else if(activeTab==='whales'){
+      renderWhales();
+    }else if(activeTab==='tokens'){
+      renderTopQuick();renderKolTrends();renderTokens();
+    }else if(activeTab==='smart'){
+      renderSmart();
+    }else if(activeTab==='social'){
+      renderSocialTrends();
+    }else if(activeTab==='wallets'){
+      renderWallets();renderConviction();
+    }
+  });
+}
+
+function mergeMarketLive(x){
+  if(!x||!Array.isArray(x.tokens)||!x.tokens.length)return false;
+  var byMint=new Map(x.tokens.map(function(p){return [p.mint,p]}));
+  var changed=false;
+  tokens=tokens.map(function(t){
+    var p=byMint.get(t.mint);if(!p)return t;
+    changed=true;
+    return Object.assign({},t,p,{flow:p.flow||t.flow});
+  });
+  return changed;
+}
+
 async function loadAll(){
   if(loadAllBusy)return;
   loadAllBusy=true;
   var b=document.getElementById('refresh');
   if(b){b.disabled=true;b.textContent='در حال دریافت…'}
+  var sx=window.scrollX,sy=window.scrollY;
   try{
     var r=await Promise.all([safeJson('/api/v1/tokens'),safeJson('/api/v1/smart-money'),safeJson('/api/v1/smart-money-live'),safeJson('/api/v1/tracked-wallets'),safeJson('/api/v1/conviction-wallets')]);
     if(r[0]&&Array.isArray(r[0].tokens))tokens=r[0].tokens;
@@ -2432,18 +2519,32 @@ async function loadAll(){
     if(r[2])live=r[2];
     if(r[3])tracked=r[3];
     if(r[4])conviction=r[4];
-    document.getElementById('updated').textContent='آخرین بروزرسانی سالم: '+new Date().toLocaleTimeString('fa-IR');
-    renderAll();
+    document.getElementById('updated').textContent='آخرین اسکن کامل: '+new Date().toLocaleTimeString('fa-IR');
+    preserveViewport(renderAll);
   }finally{
+    window.scrollTo(sx,sy);
     loadAllBusy=false;
     if(b){b.disabled=false;b.textContent='↻ بروزرسانی'}
   }
 }
+
+async function pollMarketLive(){
+  if(marketLiveBusy||document.hidden)return;
+  marketLiveBusy=true;
+  try{
+    var x=await safeJson('/api/v1/market-live');
+    if(mergeMarketLive(x)){
+      renderActivePanel();
+      document.getElementById('updated').textContent='بازار زنده: '+new Date().toLocaleTimeString('fa-IR');
+    }
+  }finally{marketLiveBusy=false}
+}
+
 var liveStream=null,liveStreamConnected=false,liveFallbackTimer=null;
 function applyLivePayload(x,label){
   if(!x)return;
   live=x;
-  renderTopQuick();renderAlerts();renderWhales();renderChampion();renderFeatured();renderSocialTrends();renderPerformance24();renderKolTrends();renderTokens();
+  renderActivePanel();
   document.getElementById('updated').textContent=(label||'زنده')+': '+new Date().toLocaleTimeString('fa-IR');
 }
 async function pollLiveFallback(){
@@ -2460,7 +2561,11 @@ function startLivePush(){
     liveStream.addEventListener('market',handler);
     liveStream.addEventListener('position',handler);
     liveStream.addEventListener('status',handler);
-    liveStream.onopen=function(){liveStreamConnected=true;if(liveFallbackTimer){clearInterval(liveFallbackTimer);liveFallbackTimer=null}document.getElementById('updated').textContent='اتصال Push زنده برقرار'};
+    liveStream.onopen=function(){
+      liveStreamConnected=true;
+      if(liveFallbackTimer){clearInterval(liveFallbackTimer);liveFallbackTimer=null}
+      document.getElementById('updated').textContent='اتصال Push زنده برقرار';
+    };
     liveStream.onerror=function(){
       liveStreamConnected=false;
       if(!liveFallbackTimer)liveFallbackTimer=setInterval(pollLiveFallback,1000);
@@ -2471,10 +2576,10 @@ function startLivePush(){
   }
 }
 document.addEventListener('click',function(e){var d=e.target.closest('.detail-btn');if(!d)return;openDetail(d.getAttribute('data-mint')||'')});
-document.getElementById('tabs').addEventListener('click',function(e){var b=e.target.closest('[data-tab]');if(!b)return;activeTab=b.dataset.tab;document.querySelectorAll('.tab').forEach(function(x){x.classList.toggle('active',x===b)});document.querySelectorAll('.panel').forEach(function(x){x.classList.remove('active')});document.getElementById(activeTab+'Panel').classList.add('active')});
+document.getElementById('tabs').addEventListener('click',function(e){var b=e.target.closest('[data-tab]');if(!b)return;activeTab=b.dataset.tab;document.querySelectorAll('.tab').forEach(function(x){x.classList.toggle('active',x===b)});document.querySelectorAll('.panel').forEach(function(x){x.classList.remove('active')});document.getElementById(activeTab+'Panel').classList.add('active');renderActivePanel()});
 document.addEventListener('change',function(e){var sfel=e.target.closest('.signal-filter');if(!sfel)return;signalFilters[sfel.dataset.filter]=sfel.value;document.querySelectorAll('.signal-filter[data-filter="'+sfel.dataset.filter+'"]').forEach(function(x){if(x!==sfel)x.value=sfel.value});renderChampion();renderFeatured();renderWhales();renderSmart();renderTokens()});
 document.getElementById('search').addEventListener('input',renderTokens);document.getElementById('securityFilter').addEventListener('change',renderTokens);document.getElementById('activityFilter').addEventListener('change',renderTokens);document.getElementById('refresh').addEventListener('click',loadAll);document.getElementById('closeDetail').addEventListener('click',function(){document.getElementById('detailDialog').close()});document.getElementById('detailDialog').addEventListener('click',function(e){if(e.target===this)this.close()});
-loadAll();startLivePush();setInterval(loadAll,60000);
+loadAll();startLivePush();marketLiveTimer=setInterval(pollMarketLive,2000);setTimeout(pollMarketLive,1200);setInterval(loadAll,60000);
 </script>
 </body>
 </html>`;
@@ -2501,6 +2606,7 @@ createServer(async(req,res)=>{
       return;
     }
     if(url.pathname==='/api/v1/smart-money-live'){const sm=liveSmartMoneyPayload();res.writeHead(200,{'content-type':'application/json; charset=utf-8','cache-control':'no-store',...headers});return res.end(JSON.stringify(sm))}
+    if(url.pathname==='/api/v1/market-live'){const ml=await buildMarketLive();res.writeHead(200,{'content-type':'application/json; charset=utf-8','cache-control':'no-store',...headers});return res.end(JSON.stringify(ml))}
     if(url.pathname==='/api/v1/tokens'||url.pathname==='/api/radar'||url.pathname==='/api/v1/trending'){
       const d=await build(); let body=d;
       if(url.pathname==='/api/v1/trending')body={...d,tokens:[...d.tokens].sort((a,b)=>b.trend.score-a.trend.score)};
