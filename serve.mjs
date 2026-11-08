@@ -912,8 +912,7 @@ function securityGate(t){
   else if(sec.mintDisabled!==true)cautions.push('Mint authority نامشخص');
   if(sec.freezeDisabled===false)hard.push('Freeze authority فعال');
   else if(sec.freezeDisabled!==true)cautions.push('Freeze authority نامشخص');
-  if(sec.holderPolicyPassed===false)hard.push('قانون هولدر رد: #1 باید <10% و #2 تا #10 هرکدام <5% باشند');
-  else if(sec.holderPolicyPassed!==true)cautions.push('توزیع هولدرها نیازمند داده کامل‌تر');
+  if(sec.holderPolicyPassed!==true)hard.push('قانون هولدر تأیید نشده/رد: هولدر #1 باید کمتر از 10% و هرکدام از #2 تا #10 کمتر از 5% باشند');
   if(sec.tokenExtensions?.hardFail)hard.push('Token-2022 extension پرریسک شناسایی شد');
   else if(sec.tokenExtensions?.warnings?.length)cautions.push(...sec.tokenExtensions.warnings);
   if(act.label==='BOT RISK')hard.push('ریسک ربات/Wash');
@@ -1008,7 +1007,7 @@ function assessSecurity(t){
   const explicitFail=
     s.mintDisabled===false||
     s.freezeDisabled===false||
-    s.holderPolicyPassed===false||
+    s.holderPolicyPassed!==true||
     s.tokenExtensions?.hardFail===true||
     t.activity?.label==='BOT RISK'||
     t.chart?.pumpDumpRisk==='HIGH'||
@@ -1763,7 +1762,7 @@ html,body,.shell,.panel,.list{overflow-anchor:none}
 </section>
 <details class="accordion" open>
     <summary>🔥 پیشنهادهای اولویت‌دار</summary>
-    <div class="accordion-body"><p class="muted" style="font-size:11px">منطق ورود: فقط قدرت خرید/فروش تعیین‌کننده است؛ هر وقت قدرت خریدار از فروشنده بیشتر باشد، نقطه ورود فعال می‌شود. شرط خریدار ۵۰۰$+ در سیگنال ورود نقشی ندارد و فقط یک فیلتر نمایشی اختیاری است. هشدار امنیتی جدی همچنان ورود را مسدود می‌کند.</p><div class="subfilters">
+    <div class="accordion-body"><p class="muted" style="font-size:11px">منطق ورود: اگر قدرت خریدار از فروشنده بیشتر باشد نقطه ورود فعال می‌شود، به شرط اینکه قانون هولدر سراسری پاس شده باشد: هولدر #1 کمتر از 10% و هرکدام از #2 تا #10 کمتر از 5%. شرط خریدار ۵۰۰$+ در سیگنال ورود نقشی ندارد. هشدار امنیتی جدی همچنان ورود را مسدود می‌کند.</p><div class="subfilters">
 <label>کوتاه‌مدت<select class="signal-filter" data-filter="short"><option value="">همه</option><option value="STRONG">قوی</option><option value="POSITIVE">مثبت</option><option value="NEUTRAL">خنثی</option><option value="WAIT_DATA">داده ناکافی</option><option value="AVOID">ورود نکن</option><option value="BLOCKED">مسدود امنیتی</option></select></label>
 <label>میان‌مدت<select class="signal-filter" data-filter="medium"><option value="">همه</option><option value="STRONG">قوی</option><option value="POSITIVE">مثبت</option><option value="NEUTRAL">خنثی</option><option value="WAIT_DATA">داده ناکافی</option><option value="AVOID">ورود نکن</option><option value="BLOCKED">مسدود امنیتی</option></select></label>
 <label>بلندمدت<select class="signal-filter" data-filter="long"><option value="">همه</option><option value="STRONG">قوی</option><option value="POSITIVE">مثبت</option><option value="NEUTRAL">خنثی</option><option value="WAIT_DATA">داده ناکافی</option><option value="AVOID">ورود نکن</option><option value="BLOCKED">مسدود امنیتی</option></select></label>
@@ -1902,7 +1901,7 @@ html,body,.shell,.panel,.list{overflow-anchor:none}
 <label>امنیت<select class="signal-filter" data-filter="security"><option value="">همه</option><option value="MAX SECURITY">خیلی بالا</option><option value="HIGH">بالا</option><option value="REVIEW">نیاز به بررسی</option><option value="REJECT">رد</option></select></label>
 <label>هولدر ردیابی‌شده ۱۰۰۰$+<select class="signal-filter" data-filter="holders"><option value="">همه</option><option value="1">حداقل ۱ هولدر</option><option value="2">حداقل ۲ هولدر</option><option value="3">حداقل ۳ هولدر</option></select></label>
 <label>خریدار ۵۰۰$+ بیشتر از فروشنده (فقط فیلتر نمایش)<select class="signal-filter" data-filter="bigbuyers"><option value="">همه</option><option value="yes">فقط خریدار غالب</option></select></label>
-</div><p class="muted" style="font-size:11px">قانون اجباری هولدر برای همه توکن‌ها: هولدر #1 کمتر از 10% و هرکدام از هولدرهای #2 تا #10 کمتر از 5%. رتبه هر گروه با مدل امتیاز مخصوص همان سن محاسبه می‌شود. فیلترها فقط کیف‌پول‌های تحت ردیابی و تراکنش‌های قابل‌تشخیص ۴۸ ساعت اخیر را بررسی می‌کنند. هولدر ۱۰۰۰$+: خرید حداقل ۱۰۰۰ دلار، فروش کمتر از خرید و موجودی فعلی مثبت. خریدار ۵۰۰$+: خرید تجمعی حداقل ۵۰۰ دلار و خرید بیشتر از فروش همان کیف‌پول؛ تعدادشان باید از کیف‌پول‌های فروشنده خالص بیشتر باشد.</p></div>
+</div><p class="muted" style="font-size:11px">قانون اجباری هولدر برای همه توکن‌ها: هولدر #1 باید کمتر از 10% باشد و هرکدام از هولدرهای #2 تا #10 باید کمتر از 5% باشند. اگر داده هولدر کامل نباشد یا این شرط رد شود، توکن سیگنال ورود نمی‌گیرد. رتبه هر گروه با مدل امتیاز مخصوص همان سن محاسبه می‌شود. فیلترها فقط کیف‌پول‌های تحت ردیابی و تراکنش‌های قابل‌تشخیص ۴۸ ساعت اخیر را بررسی می‌کنند. هولدر ۱۰۰۰$+: خرید حداقل ۱۰۰۰ دلار، فروش کمتر از خرید و موجودی فعلی مثبت. خریدار ۵۰۰$+: خرید تجمعی حداقل ۵۰۰ دلار و خرید بیشتر از فروش همان کیف‌پول؛ تعدادشان باید از کیف‌پول‌های فروشنده خالص بیشتر باشد.</p></div>
   </details>
   <details class="accordion" open>
     <summary>⚡ توکن‌های تازه و ترند — کمتر از ۲۴ ساعت</summary>
@@ -1987,6 +1986,7 @@ function bucketScore(t,bucket){
   score=Math.max(0,Math.min(100,Math.round(score)));if(trustGuard(t).status==='WAIT'||t.flow?.volumeLabel!=='STRONG'||tradePlan(t).status!=='ENTRY')score=Math.min(score,74);return score;
 }
 function bucketSignalLabel(score,t){
+  if(t&&!holderPolicyOk(t))return 'رد هولدر / ورود نکن';
   if(t&&trustGuard(t).status==='BLOCK')return 'ریسک خروج / ورود نکن';
   if(t&&tradePlan(t).status==='EXIT')return 'خروج / ورود نکن';
   if(t&&tradePlan(t).status!=='ENTRY'&&score>=65)return 'در انتظار تأیید';
@@ -1998,6 +1998,7 @@ function bucketSignalLabel(score,t){
   return 'ضعیف';
 }
 function bucketSignalClass(score,t){
+  if(t&&!holderPolicyOk(t))return 'bad';
   if(t&&t.securityGate?.blocked)return 'bad';
   return score>=75?'good':score>=50?'mid':'bad';
 }
@@ -2009,7 +2010,7 @@ function qualifyingTrackedHolders(t){
 function kolTrendSafe(t){
   if(!t||!t.kolTrend)return false;
   var sec=t.security||{},ac=t.academy||{},gate=t.securityGate||{};
-  return tradePlan(t).status==='ENTRY'&&t.flow?.volumeLabel==='STRONG'&&trustGuard(t).status==='CONFIRMED'&&!gate.blocked&&!ac.blocked&&Number(ac.manual||0)===0&&Number(ac.unknown||0)===0&&Number(ac.fail||0)===0&&sec.holderPolicyPassed===true&&(sec.tier==='MAX SECURITY'||sec.tier==='HIGH');
+  return holderPolicyOk(t)&&tradePlan(t).status==='ENTRY'&&t.flow?.volumeLabel==='STRONG'&&trustGuard(t).status==='CONFIRMED'&&!gate.blocked&&!ac.blocked&&Number(ac.manual||0)===0&&Number(ac.unknown||0)===0&&Number(ac.fail||0)===0&&(sec.tier==='MAX SECURITY'||sec.tier==='HIGH');
 }
 function kolTrendScore(t){
   if(!t||!t.kolTrend)return 0;
@@ -2025,6 +2026,12 @@ function largeBuyerFlow(t){
     sellerUsd:Number(tr?.netSellerUsd||0),
     dominant:tr?.largeBuyer500Dominant===true
   };
+}
+function holderPolicyOk(t){
+  var s=t&&t.security?t.security:{};
+  return s.holderPolicyPassed===true&&
+    Number(s.largestHolder||0)<10&&
+    Number(s.maxOtherHolder||0)<5;
 }
 function passesSignalFilters(t){
   var any=signalFilters.short||signalFilters.medium||signalFilters.long||signalFilters.security||signalFilters.holders||signalFilters.bigbuyers;
@@ -2091,7 +2098,9 @@ function tradePlan(t){
   var criticalSecurity=
     sec.mintDisabled===false||
     sec.freezeDisabled===false||
-    sec.holderPolicyPassed===false||
+    sec.holderPolicyPassed!==true||
+    Number(sec.largestHolder||0)>=10||
+    Number(sec.maxOtherHolder||0)>=5||
     sec.tokenExtensions?.hardFail===true||
     t.chart?.pumpDumpRisk==='HIGH'||
     (Number(t.liquidity||0)>0&&Number(t.liquidity||0)<3000);
@@ -2204,7 +2213,7 @@ function featuredRows(){
     return {token:t,score:s,why:w,whale:wh,smart:sm,tracked:tr};
   }).filter(function(x){
     var tp=tradePlan(x.token);
-    return tp.status==='ENTRY';
+    return holderPolicyOk(x.token)&&tp.status==='ENTRY';
   }).sort(function(a,b){
     var ac=tradePlan(a.token).confidence==='HIGH'?1:0,bc=tradePlan(b.token).confidence==='HIGH'?1:0;
     return (bc-ac)||(b.score-a.score);
@@ -2241,7 +2250,7 @@ function beginnerDecision(t,overallScore){
 function overallCandidates(){
   return tokens.map(function(t){
     var tp=tradePlan(t);
-    if(tp.status!=='ENTRY')return null;
+    if(!holderPolicyOk(t)||tp.status!=='ENTRY')return null;
 
     var sec=t.security||{},fl=t.flow||{},mq=t.marketQuality||{},sg=t.signals||{};
     var score=0,reasons=[];
