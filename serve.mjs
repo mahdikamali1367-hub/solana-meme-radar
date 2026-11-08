@@ -944,19 +944,19 @@ button,input,select,a.action{border:1px solid var(--line);background:#101d31;col
 .kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:11px}.kpi{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:10px}.kpi small{color:var(--muted);font-size:11px}.kpi b{display:block;font-size:21px;margin-top:3px}
 .champion{background:linear-gradient(135deg,#102b27,#101f35);border:1px solid #34745e;border-radius:14px;padding:12px;margin-bottom:10px}.champion h2{font-size:15px;margin:0 0 6px}.champion .score{font-size:24px;font-weight:900;color:var(--good)}.champion-grid{display:grid;grid-template-columns:1.4fr repeat(4,.7fr) auto;gap:8px;align-items:center}.alerts{display:grid;gap:6px;margin-bottom:9px}.alert{padding:8px 10px;border:1px solid #703343;background:#25151d;color:#ffb0bd;border-radius:10px;font-size:12px}
 .tabs{display:flex;gap:6px;overflow:auto;scrollbar-width:none;margin-bottom:10px}.tab{white-space:nowrap}.tab.active{background:#193759;border-color:#3d709f;color:#c0e1ff}
-.toolbar{display:flex;gap:7px;flex-wrap:wrap;margin-bottom:10px}.toolbar input{flex:1;min-width:220px}.toolbar select{min-width:140px}
+.toolbar{display:flex;gap:7px;flex-wrap:wrap;margin-bottom:10px}.toolbar input{flex:1;min-width:220px}.toolbar select{min-width:140px}.subfilters{display:grid;grid-template-columns:repeat(4,minmax(130px,1fr));gap:7px;margin:8px 0 11px}.subfilters label{font-size:12px;color:var(--muted);font-weight:800}.subfilters select{width:100%;margin-top:4px;padding:8px}.social-actions{display:flex;gap:5px;flex-wrap:wrap;margin-top:5px}.social-actions a{font-size:11px;text-decoration:none;padding:5px 7px;border:1px solid var(--line);border-radius:8px;color:#b5ddff;background:#10243b}
 .accordion{background:var(--panel);border:1px solid var(--line);border-radius:12px;margin-bottom:9px;overflow:hidden}
-.accordion>summary{list-style:none;cursor:pointer;padding:10px 12px;font-weight:800;font-size:13px;display:flex;align-items:center;justify-content:space-between;gap:8px;user-select:none}
+.accordion>summary{list-style:none;cursor:pointer;padding:14px 15px;font-weight:900;font-size:16px;display:flex;align-items:center;justify-content:space-between;gap:8px;user-select:none}
 .accordion>summary::-webkit-details-marker{display:none}.accordion>summary:after{content:'⌄';color:var(--muted);transition:transform .15s ease}.accordion[open]>summary:after{transform:rotate(180deg)}
 .accordion-body{padding:0 10px 10px}.accordion .kpis{margin:0}.accordion .toolbar{margin:0}.accordion.highlight{border-color:#34745e;background:linear-gradient(135deg,#0e241f,#0d1729)}
-.panel{display:none}.panel.active{display:block}.section-title{display:flex;justify-content:space-between;gap:10px;align-items:end;margin:6px 0 9px}.section-title h2{margin:0;font-size:16px}.section-title p{margin:3px 0 0;color:var(--muted);font-size:11px}
-.list{display:grid;gap:7px}.row{display:grid;grid-template-columns:minmax(175px,1.6fr) repeat(5,minmax(80px,.7fr)) auto;gap:7px;align-items:center;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:9px}.asset{min-width:0}.asset b{font-size:13px}.asset small{display:block;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:3px;font-size:10px}.cell small{display:block;color:var(--muted);font-size:9px}.cell b{font-size:12px}.actions{display:flex;gap:4px}.actions a,.actions button{font-size:11px;padding:6px 7px;text-decoration:none}
+.panel{display:none}.panel.active{display:block}.section-title{display:flex;justify-content:space-between;gap:10px;align-items:end;margin:6px 0 9px}.section-title h2{margin:0;font-size:18px}.section-title p{margin:3px 0 0;color:var(--muted);font-size:11px}
+.list{display:grid;gap:7px}.row{display:grid;grid-template-columns:minmax(175px,1.6fr) repeat(5,minmax(80px,.7fr)) auto;gap:7px;align-items:center;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:9px}.asset{min-width:0}.asset b{font-size:14px}.asset small{display:block;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:3px;font-size:10px}.cell small{display:block;color:var(--muted);font-size:9px}.cell b{font-size:13px}.actions{display:flex;gap:4px}.actions a,.actions button{font-size:11px;padding:6px 7px;text-decoration:none}
 .badge{display:inline-flex;padding:3px 6px;border-radius:999px;font-size:10px;font-weight:700}.good{background:#123a2d;color:var(--good)}.mid{background:#3b3317;color:var(--warn)}.bad{background:#421a24;color:var(--bad)}.blue{background:#152d49;color:var(--blue)}
 .empty{background:var(--panel);border:1px dashed var(--line);border-radius:12px;padding:22px;text-align:center;color:var(--muted);font-size:12px}
-.three{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}.mini{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:10px}.mini h3{font-size:13px;margin:0 0 7px}.mini-row{display:flex;justify-content:space-between;gap:8px;padding:6px 0;border-top:1px solid #182b45;font-size:11px}.mini-row:first-of-type{border-top:0}.mini-row span{color:var(--muted)}
+.three{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}.mini{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:10px}.mini h3{font-size:15px;margin:0 0 9px;font-weight:900}.mini-row{display:flex;justify-content:space-between;gap:8px;padding:6px 0;border-top:1px solid #182b45;font-size:11px}.mini-row:first-of-type{border-top:0}.mini-row span{color:var(--muted)}
 dialog{width:min(720px,94vw);max-height:88vh;border:1px solid #36506e;border-radius:15px;background:#091426;color:var(--text);padding:0;box-shadow:0 30px 90px #0009}dialog::backdrop{background:#000a}.modal-head{position:sticky;top:0;background:#091426;border-bottom:1px solid var(--line);padding:12px 14px;display:flex;justify-content:space-between;align-items:center}.modal-body{padding:13px}.modal-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:7px}.box{background:#0f1d31;border:1px solid var(--line);border-radius:10px;padding:8px}.box small{display:block;color:var(--muted);font-size:9px}.box b{display:block;margin-top:3px;font-size:12px}.holders{margin-top:11px}.holder,.check{display:flex;justify-content:space-between;gap:7px;padding:6px 0;border-top:1px solid var(--line);font-size:11px}.holder a{color:var(--blue);text-decoration:none}.links{display:flex;flex-wrap:wrap;gap:5px;margin-top:11px}.links a{color:#b5ddff;text-decoration:none;border:1px solid #315071;background:#10243b;padding:6px 8px;border-radius:8px;font-size:11px}.note{margin-top:10px;color:var(--muted);font-size:11px;line-height:1.65}.pass{color:var(--good)}.fail{color:var(--bad)}.manual{color:var(--warn)}
 @media(max-width:900px){.champion-grid{grid-template-columns:1fr 1fr}.champion-grid .asset,.champion-grid .actions{grid-column:1/-1}.row{grid-template-columns:1.5fr repeat(3,.8fr) auto}.hide-md{display:none}.three{grid-template-columns:1fr}.kpis{grid-template-columns:repeat(2,1fr)}}
-@media(max-width:620px){.head{padding:9px 10px}.shell{padding:10px}.brand small,.status{display:none}.row{grid-template-columns:1fr 1fr}.asset,.actions{grid-column:1/-1}.hide-sm{display:none}.modal-grid{grid-template-columns:repeat(2,1fr)}}
+@media(max-width:620px){.subfilters{grid-template-columns:1fr 1fr}.head{padding:9px 10px}.shell{padding:10px}.brand small,.status{display:none}.row{grid-template-columns:1fr 1fr}.asset,.actions{grid-column:1/-1}.hide-sm{display:none}.modal-grid{grid-template-columns:repeat(2,1fr)}}
 </style>
 </head>
 <body>
@@ -968,6 +968,10 @@ dialog{width:min(720px,94vw);max-height:88vh;border:1px solid #36506e;border-rad
 </header>
 
 <main class="shell">
+<details class="accordion highlight" open>
+  <summary>🏆 بهترین سیگنال کل رادار</summary>
+  <div class="accordion-body" id="championBox"></div>
+</details>
 <details class="accordion" open>
   <summary>📊 خلاصه رادار</summary>
   <div class="accordion-body"><section class="kpis">
@@ -978,10 +982,6 @@ dialog{width:min(720px,94vw);max-height:88vh;border:1px solid #36506e;border-rad
   </section></div>
 </details>
 
-<details class="accordion highlight" open>
-  <summary>🏆 بهترین سیگنال کل رادار</summary>
-  <div class="accordion-body" id="championBox"></div>
-</details>
 <details class="accordion">
   <summary>🚨 هشدارهای خروج و فروش</summary>
   <div class="accordion-body"><div class="alerts" id="alerts"></div></div>
@@ -1007,21 +1007,36 @@ dialog{width:min(720px,94vw);max-height:88vh;border:1px solid #36506e;border-rad
 <section class="panel active" id="featuredPanel">
   <details class="accordion" open>
     <summary>🔥 پیشنهادهای اولویت‌دار</summary>
-    <div class="accordion-body"><p class="muted" style="font-size:11px">امتیاز ۹۰/۱۰۰+؛ این عدد احتمال قطعی پامپ نیست.</p><div class="list" id="featuredList"></div></div>
+    <div class="accordion-body"><p class="muted" style="font-size:11px">امتیاز ۹۰/۱۰۰+؛ این عدد احتمال قطعی پامپ نیست.</p><div class="subfilters">
+<label>کوتاه‌مدت<select class="signal-filter" data-filter="short"><option value="">همه</option><option value="STRONG">قوی</option><option value="POSITIVE">مثبت</option><option value="NEUTRAL">خنثی</option><option value="WAIT_DATA">داده ناکافی</option><option value="AVOID">ورود نکن</option><option value="BLOCKED">مسدود امنیتی</option></select></label>
+<label>میان‌مدت<select class="signal-filter" data-filter="medium"><option value="">همه</option><option value="STRONG">قوی</option><option value="POSITIVE">مثبت</option><option value="NEUTRAL">خنثی</option><option value="WAIT_DATA">داده ناکافی</option><option value="AVOID">ورود نکن</option><option value="BLOCKED">مسدود امنیتی</option></select></label>
+<label>بلندمدت<select class="signal-filter" data-filter="long"><option value="">همه</option><option value="STRONG">قوی</option><option value="POSITIVE">مثبت</option><option value="NEUTRAL">خنثی</option><option value="WAIT_DATA">داده ناکافی</option><option value="AVOID">ورود نکن</option><option value="BLOCKED">مسدود امنیتی</option></select></label>
+<label>امنیت<select class="signal-filter" data-filter="security"><option value="">همه</option><option value="MAX SECURITY">خیلی بالا</option><option value="HIGH">بالا</option><option value="REVIEW">نیاز به بررسی</option><option value="REJECT">رد</option></select></label>
+</div><div class="list" id="featuredList"></div></div>
   </details>
 </section>
 
 <section class="panel" id="whalesPanel">
   <details class="accordion" open>
     <summary>🐋 خریدهای نهنگ</summary>
-    <div class="accordion-body"><p class="muted" style="font-size:11px">خرید بزرگ اخیر و هشدار خروج.</p><div class="list" id="whaleList"></div></div>
+    <div class="accordion-body"><p class="muted" style="font-size:11px">خرید بزرگ اخیر و هشدار خروج.</p><div class="subfilters">
+<label>کوتاه‌مدت<select class="signal-filter" data-filter="short"><option value="">همه</option><option value="STRONG">قوی</option><option value="POSITIVE">مثبت</option><option value="NEUTRAL">خنثی</option><option value="WAIT_DATA">داده ناکافی</option><option value="AVOID">ورود نکن</option><option value="BLOCKED">مسدود امنیتی</option></select></label>
+<label>میان‌مدت<select class="signal-filter" data-filter="medium"><option value="">همه</option><option value="STRONG">قوی</option><option value="POSITIVE">مثبت</option><option value="NEUTRAL">خنثی</option><option value="WAIT_DATA">داده ناکافی</option><option value="AVOID">ورود نکن</option><option value="BLOCKED">مسدود امنیتی</option></select></label>
+<label>بلندمدت<select class="signal-filter" data-filter="long"><option value="">همه</option><option value="STRONG">قوی</option><option value="POSITIVE">مثبت</option><option value="NEUTRAL">خنثی</option><option value="WAIT_DATA">داده ناکافی</option><option value="AVOID">ورود نکن</option><option value="BLOCKED">مسدود امنیتی</option></select></label>
+<label>امنیت<select class="signal-filter" data-filter="security"><option value="">همه</option><option value="MAX SECURITY">خیلی بالا</option><option value="HIGH">بالا</option><option value="REVIEW">نیاز به بررسی</option><option value="REJECT">رد</option></select></label>
+</div><div class="list" id="whaleList"></div></div>
   </details>
 </section>
 
 <section class="panel" id="smartPanel">
   <details class="accordion" open>
     <summary>🧠 اسمارت‌مانی</summary>
-    <div class="accordion-body"><p class="muted" id="smartStatus" style="font-size:11px">در حال دریافت…</p><div class="list" id="smartList"></div></div>
+    <div class="accordion-body"><p class="muted" id="smartStatus" style="font-size:11px">در حال دریافت…</p><div class="subfilters">
+<label>کوتاه‌مدت<select class="signal-filter" data-filter="short"><option value="">همه</option><option value="STRONG">قوی</option><option value="POSITIVE">مثبت</option><option value="NEUTRAL">خنثی</option><option value="WAIT_DATA">داده ناکافی</option><option value="AVOID">ورود نکن</option><option value="BLOCKED">مسدود امنیتی</option></select></label>
+<label>میان‌مدت<select class="signal-filter" data-filter="medium"><option value="">همه</option><option value="STRONG">قوی</option><option value="POSITIVE">مثبت</option><option value="NEUTRAL">خنثی</option><option value="WAIT_DATA">داده ناکافی</option><option value="AVOID">ورود نکن</option><option value="BLOCKED">مسدود امنیتی</option></select></label>
+<label>بلندمدت<select class="signal-filter" data-filter="long"><option value="">همه</option><option value="STRONG">قوی</option><option value="POSITIVE">مثبت</option><option value="NEUTRAL">خنثی</option><option value="WAIT_DATA">داده ناکافی</option><option value="AVOID">ورود نکن</option><option value="BLOCKED">مسدود امنیتی</option></select></label>
+<label>امنیت<select class="signal-filter" data-filter="security"><option value="">همه</option><option value="MAX SECURITY">خیلی بالا</option><option value="HIGH">بالا</option><option value="REVIEW">نیاز به بررسی</option><option value="REJECT">رد</option></select></label>
+</div><div class="list" id="smartList"></div></div>
   </details>
 </section>
 
@@ -1055,7 +1070,12 @@ dialog{width:min(720px,94vw);max-height:88vh;border:1px solid #36506e;border-rad
 <section class="panel" id="tokensPanel">
   <details class="accordion" open>
     <summary>🪙 همه توکن‌ها</summary>
-    <div class="accordion-body"><p class="muted" style="font-size:11px">سه سیگنال زمانی + امنیت و هولدرها برای همه توکن‌های کشف‌شده رادار.</p><div class="list" id="tokenList"></div></div>
+    <div class="accordion-body"><p class="muted" style="font-size:11px">سه سیگنال زمانی + امنیت و هولدرها برای همه توکن‌های کشف‌شده رادار.</p><div class="subfilters">
+<label>کوتاه‌مدت<select class="signal-filter" data-filter="short"><option value="">همه</option><option value="STRONG">قوی</option><option value="POSITIVE">مثبت</option><option value="NEUTRAL">خنثی</option><option value="WAIT_DATA">داده ناکافی</option><option value="AVOID">ورود نکن</option><option value="BLOCKED">مسدود امنیتی</option></select></label>
+<label>میان‌مدت<select class="signal-filter" data-filter="medium"><option value="">همه</option><option value="STRONG">قوی</option><option value="POSITIVE">مثبت</option><option value="NEUTRAL">خنثی</option><option value="WAIT_DATA">داده ناکافی</option><option value="AVOID">ورود نکن</option><option value="BLOCKED">مسدود امنیتی</option></select></label>
+<label>بلندمدت<select class="signal-filter" data-filter="long"><option value="">همه</option><option value="STRONG">قوی</option><option value="POSITIVE">مثبت</option><option value="NEUTRAL">خنثی</option><option value="WAIT_DATA">داده ناکافی</option><option value="AVOID">ورود نکن</option><option value="BLOCKED">مسدود امنیتی</option></select></label>
+<label>امنیت<select class="signal-filter" data-filter="security"><option value="">همه</option><option value="MAX SECURITY">خیلی بالا</option><option value="HIGH">بالا</option><option value="REVIEW">نیاز به بررسی</option><option value="REJECT">رد</option></select></label>
+</div><div class="list" id="tokenList"></div></div>
   </details>
 </section>
 </main>
@@ -1066,7 +1086,7 @@ dialog{width:min(720px,94vw);max-height:88vh;border:1px solid #36506e;border-rad
 </dialog>
 
 <script>
-var tokens=[],smart=null,live=null,tracked=null,conviction=null,activeTab='featured';
+var tokens=[],smart=null,live=null,tracked=null,conviction=null,activeTab='featured',signalFilters={short:'',medium:'',long:'',security:''};
 function esc(v){return String(v==null?'':v).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]})}
 function money(v){var n=Number(v||0);if(!Number.isFinite(n))return '—';return '$'+n.toLocaleString(undefined,{maximumFractionDigits:n<1?4:0})}
 function pct(v){return v==null?'—':Number(v).toFixed(1)+'%'}
@@ -1078,6 +1098,33 @@ function secClass(v){return v==='MAX SECURITY'||v==='HIGH'?'good':v==='REJECT'?'
 function verdictClass(v){return v==='STRONG WATCH'?'good':v==='SKIP'?'bad':'mid'}
 function faSignal(v){return {'STRONG':'قوی','POSITIVE':'مثبت','NEUTRAL':'خنثی','AVOID':'ورود نکن','BLOCKED':'مسدود امنیتی','WAIT_DATA':'داده ناکافی'}[v]||v||'—'}
 function signalClass(v){return v==='STRONG'||v==='POSITIVE'?'good':v==='AVOID'||v==='BLOCKED'?'bad':'mid'}
+function tokenStrength(t){
+  if(!t)return -1;
+  var sg=t.signals||{},sec=t.security||{};
+  var secScore=sec.tier==='MAX SECURITY'?30:sec.tier==='HIGH'?22:sec.tier==='REVIEW'?8:0;
+  return secScore+Number(sg.short?.score||0)*0.27+Number(sg.medium?.score||0)*0.31+Number(sg.long?.score||0)*0.25+(t.activity?.label==='PROBABLE ORGANIC'?5:0)+(sec.holderStrong?5:0);
+}
+function passesSignalFilters(t){
+  var any=signalFilters.short||signalFilters.medium||signalFilters.long||signalFilters.security;
+  if(!t)return !any;
+  var sg=t.signals||{},sec=t.security||{};
+  if(signalFilters.short&&sg.short?.label!==signalFilters.short)return false;
+  if(signalFilters.medium&&sg.medium?.label!==signalFilters.medium)return false;
+  if(signalFilters.long&&sg.long?.label!==signalFilters.long)return false;
+  if(signalFilters.security&&sec.tier!==signalFilters.security)return false;
+  return true;
+}
+function socialButtons(t){
+  var src=t&&Array.isArray(t.socialSources)?t.socialSources:[];
+  var x=src.find(function(v){return v.name==='X'});
+  var tg=src.find(function(v){return v.name==='Telegram'});
+  if(!x&&!tg)return '';
+  var h='<span class="social-actions">';
+  if(x)h+='<a target="_blank" rel="noopener" href="'+esc(x.url)+'">𝕏 توییتر</a>';
+  if(tg)h+='<a target="_blank" rel="noopener" href="'+esc(tg.url)+'">✈ تلگرام</a>';
+  return h+'</span>';
+}
+
 
 function dexUrl(mint,url){if(url)return url;var t=tokens.find(function(x){return x.mint===mint});if(t&&t.dexUrl)return t.dexUrl;var tr=tracked&&tracked.tokens?tracked.tokens.find(function(x){return x.mint===mint}):null;if(tr&&tr.dexUrl)return tr.dexUrl;return 'https://dexscreener.com/search?q='+encodeURIComponent(mint||'')}
 function findToken(m){return tokens.find(function(x){return x.mint===m})||null}
@@ -1116,7 +1163,7 @@ function featuredRows(){
 function tokenRow(t){
   var s=t.security||{},g=t.securityGate||{},sg=t.signals||{},sh=sg.short||{},md=sg.medium||{},lg=sg.long||{};
   return '<div class="row">'+
-  '<div class="asset"><b>'+esc(t.symbol||'?')+' · '+esc(t.name||'')+'</b><small>'+esc(short(t.mint))+'</small></div>'+
+  '<div class="asset"><b>'+esc(t.symbol||'?')+' · '+esc(t.name||'')+'</b><small>'+esc(short(t.mint))+'</small>'+socialButtons(t)+'</div>'+
   '<div class="cell"><small>کوتاه</small><b><span class="badge '+signalClass(sh.label)+'">'+esc(faSignal(sh.label))+' '+Number(sh.score||0)+'</span></b></div>'+
   '<div class="cell"><small>میان</small><b><span class="badge '+signalClass(md.label)+'">'+esc(faSignal(md.label))+' '+Number(md.score||0)+'</span></b></div>'+
   '<div class="cell"><small>بلند</small><b><span class="badge '+signalClass(lg.label)+'">'+esc(faSignal(lg.label))+' '+Number(lg.score||0)+'</span></b></div>'+
@@ -1148,7 +1195,7 @@ function renderChampion(){
   if(!x){el.innerHTML='<div class="muted">فعلاً توکنی نیست که هم امنیت بالا و هم حداقل دو بازه زمانی قوی را همزمان پاس کند.</div>';return}
   var t=x.t,sg=t.signals||{};
   el.innerHTML='<div class="champion-grid">'+
-    '<div class="asset"><b>'+esc(t.symbol||'?')+' · '+esc(t.name||'')+'</b><small>بدون هشدار خروج · امنیت '+esc(faSec(t.security?.tier))+'</small></div>'+
+    '<div class="asset"><b>'+esc(t.symbol||'?')+' · '+esc(t.name||'')+'</b><small>بدون هشدار خروج · امنیت '+esc(faSec(t.security?.tier))+'</small>'+socialButtons(t)+'</div>'+
     '<div><small class="muted">امتیاز کل</small><div class="score">'+x.score+'/100</div></div>'+
     '<div class="cell"><small>کوتاه</small><b>'+Number(sg.short?.score||0)+'</b></div>'+
     '<div class="cell"><small>میان</small><b>'+Number(sg.medium?.score||0)+'</b></div>'+
@@ -1158,10 +1205,10 @@ function renderChampion(){
 }
 
 function renderFeatured(){
-  var r=featuredRows();document.getElementById('kFeatured').textContent=r.length;
+  var r=featuredRows().filter(function(x){return passesSignalFilters(x.token)}).sort(function(a,b){return (b.score-a.score)||(tokenStrength(b.token)-tokenStrength(a.token))});document.getElementById('kFeatured').textContent=r.length;
   document.getElementById('featuredList').innerHTML=r.length?r.map(function(x){
     var t=x.token;
-    return '<div class="row"><div class="asset"><b>🔥 '+esc(t.symbol||'?')+' · '+esc(t.name||'')+'</b><small>'+esc(x.why.slice(0,3).join(' • '))+'</small></div>'+
+    return '<div class="row"><div class="asset"><b>🔥 '+esc(t.symbol||'?')+' · '+esc(t.name||'')+'</b><small>'+esc(x.why.slice(0,3).join(' • '))+'</small>'+socialButtons(t)+'</div>'+
     '<div class="cell"><small>امتیاز</small><b><span class="badge good">'+x.score+'/100</span></b></div>'+
     '<div class="cell"><small>نهنگ</small><b>'+money(x.whale.usd)+'</b></div>'+
     '<div class="cell"><small>اسمارت</small><b>'+(x.smart?Number(x.smart.smartMoneyCount||0):0)+'</b></div>'+
@@ -1171,11 +1218,11 @@ function renderFeatured(){
   }).join(''):'<div class="empty">فعلاً هیچ توکنی معیار سخت‌گیرانه ۹۰/۱۰۰ را رد نکرده.</div>';
 }
 function renderWhales(){
-  var r=live&&live.whaleBuys?live.whaleBuys:[];
+  var r=live&&live.whaleBuys?live.whaleBuys:[];r=r.filter(function(e){return passesSignalFilters(findToken(e.tokenAddress))}).sort(function(a,b){return tokenStrength(findToken(b.tokenAddress))-tokenStrength(findToken(a.tokenAddress))});
   document.getElementById('kWhales').textContent=r.length;
   document.getElementById('whaleList').innerHTML=r.length?r.slice(0,20).map(function(e){
     var t=findToken(e.tokenAddress),s=t&&t.security?t.security:{};
-    return '<div class="row"><div class="asset"><b>🐋 '+esc(e.token||t&&t.symbol||'?')+'</b><small>'+esc(short(e.tokenAddress))+' · '+esc(e.trader||'نامشخص')+'</small></div>'+
+    return '<div class="row"><div class="asset"><b>🐋 '+esc(e.token||t&&t.symbol||'?')+'</b><small>'+esc(short(e.tokenAddress))+' · '+esc(e.trader||'نامشخص')+'</small>'+socialButtons(t)+'</div>'+
     '<div class="cell"><small>خرید</small><b>'+money(e.tradeUsd)+'</b></div><div class="cell"><small>پوزیشن</small><b>'+money(e.positionValueUsd)+'</b></div>'+
     '<div class="cell"><small>امنیت</small><b><span class="badge '+secClass(s.tier)+'">'+esc(faSec(s.tier))+'</span></b></div>'+
     '<div class="cell hide-sm"><small>زمان</small><b>'+new Date(Number(e.ts||Date.now())).toLocaleTimeString('fa-IR')+'</b></div>'+
@@ -1184,11 +1231,11 @@ function renderWhales(){
   }).join(''):'<div class="empty">فعلاً خرید نهنگ تازه‌ای ثبت نشده.</div>';
 }
 function renderSmart(){
-  var r=smart&&smart.tokens?smart.tokens:[];
+  var r=smart&&smart.tokens?smart.tokens:[];r=r.filter(function(x){return passesSignalFilters(findToken(x.address))}).sort(function(a,b){return tokenStrength(findToken(b.address))-tokenStrength(findToken(a.address))});
   document.getElementById('smartStatus').textContent=smart&&smart.configured?'پوزیشن‌های فعلی کیف‌پول‌های سودده':'منبع کامل اسمارت‌مانی نیاز به API key دارد.';
   document.getElementById('smartList').innerHTML=r.length?r.slice(0,20).map(function(t){
-    var s=t.security||{};
-    return '<div class="row"><div class="asset"><b>🧠 '+esc(t.symbol||'?')+' · '+esc(t.name||'')+'</b><small>'+esc(short(t.address))+'</small></div>'+
+    var s=t.security||{},base=findToken(t.address);
+    return '<div class="row"><div class="asset"><b>🧠 '+esc(t.symbol||'?')+' · '+esc(t.name||'')+'</b><small>'+esc(short(t.address))+'</small>'+socialButtons(base)+'</div>'+
     '<div class="cell"><small>کیف‌پول</small><b>'+Number(t.smartMoneyCount||0)+'</b></div><div class="cell"><small>ارزش پوزیشن</small><b>'+money(t.totalValueUsd)+'</b></div>'+
     '<div class="cell"><small>نقدینگی</small><b>'+money(t.liquidity)+'</b></div><div class="cell hide-sm"><small>Top10</small><b>'+pct(s.top10)+'</b></div>'+
     '<div class="cell hide-md"><small>امنیت</small><b><span class="badge '+secClass(s.tier)+'">'+esc(faSec(s.tier))+'</span></b></div>'+
@@ -1231,7 +1278,7 @@ function renderWallets(){
 }
 function filteredTokens(){
   var q=document.getElementById('search').value.toLowerCase().trim(),sf=document.getElementById('securityFilter').value,af=document.getElementById('activityFilter').value;
-  return tokens.filter(function(t){return (!q||[t.name,t.symbol,t.mint].join(' ').toLowerCase().includes(q))&&(!sf||(t.security&&t.security.tier===sf))&&(!af||(t.activity&&t.activity.label===af))});
+  return tokens.filter(function(t){return (!q||[t.name,t.symbol,t.mint].join(' ').toLowerCase().includes(q))&&(!sf||(t.security&&t.security.tier===sf))&&(!af||(t.activity&&t.activity.label===af))&&passesSignalFilters(t)}).sort(function(a,b){return tokenStrength(b)-tokenStrength(a)});
 }
 function renderTokens(){var r=filteredTokens();document.getElementById('tokenList').innerHTML=r.length?r.map(tokenRow).join(''):'<div class="empty">موردی با این فیلترها نیست.</div>'}
 function renderAlerts(){
@@ -1251,7 +1298,7 @@ function openDetail(m){
   }
   if(tr)h+='<div class="note"><b>کیف‌پول‌های برتر:</b> '+Number(tr.uniqueBuyers||0)+' خریدار، '+Number(tr.uniqueSellers||0)+' فروشنده، جریان خالص '+money(tr.netFlowUsd)+'، هولدینگ '+money(tr.currentHoldingUsd)+'</div>';
   if(sm)h+='<div class="note"><b>اسمارت‌مانی:</b> '+Number(sm.smartMoneyCount||0)+' کیف‌پول · '+money(sm.totalValueUsd)+' پوزیشن</div>';
-  if(wh.count)h+='<div class="note"><b>نهنگ:</b> '+wh.count+' خرید بزرگ · '+money(wh.usd)+'</div>';
+  if(wh.count)h+='<div class="note"><b>نهنگ:</b> '+wh.count+' خرید بزرگ · '+money(wh.usd)+'</div>';if(t)h+=socialButtons(t);
   h+='<div class="links"><a target="_blank" rel="noopener" href="'+esc(dexUrl(m,t&&t.dexUrl))+'">📈 DexScreener</a><a target="_blank" rel="noopener" href="https://solscan.io/token/'+encodeURIComponent(m)+'">Solscan</a><a target="_blank" rel="noopener" href="https://gmgn.ai/sol/token/'+encodeURIComponent(m)+'">GMGN</a><a target="_blank" rel="noopener" href="https://v2.bubblemaps.io/map?address='+encodeURIComponent(m)+'&chain=solana&partnerId=regular">Bubblemaps</a><a target="_blank" rel="noopener" href="https://www.solanatracker.io/rugcheck/'+encodeURIComponent(m)+'">Rugcheck</a></div><div class="note">این رادار ابزار تحقیق است؛ هیچ امتیازی تضمین سود یا نبود کلاهبرداری نیست.</div>';
   document.getElementById('detailBody').innerHTML=h;document.getElementById('detailDialog').showModal();
 }
@@ -1263,6 +1310,7 @@ async function loadAll(){
 }
 document.addEventListener('click',function(e){var d=e.target.closest('.detail-btn');if(!d)return;openDetail(d.getAttribute('data-mint')||'')});
 document.getElementById('tabs').addEventListener('click',function(e){var b=e.target.closest('[data-tab]');if(!b)return;activeTab=b.dataset.tab;document.querySelectorAll('.tab').forEach(function(x){x.classList.toggle('active',x===b)});document.querySelectorAll('.panel').forEach(function(x){x.classList.remove('active')});document.getElementById(activeTab+'Panel').classList.add('active')});
+document.addEventListener('change',function(e){var sfel=e.target.closest('.signal-filter');if(!sfel)return;signalFilters[sfel.dataset.filter]=sfel.value;document.querySelectorAll('.signal-filter[data-filter="'+sfel.dataset.filter+'"]').forEach(function(x){if(x!==sfel)x.value=sfel.value});renderChampion();renderFeatured();renderWhales();renderSmart();renderTokens()});
 document.getElementById('search').addEventListener('input',renderTokens);document.getElementById('securityFilter').addEventListener('change',renderTokens);document.getElementById('activityFilter').addEventListener('change',renderTokens);document.getElementById('refresh').addEventListener('click',loadAll);document.getElementById('closeDetail').addEventListener('click',function(){document.getElementById('detailDialog').close()});document.getElementById('detailDialog').addEventListener('click',function(e){if(e.target===this)this.close()});
 loadAll();setInterval(loadAll,60000);
 </script>
