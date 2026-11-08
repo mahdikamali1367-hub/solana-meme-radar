@@ -1879,7 +1879,7 @@ html,body,.shell,.panel,.list{overflow-anchor:none}
 </section>
 <details class="accordion" open>
     <summary>🔥 پیشنهادهای اولویت‌دار</summary>
-    <div class="accordion-body"><p class="muted" style="font-size:11px">منطق ورود: قدرت خریدار باید از فروشنده بیشتر باشد، حداقل یک خریدار ردیابی‌شده 100$+ وجود داشته باشد، Bot/Wash رد شود، قانون هولدر پاس شود و فیلتر مومنتوم DEXScreener کامل پاس شود: نقدینگی 40k–500k، مارکت‌کپ 150k–2m، سن 1–48h، حجم 24h≥150k، تراکنش 24h≥500، حجم 5m 8k–80k، حجم 1h 60k–500k، تراکنش 5m≥40، تراکنش 1h≥300، رشد 5m بین 1–8%، رشد 1h بین 5–25% و نسبت تعداد Buy/Sell حداقل 1.4.</p><div class="subfilters">
+    <div class="accordion-body"><p class="muted" style="font-size:11px">منطق ورود: قانون هولدر پاس + قدرت خریدار بیشتر از فروشنده + حداقل یک خریدار ردیابی‌شده 100$+ + نبود Bot/Wash + عبور از فیلتر مومنتوم DEXScreener.</p><div class="subfilters">
 <label>کوتاه‌مدت<select class="signal-filter" data-filter="short"><option value="">همه</option><option value="STRONG">قوی</option><option value="POSITIVE">مثبت</option><option value="NEUTRAL">خنثی</option><option value="WAIT_DATA">داده ناکافی</option><option value="AVOID">ورود نکن</option><option value="BLOCKED">مسدود امنیتی</option></select></label>
 <label>میان‌مدت<select class="signal-filter" data-filter="medium"><option value="">همه</option><option value="STRONG">قوی</option><option value="POSITIVE">مثبت</option><option value="NEUTRAL">خنثی</option><option value="WAIT_DATA">داده ناکافی</option><option value="AVOID">ورود نکن</option><option value="BLOCKED">مسدود امنیتی</option></select></label>
 <label>بلندمدت<select class="signal-filter" data-filter="long"><option value="">همه</option><option value="STRONG">قوی</option><option value="POSITIVE">مثبت</option><option value="NEUTRAL">خنثی</option><option value="WAIT_DATA">داده ناکافی</option><option value="AVOID">ورود نکن</option><option value="BLOCKED">مسدود امنیتی</option></select></label>
@@ -2237,9 +2237,52 @@ function momentumChip(t){
   return '<span class="badge '+cls+'">مومنتوم '+m.passed+'/'+m.total+'</span>';
 }
 
+function dexscreenerMomentumFilter(t){
+  if(!t)return {ok:false,score:0,checks:[],reasons:['توکن نامشخص']};
+  var liq=Number(t.liquidity||0),mc=Number(t.marketCap||0),age=Number(t.ageMinutes||0);
+  var v5=Number(t.volume5m||0),v1=Number(t.volume1h||0),v24=Number(t.volume24h||0);
+  var tx5=Number(t.txns5m||0),tx1=Number(t.txns1h||0),tx24=Number(t.txns24h||0);
+  var pc5=Number(t.priceChange5m||0),pc1=Number(t.priceChange1h||0);
+  var buys5=Number(t.buys5m||0),sells5=Number(t.sells5m||0);
+  var buySell5=(buys5+1)/(sells5+1);
+
+  var checks=[
+    {key:'liq',name:'نقدینگی 40k تا 500k',ok:liq>=40000&&liq<=500000,value:liq},
+    {key:'mc',name:'مارکت‌کپ 150k تا 2M',ok:mc>=150000&&mc<=2000000,value:mc},
+    {key:'age',name:'سن جفت 1h تا 48h',ok:age>=60&&age<=2880,value:age},
+    {key:'v24',name:'حجم 24h حداقل 150k',ok:v24>=150000,value:v24},
+    {key:'tx24',name:'تراکنش 24h حداقل 500',ok:tx24>=500,value:tx24},
+    {key:'v5',name:'حجم 5m بین 8k و 80k',ok:v5>=8000&&v5<=80000,value:v5},
+    {key:'v1',name:'حجم 1h بین 60k و 500k',ok:v1>=60000&&v1<=500000,value:v1},
+    {key:'tx5',name:'تراکنش 5m حداقل 40',ok:tx5>=40,value:tx5},
+    {key:'tx1',name:'تراکنش 1h حداقل 300',ok:tx1>=300,value:tx1},
+    {key:'pc5',name:'تغییر قیمت 5m بین +1% و +8%',ok:pc5>=1&&pc5<=8,value:pc5},
+    {key:'pc1',name:'تغییر قیمت 1h بین +5% و +25%',ok:pc1>=5&&pc1<=25,value:pc1},
+    {key:'bs5',name:'نسبت تعداد خرید/فروش 5m حداقل 1.4',ok:buySell5>=1.4,value:buySell5}
+  ];
+
+  var passed=checks.filter(function(x){return x.ok}).length;
+  var score=Math.round(passed/checks.length*100);
+  var required=['liq','mc','tx5','tx1','bs5'];
+  var coreOk=required.every(function(k){var x=checks.find(function(v){return v.key===k});return x&&x.ok});
+  return {
+    ok:passed>=10&&coreOk,
+    score,passed,total:checks.length,checks,
+    reasons:checks.filter(function(x){return !x.ok}).map(function(x){return x.name}),
+    buySell5:+buySell5.toFixed(2),
+    unsupported:['Buy Volume / Sell Volume دلاری','Unique Makers 1H']
+  };
+}
+function momentumChip(t){
+  var m=dexscreenerMomentumFilter(t);
+  var cls=m.ok?'good':m.score>=60?'mid':'bad';
+  return '<span class="badge '+cls+'">مومنتوم DEX '+m.passed+'/'+m.total+'</span>';
+}
+
 function entryQualityGate(t){
   if(!t)return {ok:false,reasons:['توکن نامشخص']};
-  var fl=t.flow||{},act=t.activity||{},tr=findTracked(t.mint),reasons=[],mom=momentumFilter(t);
+  var fl=t.flow||{},act=t.activity||{},tr=findTracked(t.mint),reasons=[];
+  var momentum=dexscreenerMomentumFilter(t);
 
   var buyers100=tr&&Array.isArray(tr.convictionHolders)?tr.convictionHolders:[];
   var buyer100Ok=buyers100.length>=1;
@@ -2254,11 +2297,11 @@ function entryQualityGate(t){
   var buyerDominant=buyerPower>sellerPower;
   if(!buyerDominant)reasons.push('قدرت خریدار از فروشنده بیشتر نیست');
 
-  if(!mom.ok)reasons.push('فیلتر مومنتوم DEXScreener '+mom.passed+'/'+mom.total);
+  if(!momentum.ok)reasons.push('فیلتر مومنتوم DEX کامل پاس نشده ('+momentum.passed+'/'+momentum.total+')');
 
   return {
-    ok:buyer100Ok&&botFree&&buyerDominant&&mom.ok,
-    buyer100Ok,botFree,buyerDominant,momentumOk:mom.ok,momentum:mom,
+    ok:buyer100Ok&&botFree&&buyerDominant&&momentum.ok,
+    buyer100Ok,botFree,buyerDominant,momentum,
     buyers100Count:buyers100.length,
     buyers100Usd:buyers100.reduce(function(a,x){return a+Number(x.buyUsd||0)},0),
     buyerPower,sellerPower,
@@ -2316,7 +2359,7 @@ function tradePlan(t){
       status:'ENTRY',
       confidence:buyerPower>=60?'HIGH':'MEDIUM',
       entry:p,entryLow,entryHigh,exit:invalidation,
-      reason:'ورود تأیید شد: قدرت خریدار '+buyerPower+'% در برابر فروشنده '+sellerPower+'% · '+q.buyers100Count+' خریدار 100$+ · بدون الگوی Bot/Wash',
+      reason:'ورود تأیید شد: قدرت خریدار '+buyerPower+'% در برابر فروشنده '+sellerPower+'% · '+q.buyers100Count+' خریدار 100$+ · مومنتوم DEX '+q.momentum.passed+'/'+q.momentum.total+' · بدون الگوی Bot/Wash',
       riskPct:riskPct*100,buyerPower,sellerPower,edge,quality:q
     };
   }
@@ -2333,7 +2376,7 @@ function tradePlanChips(t){
     var zone=(p.entryLow&&p.entryHigh)?fmtPrice(p.entryLow)+' تا '+fmtPrice(p.entryHigh):fmtPrice(p.entry);
     var label=p.confidence==='HIGH'?'🟢 نقطه ورود قوی':p.confidence==='MEDIUM'?'🟢 نقطه ورود فعال':'🟡 ورود زودهنگام';
     return '<span class="entry-chip entry-ready">'+label+' · '+zone+'</span>'+
-      (p.quality?'<span class="entry-chip entry-ready">💵 '+Number(p.quality.buyers100Count||0)+' خریدار 100$+</span>':'')+
+      (p.quality?'<span class="entry-chip entry-ready">💵 '+Number(p.quality.buyers100Count||0)+' خریدار 100$+</span><span class="entry-chip entry-ready">📊 DEX '+Number(p.quality.momentum?.passed||0)+'/'+Number(p.quality.momentum?.total||0)+'</span>':'')+
       (p.quality&&p.quality.momentum?'<span class="entry-chip entry-ready">📊 مومنتوم '+Number(p.quality.momentum.passed||0)+'/'+Number(p.quality.momentum.total||0)+'</span>':'')+
       '<span class="entry-chip entry-exit">🛑 خروج/ابطال · '+fmtPrice(p.exit)+'</span>';
   }
