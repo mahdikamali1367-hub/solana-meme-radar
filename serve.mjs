@@ -1464,6 +1464,15 @@ dialog{width:min(720px,94vw);max-height:88vh;border:1px solid #36506e;border-rad
   <summary>🏆 بهترین سیگنال کل رادار</summary>
   <div class="accordion-body" id="championBox"></div>
 </details>
+  <details class="accordion highlight" open>
+    <summary>📈 بازده واقعی ۲۴ساعته سیگنال‌های رادار</summary>
+    <div class="accordion-body">
+      <p class="muted" style="font-size:11px">بازدهی بازار در ۲۴ ساعت اخیر برای توکن‌های امن و امتیازبالای فعلی رادار. برای توکن جوان‌تر از ۲۴ ساعت، تغییر از زمان ساخت تا اکنون نمایش داده می‌شود.</p>
+      <div id="performance24Summary"></div>
+      <div class="list" id="performance24List"></div>
+    </div>
+  </details>
+
 <details class="accordion" open>
   <summary>📊 خلاصه رادار</summary>
   <div class="accordion-body"><section class="kpis">
@@ -1568,14 +1577,6 @@ dialog{width:min(720px,94vw);max-height:88vh;border:1px solid #36506e;border-rad
 </section>
 
 <section class="panel" id="tokensPanel">
-  <details class="accordion highlight" open>
-    <summary>📈 عملکرد ۲۴ساعته سیگنال‌های تاپ رادار</summary>
-    <div class="accordion-body">
-      <p class="muted" style="font-size:11px">بازدهی بازار در ۲۴ ساعت اخیر برای توکن‌های امن و امتیازبالای فعلی رادار. برای توکن جوان‌تر از ۲۴ ساعت، تغییر از زمان ساخت تا اکنون نمایش داده می‌شود.</p>
-      <div id="performance24Summary"></div>
-      <div class="list" id="performance24List"></div>
-    </div>
-  </details>
   <details class="accordion highlight" open>
     <summary>👑 ترند KOL — فقط بالاترین امنیت</summary>
     <div class="accordion-body"><p class="muted" id="kolTrendStatus" style="font-size:11px">توکن‌هایی که همین KOLهای منتخب در پوزیشن/معامله اخیر داشته‌اند یا مستقیماً در X اشاره کرده‌اند؛ فقط امنیت HIGH/MAX نمایش داده می‌شود.</p><div class="list" id="kolTrendList"></div></div>
@@ -1969,30 +1970,34 @@ function renderBucketBest(id,rows,bucket,title){
 function renderPerformance24(){
   var list=document.getElementById('performance24List'),sum=document.getElementById('performance24Summary');
   if(!list||!sum)return;
-  var r=tokens.filter(function(t){
+  var r=tokens.map(function(t){
     var sec=t.security||{},ac=t.academy||{},gate=t.securityGate||{};
-    return !gate.blocked&&!ac.blocked&&Number(ac.fail||0)===0&&sec.holderPolicyPassed===true&&(sec.tier==='MAX SECURITY'||sec.tier==='HIGH');
-  }).map(function(t){return {t:t,score:bucketScore(t,ageBucket(t)),ret:return24Value(t)}})
-    .sort(function(a,b){return b.score-a.score}).slice(0,15);
-  var valid=r.filter(function(x){return x.ret!=null}),wins=valid.filter(function(x){return x.ret>0}),loss=valid.filter(function(x){return x.ret<0});
+    var safe=!gate.blocked&&!ac.blocked&&Number(ac.fail||0)===0&&sec.holderPolicyPassed===true&&(sec.tier==='MAX SECURITY'||sec.tier==='HIGH');
+    return {t:t,score:bucketScore(t,ageBucket(t)),ret:return24Value(t),safe:safe};
+  }).sort(function(a,b){
+    if(a.safe!==b.safe)return a.safe?-1:1;
+    return b.score-a.score;
+  }).slice(0,20);
+  var safeRows=r.filter(function(x){return x.safe}),valid=safeRows.filter(function(x){return x.ret!=null}),wins=valid.filter(function(x){return x.ret>0});
   var avg=valid.length?valid.reduce(function(a,x){return a+x.ret},0)/valid.length:null;
   var best=valid.slice().sort(function(a,b){return b.ret-a.ret})[0]||null;
   sum.innerHTML='<div class="perf-summary">'+
-    '<div class="perf-stat"><small>تاپ‌های امن فعلی</small><b>'+r.length+'</b></div>'+
+    '<div class="perf-stat"><small>سیگنال امن کامل</small><b>'+safeRows.length+'</b></div>'+
     '<div class="perf-stat"><small>مثبت در 24h</small><b class="return-pos">'+wins.length+'</b></div>'+
-    '<div class="perf-stat"><small>میانگین بازده</small><b class="'+(avg==null?'return-flat':avg>=0?'return-pos':'return-neg')+'">'+(avg==null?'—':(avg>0?'+':'')+avg.toFixed(1)+'%')+'</b></div>'+
-    '<div class="perf-stat"><small>بهترین بازده</small><b class="return-pos">'+(best?esc(best.t.symbol)+' '+esc(return24Text(best.t)):'—')+'</b></div>'+
-  '</div>';
+    '<div class="perf-stat"><small>میانگین بازده امن‌ها</small><b class="'+(avg==null?'return-flat':avg>=0?'return-pos':'return-neg')+'">'+(avg==null?'—':(avg>0?'+':'')+avg.toFixed(1)+'%')+'</b></div>'+
+    '<div class="perf-stat"><small>بهترین بازده امن</small><b class="return-pos">'+(best?esc(best.t.symbol)+' '+esc(return24Text(best.t)):'—')+'</b></div>'+
+  '</div>'+
+  (safeRows.length?'':'<div class="note">فعلاً هیچ توکنی همه شروط سخت‌گیرانه امنیتی HIGH/MAX را کامل پاس نکرده؛ پایین‌تر بهترین توکن‌های فعلی برای بررسی نمایش داده می‌شوند، نه به‌عنوان سیگنال قطعی.</div>');
   list.innerHTML=r.length?r.map(function(x,i){
     var t=x.t,sec=t.security||{},sg=t.signals||{};
-    return '<div class="row"><div class="asset"><b>#'+(i+1)+' 🏅 '+esc(t.symbol||'?')+' · '+esc(t.name||'')+'</b><small>'+esc(ageText(t))+' · '+esc(bucketSignalLabel(x.score,t))+'</small>'+socialButtons(t)+'</div>'+
+    return '<div class="row"><div class="asset"><b>#'+(i+1)+' '+(x.safe?'🏅':'🔎')+' '+esc(t.symbol||'?')+' · '+esc(t.name||'')+'</b><small>'+esc(ageText(t))+' · '+(x.safe?'امن کامل':'نیازمند بررسی امنیت')+'</small>'+socialButtons(t)+'</div>'+
       '<div class="cell"><small>امتیاز رادار</small><b><span class="badge '+bucketSignalClass(x.score,t)+'">'+x.score+'/100</span></b></div>'+
       '<div class="cell"><small>'+esc(return24Period(t))+'</small><b class="'+return24Class(t)+'">'+esc(return24Text(t))+'</b></div>'+
       '<div class="cell"><small>کوتاه / میان / بلند</small><b>'+Number(sg.short?.score||0)+' / '+Number(sg.medium?.score||0)+' / '+Number(sg.long?.score||0)+'</b></div>'+
       '<div class="cell hide-sm"><small>امنیت</small><b><span class="badge '+secClass(sec.tier)+'">'+esc(faSec(sec.tier))+'</span></b></div>'+
       '<div class="cell hide-md"><small>خریدار</small><b>'+Number(t.flow?.buyerPower||0)+'%</b></div>'+
       '<div class="actions"><a class="action" target="_blank" rel="noopener" href="'+esc(dexUrl(t.mint,t.dexUrl))+'">📈 چارت</a><button class="detail-btn" data-mint="'+esc(t.mint)+'">جزئیات</button></div></div>';
-  }).join(''):'<div class="empty">فعلاً سیگنال امنی با داده بازدهی برای نمایش نیست.</div>';
+  }).join(''):'<div class="empty">هنوز داده توکنی دریافت نشده.</div>';
 }
 function renderKolTrends(){
   var el=document.getElementById('kolTrendList');if(!el)return;
