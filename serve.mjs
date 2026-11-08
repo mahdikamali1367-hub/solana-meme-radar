@@ -209,13 +209,80 @@ function activityScore(t){
   return {score,label,confidence,flags,avgTrade,txPerMin,sideRatio,volumeLiquidity};
 }
 
+
+function marketQualityScore(t){
+  let score=0; const reasons=[],warnings=[];
+  if(t.dexUrl){score+=15;reasons.push('شفافیت و قابلیت رهگیری در DEX')}else warnings.push('لینک DEX نامشخص');
+  const cov=num(t.security?.coverage);
+  score+=Math.min(20,Math.round(cov/80*20));
+  if(cov>=70)reasons.push('پوشش داده آن‌چین خوب'); else warnings.push('پوشش داده آن‌چین ناقص');
+  if((t.security?.topHolders||[]).length>=5){score+=15;reasons.push('داده هولدرها موجود')}else warnings.push('داده هولدر کافی نیست');
+  if(t.priceUsd>0&&t.marketCap>0){score+=10}else warnings.push('قیمت/ارزش بازار ناقص');
+  const liqRatio=t.marketCap>0?t.liquidity/t.marketCap:0;
+  if(liqRatio>=0.10){score+=20;reasons.push('عمق نقدینگی قوی')}
+  else if(liqRatio>=0.05){score+=14;reasons.push('عمق نقدینگی قابل‌قبول')}
+  else if(liqRatio>=0.02){score+=6;warnings.push('نقدینگی نسبت به مارکت‌کپ کم')}
+  else warnings.push('نقدینگی بسیار کم نسبت به مارکت‌کپ');
+  if(t.txns5m>=50){score+=10;reasons.push('مشارکت معاملاتی مناسب')}else if(t.txns5m>=20)score+=5;else warnings.push('نمونه معامله کم');
+  if(t.volume5m>=5000)score+=5;
+  if((t.socialSources||[]).length>=1)score+=5;
+  score=clamp(Math.round(score));
+  const label=score>=80?'HIGH':score>=60?'MEDIUM':'LOW';
+  return {score,label,liqRatio,reasons,warnings,method:'approximate transparency/liquidity/data-coverage score'};
+}
+
+function chartDiscipline(t){
+  const pc=num(t.priceChange5m);
+  const buyRatio=(num(t.buys5m)+1)/(num(t.sells5m)+1);
+  const volumePace=t.volume1h>0?(t.volume5m*12)/t.volume1h:null;
+  let trend='SIDEWAYS';
+  if(pc>=3&&buyRatio>=1.15)trend='UP';
+  else if(pc<=-3||buyRatio<=0.80)trend='DOWN';
+  let fomoRisk='LOW';
+  if(pc>20)fomoRisk='HIGH'; else if(pc>12)fomoRisk='MEDIUM';
+  let pumpDumpRisk='LOW'; const warnings=[];
+  if(t.activity?.label==='BOT RISK'){pumpDumpRisk='HIGH';warnings.push('الگوی ربات/واش')}
+  if(pc>25&&num(t.activity?.volumeLiquidity)>1.5){pumpDumpRisk='HIGH';warnings.push('جهش قیمت + گردش حجم غیرعادی')}
+  else if(pumpDumpRisk!=='HIGH'&&pc>15&&volumePace!=null&&volumePace>1.8){pumpDumpRisk='MEDIUM';warnings.push('شتاب کوتاه‌مدت بسیار بالا')}
+  const volumeTrend=volumePace==null?'UNKNOWN':volumePace>=1.10?'RISING':volumePace<0.60?'FADING':'STEADY';
+  if(fomoRisk==='HIGH')warnings.push('ریسک FOMO / تعقیب قیمت');
+  return {trend,fomoRisk,pumpDumpRisk,volumePace,volumeTrend,buyRatio,warnings,note:'تشخیص حمایت/مقاومت و الگوی کندل نیازمند مشاهده چارت DexScreener است'};
+}
+
+function academyGuard(t){
+  const checks=[]; const sec=t.security||{},chart=t.chart||{},mq=t.marketQuality||{};
+  const state=(ok,bad)=>ok?'pass':bad?'fail':'manual';
+  checks.push({name:'Mint authority لغو شده',state:state(sec.mintDisabled===true,sec.mintDisabled===false)});
+  checks.push({name:'Freeze authority غیرفعال',state:state(sec.freezeDisabled===true,sec.freezeDisabled===false)});
+  checks.push({name:'توزیع هولدر طبق قانون رادار',state:state(sec.holderPolicyPassed===true,sec.holderPolicyPassed===false)});
+  checks.push({name:'نقدینگی سالم نسبت به Market Cap',state:mq.liqRatio>=0.05?'pass':mq.liqRatio>0&&mq.liqRatio<0.02?'fail':'manual'});
+  checks.push({name:'حجم در حال رشد، نه محو شدن',state:chart.volumeTrend==='RISING'?'pass':chart.volumeTrend==='FADING'?'fail':'manual'});
+  checks.push({name:'فعالیت غیررباتی',state:t.activity?.label==='PROBABLE ORGANIC'?'pass':t.activity?.label==='BOT RISK'?'fail':'manual'});
+  checks.push({name:'شبکه اجتماعی/جامعه قابل مشاهده',state:(t.socialSources||[]).length>=2&&t.trend?.score>=40?'pass':'manual'});
+  checks.push({name:'Liquidity Lock/Burn تأیید شده',state:'manual'});
+  checks.push({name:'Dev holding پایین تأیید شده',state:'manual'});
+  checks.push({name:'Bundle/Sniper/Insider پایین',state:'manual'});
+  checks.push({name:'تست فروش کوچک برای Honeypot',state:'manual'});
+  const pass=checks.filter(x=>x.state==='pass').length;
+  const fail=checks.filter(x=>x.state==='fail').length;
+  const manual=checks.length-pass-fail;
+  const criticalFail=
+    sec.mintDisabled===false||sec.freezeDisabled===false||sec.holderPolicyPassed===false||
+    t.activity?.label==='BOT RISK'||chart.pumpDumpRisk==='HIGH'||(mq.liqRatio>0&&mq.liqRatio<0.02);
+  const blocked=criticalFail||fail>=2;
+  const score=Math.round(pass/checks.length*100);
+  const label=blocked?'BLOCK':fail===0&&pass>=6?'BASIC PASS':fail===0?'NEEDS REVIEW':'CAUTION';
+  return {score,label,pass,fail,manual,blocked,checks,source:'memecoin-academy-derived rules; manual checks remain manual'};
+}
+
 function assessSecurity(t){
   const s=t.security;
   const coreOk=s.mintDisabled===true&&s.freezeDisabled===true&&s.holderPolicyPassed;
   const organicOk=t.activity&&t.activity.score>=72&&t.activity.label==='PROBABLE ORGANIC';
   const organicHigh=t.activity&&t.activity.score>=58&&t.activity.label!=='BOT RISK';
-  const maxOk=coreOk&&organicOk&&s.holderStrong&&s.score>=85&&t.liquidity>=10000;
-  const highOk=coreOk&&organicHigh&&s.score>=75&&t.liquidity>=5000;
+  const knowledgeOk=(!t.academy||!t.academy.blocked)&&(t.marketQuality?.score??0)>=65&&t.chart?.pumpDumpRisk!=='HIGH';
+  const maxOk=coreOk&&organicOk&&knowledgeOk&&s.holderStrong&&s.score>=85&&t.liquidity>=10000;
+  const highOk=coreOk&&organicHigh&&(!t.academy||!t.academy.blocked)&&s.score>=75&&t.liquidity>=5000;
   const tier=maxOk?'MAX SECURITY':highOk?'HIGH':coreOk&&s.score>=60?'REVIEW':'REJECT';
   return {tier,maxOk,highOk};
 }
@@ -251,6 +318,9 @@ async function build(){
     t.bluesky={mentions2h:0,engagement2h:0};
     t.activity=activityScore(t);
     t.trend=trendScore(t,s);
+    t.marketQuality=marketQualityScore(t);
+    t.chart=chartDiscipline(t);
+    t.academy=academyGuard(t);
     t.verdict=verdict(t); out.push(t); await sleep(55);
   }
   const pre=[...out].sort((a,b)=>b.trend.score-a.trend.score).slice(0,10);
@@ -261,6 +331,9 @@ async function build(){
       t.trend.reasons.push(`Bluesky: ${b.mentions2h} mention / 2h`);
       if(!t.trend.sources.includes('Bluesky'))t.trend.sources.push('Bluesky');
     }
+    t.marketQuality=marketQualityScore(t);
+    t.chart=chartDiscipline(t);
+    t.academy=academyGuard(t);
     t.verdict=verdict(t);
   }
   const rank={'STRONG WATCH':4,'WATCH':3,'LOW SIGNAL':2,'SKIP':1};
@@ -271,6 +344,7 @@ async function build(){
     sourceStatus:{dexscreener:'live',solanaRpc:'live',bluesky:'live-public',x:process.env.X_BEARER_TOKEN?'configured':'needs API key',youtube:process.env.YOUTUBE_API_KEY?'configured':'needs API key',reddit:process.env.REDDIT_CLIENT_ID?'configured':'needs OAuth',instagram:process.env.INSTAGRAM_SOCIAL_TOKEN?'configured':'needs API access',tiktok:process.env.TIKTOK_RESEARCH_TOKEN?'configured':'needs research access'},
     holderPolicy:{hardRules:{holder1MaxPct:10,holders2to10EachMaxPct:5},gradeA:{holder1MaxPct:5,holders2to10EachMaxPct:2.5},gradeB:{holder1MaxPct:7.5,holders2to10EachMaxPct:4},gradeC:{holder1MaxPct:10,holders2to10EachMaxPct:5},unknownFailsStrong:true},
     activityPolicy:{probableOrganicMin:72,highSecurityMin:58,method:'aggregate heuristics; not proof of human identity'},
+    knowledgeEngine:{marketQuality:'transparency + liquidity + data coverage',chartDiscipline:'trend + FOMO + pump/dump guard',academy:'rug/honeypot/MEV/sniper/risk checklist; unknown checks stay manual'},
     disclaimer:'قانون هولدرها: هولدر شماره 1 حداکثر 10% و هرکدام از هولدرهای شماره 2 تا 10 حداکثر 5% می‌توانند داشته باشند. مجموع Top10 فقط جهت اطلاع نمایش داده می‌شود و شرط رد نیست. Organic Activity یک تخمین ضدربات/ضدواش است. هیچ فیلتر آن‌چین کلاهبرداری را 100% رد نمی‌کند.'};
   cache={at:Date.now(),data};return data;
 }
@@ -469,11 +543,11 @@ button,input,select{background:#101c31;color:#fff;border:1px solid #29415f;borde
 .score{height:7px;background:#15243a;border-radius:10px;overflow:hidden;margin-top:5px}.fill{height:100%;background:linear-gradient(90deg,#4ea5ff,#70f0ae)}
 .chips{display:flex;flex-wrap:wrap;gap:5px;margin-top:10px}.chip{font-size:11px;background:#15243a;border:1px solid #2a4568;padding:4px 7px;border-radius:999px;color:#b8d1f4}
 .flags{margin-top:10px;color:#ff9bad;font-size:12px}.safe{color:#75efad}.links a{color:#7fc2ff;text-decoration:none;margin-left:10px;font-size:12px}.holders{margin-top:10px;background:#091321;border-radius:10px;padding:9px}.holder{display:flex;justify-content:space-between;gap:8px;padding:5px 0;border-bottom:1px solid #16253a;font-size:11px}.holder:last-child{border-bottom:0}.holder a{color:#8ec7ff;text-decoration:none;font-family:monospace}.secmax{color:#72f5b1}.sechigh{color:#9bd3ff}.secreview{color:#ffd675}.secreject{color:#ff8a9d}details{margin-top:10px}summary{cursor:pointer;color:#a8bad4}
-.verifyrow{display:flex;justify-content:space-between;gap:8px;padding:6px 0;border-bottom:1px solid #1b2a40;font-size:12px}.verifyrow:last-child{border-bottom:0}.pass{color:#72f5b1}.fail{color:#ff8a9d}.manual{color:#ffd675}.research{display:flex;flex-wrap:wrap;gap:7px;margin-top:10px}.research a{background:#14253b;border:1px solid #315072;padding:7px 9px;border-radius:9px;color:#a9d5ff;text-decoration:none;font-size:12px}#status{color:#9db0cc}.warn{background:#271b0d;border:1px solid #5d4120;padding:10px;border-radius:10px;color:#ffd087;margin-bottom:14px}.sources{font-size:11px;color:#8fa3c2;margin-bottom:15px}
+.knowledge{margin-top:10px;background:#0a1424;border:1px solid #29415f;border-radius:12px;padding:10px}.knowledge-title{font-weight:800;margin-bottom:7px}.riskbox{background:#0d1729;border:1px solid #223652;border-radius:14px;padding:14px;margin:14px 0}.riskline{display:flex;gap:10px;align-items:center;flex-wrap:wrap}.riskline input{width:150px}.verifyrow{display:flex;justify-content:space-between;gap:8px;padding:6px 0;border-bottom:1px solid #1b2a40;font-size:12px}.verifyrow:last-child{border-bottom:0}.pass{color:#72f5b1}.fail{color:#ff8a9d}.manual{color:#ffd675}.research{display:flex;flex-wrap:wrap;gap:7px;margin-top:10px}.research a{background:#14253b;border:1px solid #315072;padding:7px 9px;border-radius:9px;color:#a9d5ff;text-decoration:none;font-size:12px}#status{color:#9db0cc}.warn{background:#271b0d;border:1px solid #5d4120;padding:10px;border-radius:10px;color:#ffd087;margin-bottom:14px}.sources{font-size:11px;color:#8fa3c2;margin-bottom:15px}
 @media(max-width:650px){.stats{grid-template-columns:1fr 1fr}.summary{grid-template-columns:1fr 1fr}.wrap{padding:12px}}
 </style></head><body><div class="wrap"><h1>🚀 رادار یکپارچه سولانا</h1><div class="sub">میم‌کوین‌ها + اسمارت‌مانی + نهنگ‌ها + هولدرهای بزرگ + هشدار خروج — همه در یک صفحه</div>
-<div class="warn">🧭 چک‌لیست حرفه‌ای طبق راهنمای پیوست فعال است: معامله/کیف‌پول، هولدر، ضدربات، خروج، نقدینگی و ابزارهای GMGN/Bubblemaps/Rugcheck بررسی می‌شوند.<br><br>🔥 بخش پیشنهادهای برتر فقط امتیاز مومنتوم ۹۰/۱۰۰+ را نشان می‌دهد؛ این امتیاز احتمال قطعی پامپ نیست.<br><br>📈 روی دکمه «مشاهده چارت در DexScreener» هر ارز بزن تا مستقیم چارتش باز شود.<br><br>فیلتر امنیت + ضدربات فعال است. هولدر شماره ۱ باید حداکثر ۱۰٪ داشته باشد و هرکدام از هولدرهای شماره ۲ تا ۱۰ حداکثر ۵٪. مجموع Top10 فقط برای اطلاع نمایش داده می‌شود. امنیت خیلی بالا همچنان شرایط سخت‌گیرانه‌تری دارد.</div>
-<div class="summary"><div class="sum"><div class="k">تعداد ارزهای دیده‌شده</div><div class="big" id="sCount">–</div></div><div class="sum"><div class="k">ترند قوی ≥ ۵۰</div><div class="big" id="sTrend">–</div></div><div class="sum"><div class="k">زیر نظر قوی</div><div class="big" id="sStrong">–</div></div><div class="sum"><div class="k">بروزرسانی</div><div class="big">60s</div></div></div>
+<div class="warn">📚 قواعد سه کتاب/منبع آموزشی فعال شده‌اند. کیفیت بازار، روند و FOMO، Pump/Dump، Rug/Honeypot و مدیریت ریسک به چک‌ها اضافه شده‌اند.<br><br>🧭 چک‌لیست حرفه‌ای طبق راهنمای پیوست فعال است: معامله/کیف‌پول، هولدر، ضدربات، خروج، نقدینگی و ابزارهای GMGN/Bubblemaps/Rugcheck بررسی می‌شوند.<br><br>🔥 بخش پیشنهادهای برتر فقط امتیاز مومنتوم ۹۰/۱۰۰+ را نشان می‌دهد؛ این امتیاز احتمال قطعی پامپ نیست.<br><br>📈 روی دکمه «مشاهده چارت در DexScreener» هر ارز بزن تا مستقیم چارتش باز شود.<br><br>فیلتر امنیت + ضدربات فعال است. هولدر شماره ۱ باید حداکثر ۱۰٪ داشته باشد و هرکدام از هولدرهای شماره ۲ تا ۱۰ حداکثر ۵٪. مجموع Top10 فقط برای اطلاع نمایش داده می‌شود. امنیت خیلی بالا همچنان شرایط سخت‌گیرانه‌تری دارد.</div>
+<div class="riskbox"><div class="knowledge-title">📚 موتور سه‌منبعی رادار</div><div class="sub">کیفیت داده و نقدینگی + خوانش روند/ضد-FOMO + چک‌لیست Memecoin Academy. مواردی که داده مستقیم ندارند، «نیاز به بررسی» می‌مانند.</div><div class="riskline"><label>سرمایه فرضی: <input id="riskBankroll" type="number" min="0" step="100" value="1000" oninput="updateRiskPlan()"></label><label>ریسک هر معامله: <input id="riskPct" type="range" min="1" max="10" value="2" oninput="updateRiskPlan()"></label><b id="riskPctOut">2%</b><span id="riskPlanOut"></span></div><div class="sub" style="margin-top:8px">این ماشین‌حساب آموزشی فرض می‌کند بخش در معرض ریسک می‌تواند کامل از بین برود. برای میم‌کوین، Academy محدوده ۱–۳٪ را «قابل‌تحمل‌تر» توصیف می‌کند؛ این توصیه شخصی سرمایه‌گذاری نیست.</div></div><div class="summary"><div class="sum"><div class="k">تعداد ارزهای دیده‌شده</div><div class="big" id="sCount">–</div></div><div class="sum"><div class="k">ترند قوی ≥ ۵۰</div><div class="big" id="sTrend">–</div></div><div class="sum"><div class="k">زیر نظر قوی</div><div class="big" id="sStrong">–</div></div><div class="sum"><div class="k">بروزرسانی</div><div class="big">60s</div></div></div>
 <div id="sources" class="sources"></div>
 <div style="margin:18px 0"><h2 style="margin:0 0 8px">🧭 مرکز بررسی حرفه‌ای نهنگ و ریسک</h2>
 <div class="sub">طبق راهنمای شما: اول کیف‌پول سودده، بعد معامله واقعی، سپس خوشه هولدرها و ریسک توکن تأیید می‌شود.</div>
@@ -498,6 +572,27 @@ const faSecurity=v=>({'MAX SECURITY':'امنیت خیلی بالا','HIGH':'ام
 const faActivity=v=>({'PROBABLE ORGANIC':'فعالیت احتمالاً طبیعی','MIXED':'فعالیت ترکیبی','BOT RISK':'ریسک ربات','UNKNOWN':'نامشخص'}[v]||v);
 const faSeverity=v=>({'BUY':'خرید','SELL STARTED':'فروش شروع شد','HEAVY SELL':'فروش سنگین','MULTI-WALLET EXIT':'خروج همزمان چند کیف‌پول','INFO':'اطلاعات'}[v]||v);
 const faSide=v=>v==='buy'?'خرید':v==='sell'?'فروش':v;
+const faMQ=v=>({'HIGH':'کیفیت بالا','MEDIUM':'کیفیت متوسط','LOW':'کیفیت پایین'}[v]||v);
+const faChartTrend=v=>({'UP':'صعودی','DOWN':'نزولی','SIDEWAYS':'خنثی'}[v]||v);
+const faRisk=v=>({'LOW':'کم','MEDIUM':'متوسط','HIGH':'زیاد'}[v]||v);
+const faVolumeTrend=v=>({'RISING':'در حال رشد','STEADY':'نسبتاً ثابت','FADING':'در حال افت','UNKNOWN':'نامشخص'}[v]||v);
+function updateRiskPlan(){
+ const bank=Math.max(Number(document.querySelector('#riskBankroll')?.value||0),0);
+ const risk=Math.max(Number(document.querySelector('#riskPct')?.value||2),1);
+ const size=bank*risk/100;
+ const after5=bank*Math.pow(1-risk/100,5);
+ const tag=risk<=3?'محدوده محافظه‌کارانه‌تر':risk<=8?'تهاجمی':'منطقه خطر';
+ if(document.querySelector('#riskPctOut'))riskPctOut.textContent=risk+'%';
+ if(document.querySelector('#riskPlanOut'))riskPlanOut.textContent='حداکثر ریسک فرضی: '+money(size)+' | بعد از ۵ باخت کامل: '+money(after5)+' | '+tag;
+}
+const bookEngineBox=t=>{
+ const mq=t.marketQuality||{},ch=t.chart||{},ac=t.academy||{};
+ const rows=(ac.checks||[]).map(c=>'<div class="verifyrow"><span>'+esc(c.name)+'</span><b class="'+c.state+'">'+(c.state==='pass'?'✓ تأیید':c.state==='fail'?'✕ رد':'◌ بررسی دستی')+'</b></div>').join('');
+ return '<div class="knowledge"><div class="knowledge-title">📚 موتور سه‌منبعی</div>'+
+ '<div class="chips"><span class="chip">کیفیت داده/بازار: '+(mq.score??'?')+'/100 — '+esc(faMQ(mq.label))+'</span><span class="chip">روند: '+esc(faChartTrend(ch.trend))+'</span><span class="chip">ریسک FOMO: '+esc(faRisk(ch.fomoRisk))+'</span><span class="chip">ریسک Pump/Dump: '+esc(faRisk(ch.pumpDumpRisk))+'</span><span class="chip">حجم: '+esc(faVolumeTrend(ch.volumeTrend))+'</span></div>'+
+ '<details><summary>چک‌لیست Academy ('+(ac.pass??0)+' تأیید / '+(ac.fail??0)+' رد / '+(ac.manual??0)+' دستی)</summary><div class="holders">'+rows+'</div></details>'+
+ '<div class="sub" style="margin-top:8px">📈 حمایت/مقاومت و الگوی کندل را روی DexScreener ببین. 🧯 قبل از ورود، خروج را مشخص کن؛ سود را مرحله‌ای بردار و روی توکن رو به مرگ میانگین کم نکن. تست Honeypot فقط با فروش کوچک دستی قابل تأیید است.</div></div>';
+};
 const dexSearch=a=>'https://dexscreener.com/search?q='+encodeURIComponent(a||'');
 const dexForAddress=a=>{const t=(data||[]).find(x=>x.mint===a);return t&&t.dexUrl?t.dexUrl:dexSearch(a)};
 const gmgnLink=a=>'https://gmgn.ai/sol/token/'+encodeURIComponent(a||'');
@@ -522,6 +617,9 @@ function professionalSummary(t){
  checks.push({name:'اسمارت‌مانی سودده روی توکن',state:sm&&Number(sm.smartMoneyCount||0)>0?'pass':(smartData&&smartData.configured?'manual':'manual')});
  checks.push({name:'بدون خروج Smart Money در ۳۰ دقیقه',state:liveData&&liveData.connected?(exits.length?'fail':'pass'):'manual'});
  checks.push({name:'اندازه خرید نهنگ نسبت به نقدینگی',state:whaleRatio==null?'manual':(whaleRatio<=0.15?'pass':(whaleRatio>0.30?'fail':'manual'))});
+ checks.push({name:'کیفیت داده/بازار ≥ 65',state:t.marketQuality?.score>=65?'pass':t.marketQuality?'fail':'manual'});
+ checks.push({name:'بدون Pump/Dump Risk بالا',state:t.chart?.pumpDumpRisk==='HIGH'?'fail':t.chart?'pass':'manual'});
+ checks.push({name:'Academy Guard مسدود نکرده',state:t.academy?.blocked===true?'fail':t.academy?'pass':'manual'});
  const pass=checks.filter(x=>x.state==='pass').length,fail=checks.filter(x=>x.state==='fail').length;
  return {checks,pass,fail,blocked:fail>0,whaleUsd,whaleRatio,smart:sm};
 }
@@ -558,7 +656,7 @@ function render(){
   '<div class="chips">'+chips+'</div><div class="chips">'+rs+'</div><div class="flags">'+esc(fl)+'</div><div class="flags">'+esc((t.activity?.flags||[]).join(' • '))+'</div><div class="links" style="margin-top:10px"><a target="_blank" rel="noopener" href="'+esc(t.dexUrl||dexSearch(t.mint))+'">📈 مشاهده چارت در DexScreener</a><a target="_blank" rel="noopener" href="https://solscan.io/token/'+esc(t.mint)+'">سول‌اسکن</a>'+(x?'<a target="_blank" rel="noopener" href="'+esc(x)+'">ایکس / توییتر</a>':'')+'</div></div>'
  }).join('')||'<p>موردی با فیلتر فعلی نیست.</p>'
 }
-load();setInterval(load,60000);
+updateRiskPlan();load();setInterval(load,60000);
 
 
 
@@ -590,6 +688,10 @@ function renderFeatured(){
   if(pc>=2&&pc<=12){score+=8;why.push('مومنتوم مثبت')}
   else if(pc>20){score-=15;why.push('پامپ کوتاه‌مدت زیاد')}
   if(t.security&&t.security.holderStrong){score+=7;why.push('توزیع هولدر مناسب')}
+  if((t.marketQuality?.score||0)>=80){score+=8;why.push('کیفیت بازار/داده بالا')}else if((t.marketQuality?.score||0)>=65){score+=4}
+  if(t.academy&&!t.academy.blocked&&t.academy.fail===0){score+=7;why.push('Academy Guard بدون رد')}
+  if(t.chart?.fomoRisk==='HIGH'){score-=15;why.push('ریسک FOMO بالا')}
+  if(t.chart?.pumpDumpRisk==='HIGH'){score-=25;why.push('ریسک Pump/Dump بالا')}
   var sm=smartMap.get(t.mint);
   if(sm){score+=Math.min(12,6+Number(sm.smartMoneyCount||0)*2);why.push('اسمارت‌مانی حاضر است')}
   var wh=whaleMap.get(t.mint);
@@ -598,7 +700,7 @@ function renderFeatured(){
   score=Math.max(0,Math.min(100,Math.round(score)));
   return {t:t,score:score,why:why,sm:sm,wh:wh};
  }).filter(function(x){
-  return x.score>=90&&!professionalSummary(x.t).blocked&&!exitSet.has(x.t.mint)&&x.t.security&&x.t.security.tier!=='REJECT'&&(!x.t.activity||x.t.activity.label!=='BOT RISK');
+  return x.score>=90&&(x.t.marketQuality?.score||0)>=65&&!x.t.academy?.blocked&&x.t.chart?.pumpDumpRisk!=='HIGH'&&!professionalSummary(x.t).blocked&&!exitSet.has(x.t.mint)&&x.t.security&&x.t.security.tier!=='REJECT'&&(!x.t.activity||x.t.activity.label!=='BOT RISK');
  }).sort(function(a,b){return b.score-a.score}).slice(0,6);
 
  featuredStatus.textContent=rows.length
@@ -610,7 +712,7 @@ function renderFeatured(){
   return '<div class="card"><div class="top"><div><div class="name">🔥 '+esc(t.name)+' <small>$'+esc(t.symbol)+'</small></div><div class="mint">'+esc(t.mint)+'</div></div><span class="badge strong">امتیاز '+x.score+'/100</span></div>'+
    '<div class="stats"><div class="stat"><div class="k">خرید نهنگ</div><div class="v">'+money(wh?wh.usd:0)+'</div></div><div class="stat"><div class="k">تعداد خرید نهنگ</div><div class="v">'+(wh?wh.count:0)+'</div></div><div class="stat"><div class="k">کیف‌پول اسمارت‌مانی</div><div class="v">'+(sm?sm.smartMoneyCount:0)+'</div></div>'+
    '<div class="stat"><div class="k">تغییر ۵ دقیقه</div><div class="v">'+Number(t.priceChange5m||0).toFixed(1)+'%</div></div><div class="stat"><div class="k">حجم ۵ دقیقه</div><div class="v">'+money(t.volume5m)+'</div></div><div class="stat"><div class="k">امنیت</div><div class="v">'+esc(faSecurity(t.security&&t.security.tier?t.security.tier:'REVIEW'))+'</div></div></div>'+
-   '<div class="chips">'+x.why.slice(0,6).map(function(r){return '<span class="chip">'+esc(r)+'</span>'}).join('')+'</div>'+professionalBox(t)+
+   '<div class="chips">'+x.why.slice(0,7).map(function(r){return '<span class="chip">'+esc(r)+'</span>'}).join('')+'</div>'+bookEngineBox(t)+professionalBox(t)+
    '<div class="links" style="margin-top:10px"><a target="_blank" rel="noopener" href="'+esc(t.dexUrl||dexSearch(t.mint))+'">📈 مشاهده چارت در DexScreener</a><a target="_blank" rel="noopener" href="https://solscan.io/token/'+esc(t.mint)+'">سول‌اسکن</a></div></div>';
  }).join('');
 }
