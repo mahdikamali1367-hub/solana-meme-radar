@@ -473,9 +473,9 @@ button,input,select{background:#101c31;color:#fff;border:1px solid #29415f;borde
 #status{color:#9db0cc}.warn{background:#271b0d;border:1px solid #5d4120;padding:10px;border-radius:10px;color:#ffd087;margin-bottom:14px}.sources{font-size:11px;color:#8fa3c2;margin-bottom:15px}
 @media(max-width:650px){.stats{grid-template-columns:1fr 1fr}.summary{grid-template-columns:1fr 1fr}.wrap{padding:12px}}
 </style></head><body><div class="wrap"><h1>🚀 رادار یکپارچه سولانا</h1><div class="sub">میم‌کوین‌ها + اسمارت‌مانی + نهنگ‌ها + هولدرهای بزرگ + هشدار خروج — همه در یک صفحه</div>
-<div class="warn">🔥 بخش «پیشنهادهای برتر برای بررسی» فقط امتیاز مومنتوم ۹۰/۱۰۰+ را نشان می‌دهد؛ این عدد احتمال ۹۰٪ پامپ نیست.<br><br>📈 روی دکمه «مشاهده چارت در DexScreener» هر ارز بزن تا مستقیم چارتش باز شود.<br><br>فیلتر امنیت + ضدربات فعال است. مجموع Top10 باید بین ۱۰٪ تا ۲۰٪ باشد؛ بزرگ‌ترین هولدر و Top5 هم سقف جداگانه دارند. MAX SECURITY فقط با فعالیت PROBABLE ORGANIC و شرایط امنیتی کامل داده می‌شود.</div>
+<div class="warn">🔥 بخش پیشنهادهای برتر فقط امتیاز مومنتوم ۹۰/۱۰۰+ را نشان می‌دهد؛ این امتیاز احتمال قطعی پامپ نیست.<br><br>📈 روی دکمه «مشاهده چارت در DexScreener» هر ارز بزن تا مستقیم چارتش باز شود.<br><br>فیلتر امنیت + ضدربات فعال است. مجموع Top10 باید بین ۱۰٪ تا ۲۰٪ باشد؛ بزرگ‌ترین هولدر و Top5 هم سقف جداگانه دارند. MAX SECURITY فقط با فعالیت PROBABLE ORGANIC و شرایط امنیتی کامل داده می‌شود.</div>
 <div class="summary"><div class="sum"><div class="k">تعداد ارزهای دیده‌شده</div><div class="big" id="sCount">–</div></div><div class="sum"><div class="k">ترند قوی ≥ ۵۰</div><div class="big" id="sTrend">–</div></div><div class="sum"><div class="k">زیر نظر قوی</div><div class="big" id="sStrong">–</div></div><div class="sum"><div class="k">بروزرسانی</div><div class="big">60s</div></div></div>
-<div id="sources" class="sources"></div><div style="margin:18px 0"><h2 style="margin:0 0 8px">🔥 پیشنهادهای برتر برای بررسی</h2><div class="sub" id="featuredStatus">فقط ارزهایی با امتیاز مومنتوم خیلی بالا نمایش داده می‌شوند؛ امتیاز ۹۰/۱۰۰ به معنی ۹۰٪ احتمال پامپ نیست.</div><div id="featuredGrid" class="grid"></div></div><div style="margin:18px 0"><h2 style="margin:0 0 8px">⭐ سیگنال‌های مشترک</h2><div class="sub">ارزهایی که همزمان در چند منبع دیده می‌شوند</div><div id="unifiedGrid" class="grid"></div></div><div style="margin:18px 0"><h2 style="margin:0 0 8px">🧠 اسمارت‌مانی — کیف‌پول‌های سودده روی چه ارزهایی سوارند</h2><div class="sub" id="smartStatus">در حال بررسی کیف‌پول‌های سودده...</div><div id="smartGrid" class="grid"></div></div><div style="margin:18px 0"><h2 style="margin:0 0 8px">🐋 خریدهای نهنگ‌ها</h2><div class="sub" id="whaleStatus">خریدهای بزرگ سولانا در حال بررسی است...</div><div id="whaleGrid" class="grid"></div></div><div style="margin:18px 0"><h2 style="margin:0 0 8px">⚡ جریان زنده خرید/فروش و هشدار خروج</h2><div class="sub" id="liveSmartStatus">در حال اتصال به جریان خرید/فروش سولانا...</div><div id="liveExitBanner"></div><div id="liveSmartGrid" class="grid"></div></div><div style="margin:18px 0"><h2 style="margin:0 0 8px">🪙 میم‌کوین‌های زیر نظر</h2><div class="sub">امنیت، هولدرها، فعالیت طبیعی و ترند اجتماعی</div></div>
+<div id="sources" class="sources"></div><div style="margin:18px 0"><h2 style="margin:0 0 8px">🔥 پیشنهادهای برتر برای بررسی</h2><div class="sub" id="featuredStatus">فقط گزینه‌های با امتیاز مومنتوم خیلی بالا نمایش داده می‌شوند؛ ۹۰/۱۰۰ به معنی ۹۰٪ احتمال پامپ نیست.</div><div id="featuredGrid" class="grid"></div></div><div style="margin:18px 0"><h2 style="margin:0 0 8px">⭐ سیگنال‌های مشترک</h2><div class="sub">ارزهایی که همزمان در چند منبع دیده می‌شوند</div><div id="unifiedGrid" class="grid"></div></div><div style="margin:18px 0"><h2 style="margin:0 0 8px">🧠 اسمارت‌مانی — کیف‌پول‌های سودده روی چه ارزهایی سوارند</h2><div class="sub" id="smartStatus">در حال بررسی کیف‌پول‌های سودده...</div><div id="smartGrid" class="grid"></div></div><div style="margin:18px 0"><h2 style="margin:0 0 8px">🐋 خریدهای نهنگ‌ها</h2><div class="sub" id="whaleStatus">خریدهای بزرگ سولانا در حال بررسی است...</div><div id="whaleGrid" class="grid"></div></div><div style="margin:18px 0"><h2 style="margin:0 0 8px">⚡ جریان زنده خرید/فروش و هشدار خروج</h2><div class="sub" id="liveSmartStatus">در حال اتصال به جریان خرید/فروش سولانا...</div><div id="liveExitBanner"></div><div id="liveSmartGrid" class="grid"></div></div><div style="margin:18px 0"><h2 style="margin:0 0 8px">🪙 میم‌کوین‌های زیر نظر</h2><div class="sub">امنیت، هولدرها، فعالیت طبیعی و ترند اجتماعی</div></div>
 <div class="bar"><button onclick="load()">↻ بروزرسانی</button><button onclick="enableExitNotifications()">🔔 فعال‌کردن هشدار خروج</button><input id="q" placeholder="جستجو نام / نماد / آدرس توکن" oninput="render()"><select id="vf" onchange="render()"><option value="">همه وضعیت‌ها</option><option>STRONG WATCH</option><option>WATCH</option><option>LOW SIGNAL</option><option>SKIP</option></select><select id="sf" onchange="render()"><option value="0">همه امتیازهای ترند</option><option value="50">Trend ≥ 50</option><option value="70">Trend ≥ 70</option></select><select id="secf" onchange="render()"><option value="">همه سطح‌های امنیت</option><option>MAX SECURITY</option><option>HIGH</option><option>REVIEW</option><option>REJECT</option></select><select id="actf" onchange="render()"><option value="">همه نوع فعالیت</option><option>PROBABLE ORGANIC</option><option>MIXED</option><option>BOT RISK</option></select><span id="status">در حال بارگذاری...</span></div>
 <div id="grid" class="grid"></div></div><script>
 let data=[],smartData=null,liveData=null; const $=s=>document.querySelector(s);
@@ -518,54 +518,50 @@ load();setInterval(load,60000);
 
 
 function renderFeatured(){
- const smartMap=new Map((smartData?.tokens||[]).map(t=>[t.address,t]));
+ const smartMap=new Map((smartData&&smartData.tokens?smartData.tokens:[]).map(function(t){return [t.address,t]}));
  const whaleMap=new Map();
- for(const e of (liveData?.whaleBuys||[])){
-  const k=e.tokenAddress;if(!k)continue;
-  const x=whaleMap.get(k)||{count:0,usd:0,traders:new Set()};
-  x.count++;x.usd+=Number(e.tradeUsd||0);if(e.trader)x.traders.add(e.trader);whaleMap.set(k,x);
- }
- const exitMap=new Map();
- for(const e of (liveData?.exits||[])){
-  const k=e.tokenAddress;if(!k)continue;
-  const x=exitMap.get(k)||{count:0,usd:0};x.count++;x.usd+=Number(e.tradeUsd||0);exitMap.set(k,x);
- }
- const rows=(data||[]).map(t=>{
-  let score=0;const why=[];
-  const sec=t.security?.tier||'REVIEW';
-  if(sec==='MAX SECURITY'){score+=18;why.push('امنیت خیلی بالا')}else if(sec==='HIGH'){score+=12;why.push('امنیت بالا')}
-  if((t.activity?.score||0)>=72){score+=12;why.push('فعالیت طبیعی قوی')}
-  if((t.trend?.score||0)>=60){score+=10;why.push('ترند اجتماعی قوی')}else if((t.trend?.score||0)>=45)score+=5;
+ const whaleRows=(liveData&&liveData.whaleBuys)?liveData.whaleBuys:[];
+ whaleRows.forEach(function(e){
+  var k=e.tokenAddress;if(!k)return;
+  var x=whaleMap.get(k)||{count:0,usd:0};
+  x.count+=1;x.usd+=Number(e.tradeUsd||0);whaleMap.set(k,x);
+ });
+ const exitSet=new Set(((liveData&&liveData.exits)?liveData.exits:[]).map(function(e){return e.tokenAddress}).filter(Boolean));
+ const rows=(data||[]).map(function(t){
+  var score=0,why=[];
+  var sec=t.security&&t.security.tier?t.security.tier:'REVIEW';
+  if(sec==='MAX SECURITY'){score+=20;why.push('امنیت خیلی بالا')}
+  else if(sec==='HIGH'){score+=14;why.push('امنیت بالا')}
+  if(t.activity&&t.activity.score>=72){score+=12;why.push('فعالیت احتمالاً طبیعی')}
+  if(t.trend&&t.trend.score>=60){score+=10;why.push('ترند قوی')}
+  else if(t.trend&&t.trend.score>=45){score+=5}
   if((t.liquidity||0)>=10000){score+=8;why.push('نقدینگی مناسب')}
-  if((t.volume5m||0)>=5000){score+=10;why.push('حجم ۵دقیقه بالا')}
-  if((t.txns5m||0)>=50)score+=7;
-  const sell=Math.max(1,t.sells5m||0),br=(t.buys5m||0)/sell;
-  if(br>=1.5){score+=10;why.push('فشار خرید قوی')}else if(br>=1.15)score+=5;
-  const pc=Number(t.priceChange5m||0);
-  if(pc>=2&&pc<=12){score+=8;why.push('مومنتوم مثبت بدون کشیدگی زیاد')}
-  else if(pc>20){score-=15;why.push('پامپ کوتاه‌مدت زیاد؛ ریسک تعقیب')}
-  else if(pc<-8){score-=10;why.push('افت کوتاه‌مدت')}
-  if(t.security?.holderStrong){score+=7;why.push('توزیع هولدر خوب')}
-  const sm=smartMap.get(t.mint);
-  if(sm){score+=Math.min(12,6+(sm.smartMoneyCount||0)*2);why.push('اسمارت‌مانی روی توکن است')}
-  const wh=whaleMap.get(t.mint);
-  if(wh){
-    score+=Math.min(18,8+Math.min(10,Math.log10(1+wh.usd)*3));
-    why.push('خرید نهنگ '+money(wh.usd));
-  }
-  const ex=exitMap.get(t.mint);
-  if(ex){score-=Math.min(35,15+ex.count*8);why.push('فشار خروج دیده شده')}
+  if((t.volume5m||0)>=5000){score+=10;why.push('حجم ۵ دقیقه بالا')}
+  if((t.txns5m||0)>=50){score+=7}
+  var sells=Math.max(1,t.sells5m||0),buyRatio=(t.buys5m||0)/sells;
+  if(buyRatio>=1.5){score+=10;why.push('فشار خرید قوی')}
+  else if(buyRatio>=1.15){score+=5}
+  var pc=Number(t.priceChange5m||0);
+  if(pc>=2&&pc<=12){score+=8;why.push('مومنتوم مثبت')}
+  else if(pc>20){score-=15;why.push('پامپ کوتاه‌مدت زیاد')}
+  if(t.security&&t.security.holderStrong){score+=7;why.push('توزیع هولدر مناسب')}
+  var sm=smartMap.get(t.mint);
+  if(sm){score+=Math.min(12,6+Number(sm.smartMoneyCount||0)*2);why.push('اسمارت‌مانی حاضر است')}
+  var wh=whaleMap.get(t.mint);
+  if(wh){score+=Math.min(18,8+Math.min(10,Math.log10(1+wh.usd)*3));why.push('خرید نهنگ '+money(wh.usd))}
+  if(exitSet.has(t.mint)){score-=35;why.push('هشدار خروج فعال')}
   score=Math.max(0,Math.min(100,Math.round(score)));
-  return {...t,momentumScore:score,why,smartInfo:sm||null,whaleInfo:wh||null,exitInfo:ex||null};
- }).filter(t=>t.momentumScore>=90&&!t.exitInfo&&t.security?.tier!=='REJECT'&&t.activity?.label!=='BOT RISK')
-   .sort((a,b)=>b.momentumScore-a.momentumScore).slice(0,6);
+  return {t:t,score:score,why:why,sm:sm,wh:wh};
+ }).filter(function(x){
+  return x.score>=90&&!exitSet.has(x.t.mint)&&x.t.security&&x.t.security.tier!=='REJECT'&&(!x.t.activity||x.t.activity.label!=='BOT RISK');
+ }).sort(function(a,b){return b.score-a.score}).slice(0,6);
 
  featuredStatus.textContent=rows.length
-  ?'این‌ها امتیاز مومنتوم ۹۰/۱۰۰ یا بیشتر دارند؛ این امتیاز احتمال قطعی پامپ نیست.'
-  :'فعلاً هیچ میم‌کوینی شرایط سخت‌گیرانه ۹۰/۱۰۰ را ندارد؛ چیزی را به زور پیشنهاد نمی‌دهم.';
- featuredGrid.innerHTML=rows.map(t=>{
-  const wh=t.whaleInfo;
-  const smart=t.smartInfo;
+  ?'گزینه‌های زیر امتیاز مومنتوم ۹۰/۱۰۰ یا بیشتر دارند؛ این عدد تضمین یا احتمال واقعی پامپ نیست.'
+  :'فعلاً هیچ گزینه‌ای شرایط سخت‌گیرانه ۹۰/۱۰۰ را ندارد؛ چیزی به زور پیشنهاد نمی‌شود.';
+
+ featuredGrid.innerHTML=rows.map(function(x){
+  var t=x.t,wh=x.wh,sm=x.sm;
   return '<div class="card"><div class="top"><div><div class="name">🔥 '+esc(t.name)+' <small>
  const map=new Map();
  for(const t of (data||[])){
@@ -662,11 +658,11 @@ createServer(async(req,res)=>{
     res.writeHead(404,headers);res.end('Not found');
   }catch(e){res.writeHead(502,{'content-type':'application/json',...headers});res.end(JSON.stringify({ok:false,error:String(e?.message||e)}))}
 }).listen(PORT,'0.0.0.0',()=>console.log('Solana Meme Radar v3 live on '+PORT));
-+esc(t.symbol)+'</small></div><div class="mint">'+esc(t.mint)+'</div></div><span class="badge strong">امتیاز '+t.momentumScore+'/100</span></div>'+
-   '<div class="stats"><div class="stat"><div class="k">خرید نهنگ</div><div class="v">'+money(wh?.usd||0)+'</div></div><div class="stat"><div class="k">تعداد خرید نهنگ</div><div class="v">'+(wh?.count||0)+'</div></div><div class="stat"><div class="k">کیف‌پول اسمارت‌مانی</div><div class="v">'+(smart?.smartMoneyCount||0)+'</div></div>'+
-   '<div class="stat"><div class="k">تغییر ۵ دقیقه</div><div class="v">'+Number(t.priceChange5m||0).toFixed(1)+'%</div></div><div class="stat"><div class="k">حجم ۵ دقیقه</div><div class="v">'+money(t.volume5m)+'</div></div><div class="stat"><div class="k">امنیت</div><div class="v">'+esc(faSecurity(t.security?.tier||'REVIEW'))+'</div></div></div>'+
-   '<div class="chips">'+t.why.slice(0,6).map(x=>'<span class="chip">'+esc(x)+'</span>').join('')+'</div>'+
-   '<div class="links" style="margin-top:10px"><a target="_blank" rel="noopener" href="'+esc(t.dexUrl||dexSearch(t.mint))+'">📈 مشاهده چارت در DexScreener</a><a target="_blank" rel="noopener" href="https://solscan.io/token/'+esc(t.mint)+'">سول‌اسکن</a></div></div>'
++esc(t.symbol)+'</small></div><div class="mint">'+esc(t.mint)+'</div></div><span class="badge strong">امتیاز '+x.score+'/100</span></div>'+
+   '<div class="stats"><div class="stat"><div class="k">خرید نهنگ</div><div class="v">'+money(wh?wh.usd:0)+'</div></div><div class="stat"><div class="k">تعداد خرید نهنگ</div><div class="v">'+(wh?wh.count:0)+'</div></div><div class="stat"><div class="k">کیف‌پول اسمارت‌مانی</div><div class="v">'+(sm?sm.smartMoneyCount:0)+'</div></div>'+
+   '<div class="stat"><div class="k">تغییر ۵ دقیقه</div><div class="v">'+Number(t.priceChange5m||0).toFixed(1)+'%</div></div><div class="stat"><div class="k">حجم ۵ دقیقه</div><div class="v">'+money(t.volume5m)+'</div></div><div class="stat"><div class="k">امنیت</div><div class="v">'+esc(faSecurity(t.security&&t.security.tier?t.security.tier:'REVIEW'))+'</div></div></div>'+
+   '<div class="chips">'+x.why.slice(0,6).map(function(r){return '<span class="chip">'+esc(r)+'</span>'}).join('')+'</div>'+
+   '<div class="links" style="margin-top:10px"><a target="_blank" rel="noopener" href="'+esc(t.dexUrl||dexSearch(t.mint))+'">📈 مشاهده چارت در DexScreener</a><a target="_blank" rel="noopener" href="https://solscan.io/token/'+esc(t.mint)+'">سول‌اسکن</a></div></div>';
  }).join('');
 }
 
