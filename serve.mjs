@@ -210,7 +210,11 @@ async function kolTrendDiscovery(){
 }
 
 async function discovery(){
-  const urls=['https://api.dexscreener.com/token-profiles/latest/v1','https://api.dexscreener.com/token-boosts/latest/v1','https://api.dexscreener.com/token-boosts/top/v1'];
+  const urls=[
+    'https://api.dexscreener.com/token-profiles/latest/v1',
+    'https://api.dexscreener.com/token-boosts/latest/v1',
+    'https://api.dexscreener.com/token-boosts/top/v1'
+  ];
   const [sets,kol]=await Promise.all([Promise.allSettled(urls.map(u=>jfetch(u))),kolTrendDiscovery()]);
   const m=new Map();
   const blank=mint=>({mint,description:'',image:'',links:[],boostAmount:0,boostTotal:0,boostSeen:false,profileSeen:false,kolTrend:null});
@@ -223,7 +227,11 @@ async function discovery(){
       old.image=x.icon||old.image;
       old.links=Array.isArray(x.links)&&x.links.length?x.links:old.links;
       if(idx===0)old.profileSeen=true;
-      else {old.boostSeen=true;old.boostAmount=Math.max(old.boostAmount,num(x.amount));old.boostTotal=Math.max(old.boostTotal,num(x.totalAmount));}
+      else {
+        old.boostSeen=true;
+        old.boostAmount=Math.max(old.boostAmount,num(x.amount));
+        old.boostTotal=Math.max(old.boostTotal,num(x.totalAmount));
+      }
       m.set(x.tokenAddress,old);
     }
   });
@@ -232,12 +240,43 @@ async function discovery(){
     old.kolTrend=k;
     m.set(k.mint,old);
   }
-  return [...m.values()].sort((a,b)=>{
+
+  // Do not let KOL/boost ranking hide an actively bought fresh token.
+  // Pull lightweight market data for the candidate pool and rank buyer activity first.
+  const raw=[...m.values()].slice(0,120);
+  let pairs=new Map();
+  try{pairs=await pairsForMany(raw.map(x=>x.mint))}catch{}
+  for(const s of raw){
+    const p=pairs.get(s.mint);
+    if(!p){s.marketDiscoveryScore=0;continue}
+    const b5=num(p.txns?.m5?.buys),s5=num(p.txns?.m5?.sells),n5=b5+s5;
+    const b1=num(p.txns?.h1?.buys),s1=num(p.txns?.h1?.sells),n1=b1+s1;
+    const buyer5=n5?b5/n5*100:50;
+    const buyer1=n1?b1/n1*100:50;
+    const liq=num(p.liquidity?.usd),v5=num(p.volume?.m5),pc5=num(p.priceChange?.m5);
+    let ms=0;
+    if(buyer5>50)ms+=(buyer5-50)*1.4;
+    if(buyer1>50)ms+=(buyer1-50)*0.5;
+    ms+=Math.min(20,n5/8);
+    ms+=Math.min(18,v5/1500);
+    if(liq>=3000)ms+=5;if(liq>=10000)ms+=4;
+    if(pc5>80)ms-=6; // still discover it, but don't reward extreme FOMO.
+    s.marketDiscoveryScore=Math.round(ms);
+    s.discoveryBuyer5=+buyer5.toFixed(1);
+    s.discoveryBuyer1=+buyer1.toFixed(1);
+    s.discoveryVolume5m=v5;
+    s.discoveryLiquidity=liq;
+  }
+
+  return raw.sort((a,b)=>{
+    // Active buyer flow is the primary discovery signal.
+    const ma=num(a.marketDiscoveryScore),mb=num(b.marketDiscoveryScore);
+    if(mb!==ma)return mb-ma;
     const ka=num(a.kolTrend?.score),kb=num(b.kolTrend?.score);
     if(kb!==ka)return kb-ka;
-    if(a.kolTrend&&!b.kolTrend)return -1;if(b.kolTrend&&!a.kolTrend)return 1;
+    if(a.profileSeen&&!b.profileSeen)return -1;if(b.profileSeen&&!a.profileSeen)return 1;
     return num(b.boostTotal)-num(a.boostTotal);
-  }).slice(0,60);
+  }).slice(0,80);
 }
 async function pairFor(mint){
   try{
@@ -1005,7 +1044,7 @@ async function buildFresh(){
   if(cache.data&&Date.now()-cache.at<CACHE_MS)return cache.data;
   const seeds=await discovery();
   const out=[];
-  for(const s of seeds.slice(0,45)){
+  for(const s of seeds.slice(0,70)){
     const p=await pairFor(s.mint); if(!p)continue;
     const created=num(p.pairCreatedAt);
     if(!created)continue;
@@ -2578,7 +2617,21 @@ function startLivePush(){
 document.addEventListener('click',function(e){var d=e.target.closest('.detail-btn');if(!d)return;openDetail(d.getAttribute('data-mint')||'')});
 document.getElementById('tabs').addEventListener('click',function(e){var b=e.target.closest('[data-tab]');if(!b)return;activeTab=b.dataset.tab;document.querySelectorAll('.tab').forEach(function(x){x.classList.toggle('active',x===b)});document.querySelectorAll('.panel').forEach(function(x){x.classList.remove('active')});document.getElementById(activeTab+'Panel').classList.add('active');renderActivePanel()});
 document.addEventListener('change',function(e){var sfel=e.target.closest('.signal-filter');if(!sfel)return;signalFilters[sfel.dataset.filter]=sfel.value;document.querySelectorAll('.signal-filter[data-filter="'+sfel.dataset.filter+'"]').forEach(function(x){if(x!==sfel)x.value=sfel.value});renderChampion();renderFeatured();renderWhales();renderSmart();renderTokens()});
-document.getElementById('search').addEventListener('input',renderTokens);document.getElementById('securityFilter').addEventListener('change',renderTokens);document.getElementById('activityFilter').addEventListener('change',renderTokens);document.getElementById('refresh').addEventListener('click',loadAll);document.getElementById('closeDetail').addEventListener('click',function(){document.getElementById('detailDialog').close()});document.getElementById('detailDialog').addEventListener('click',function(e){if(e.target===this)this.close()});
+var mintLookupTimer=null;
+document.getElementById('search').addEventListener('input',function(e){
+  renderTokens();
+  clearTimeout(mintLookupTimer);
+  var q=String(e.target.value||'').trim();
+  if(!/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(q))return;
+  mintLookupTimer=setTimeout(async function(){
+    var x=await safeJson('/api/v1/token-lookup?mint='+encodeURIComponent(q));
+    if(!x||!x.token)return;
+    var idx=tokens.findIndex(function(t){return t.mint===x.token.mint});
+    if(idx>=0)tokens[idx]=Object.assign({},tokens[idx],x.token);
+    else tokens.unshift(x.token);
+    renderActivePanel();
+  },250);
+});document.getElementById('securityFilter').addEventListener('change',renderTokens);document.getElementById('activityFilter').addEventListener('change',renderTokens);document.getElementById('refresh').addEventListener('click',loadAll);document.getElementById('closeDetail').addEventListener('click',function(){document.getElementById('detailDialog').close()});document.getElementById('detailDialog').addEventListener('click',function(e){if(e.target===this)this.close()});
 loadAll();startLivePush();marketLiveTimer=setInterval(pollMarketLive,2000);setTimeout(pollMarketLive,1200);setInterval(loadAll,60000);
 </script>
 </body>
@@ -2607,6 +2660,33 @@ createServer(async(req,res)=>{
     }
     if(url.pathname==='/api/v1/smart-money-live'){const sm=liveSmartMoneyPayload();res.writeHead(200,{'content-type':'application/json; charset=utf-8','cache-control':'no-store',...headers});return res.end(JSON.stringify(sm))}
     if(url.pathname==='/api/v1/market-live'){const ml=await buildMarketLive();res.writeHead(200,{'content-type':'application/json; charset=utf-8','cache-control':'no-store',...headers});return res.end(JSON.stringify(ml))}
+    if(url.pathname==='/api/v1/token-lookup'){
+      const mint=String(url.searchParams.get('mint')||'').trim();
+      if(!/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(mint)){res.writeHead(400,{'content-type':'application/json; charset=utf-8','cache-control':'no-store',...headers});return res.end(JSON.stringify({ok:false,error:'invalid mint'}))}
+      const p=await pairFor(mint);
+      if(!p){res.writeHead(404,{'content-type':'application/json; charset=utf-8','cache-control':'no-store',...headers});return res.end(JSON.stringify({ok:false,error:'pair not found'}))}
+      const buys5m=num(p.txns?.m5?.buys),sells5m=num(p.txns?.m5?.sells);
+      const t={
+        name:p.baseToken?.name||'Unknown',symbol:p.baseToken?.symbol||'?',mint,
+        dexId:p.dexId||'',dexUrl:p.url||'',image:p.info?.imageUrl||'',description:'',
+        ageMinutes:Math.max(0,(Date.now()-num(p.pairCreatedAt))/60000),
+        priceUsd:num(p.priceUsd),marketCap:num(p.marketCap||p.fdv),liquidity:num(p.liquidity?.usd),
+        volume5m:num(p.volume?.m5),volume1h:num(p.volume?.h1),volume6h:num(p.volume?.h6),volume24h:num(p.volume?.h24),
+        buys5m,sells5m,txns5m:buys5m+sells5m,
+        buys1h:num(p.txns?.h1?.buys),sells1h:num(p.txns?.h1?.sells),txns1h:num(p.txns?.h1?.buys)+num(p.txns?.h1?.sells),
+        buys6h:num(p.txns?.h6?.buys),sells6h:num(p.txns?.h6?.sells),txns6h:num(p.txns?.h6?.buys)+num(p.txns?.h6?.sells),
+        buys24h:num(p.txns?.h24?.buys),sells24h:num(p.txns?.h24?.sells),txns24h:num(p.txns?.h24?.buys)+num(p.txns?.h24?.sells),
+        priceChange5m:num(p.priceChange?.m5),priceChange1h:num(p.priceChange?.h1),priceChange6h:num(p.priceChange?.h6),priceChange24h:num(p.priceChange?.h24)
+      };
+      t.flow=flowQuality(t);
+      const sec=await security(mint);t.security=sec;
+      t.activity=activityScore(t);t.trend={score:0,reasons:[]};t.socialHeat={score:0,label:'LOW',reasons:[]};
+      t.marketQuality=marketQualityScore(t);t.chart=chartDiscipline(t);t.externalSecurity=await externalSecurityAudit(t);
+      t.academy=academyGuard(t);t.holderBehavior=holderBehaviorAudit(t);t.preSignalGuard=preSignalConfirmation(t);
+      t.signals=multiHorizonSignals(t);t.verdict=verdict(t);
+      res.writeHead(200,{'content-type':'application/json; charset=utf-8','cache-control':'no-store',...headers});
+      return res.end(JSON.stringify({ok:true,token:t}));
+    }
     if(url.pathname==='/api/v1/tokens'||url.pathname==='/api/radar'||url.pathname==='/api/v1/trending'){
       const d=await build(); let body=d;
       if(url.pathname==='/api/v1/trending')body={...d,tokens:[...d.tokens].sort((a,b)=>b.trend.score-a.trend.score)};
