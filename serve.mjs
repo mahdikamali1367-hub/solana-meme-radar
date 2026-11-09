@@ -2595,8 +2595,8 @@ function featuredRows(){
 function tokenRow(t,bucket){
   var s=t.security||{},sg=t.signals||{},sh=sg.short||{},md=sg.medium||{},lg=sg.long||{},fl=t.flow||{},bs=bucketScore(t,bucket||ageBucket(t));
   return '<div class="row">'+
-  '<div class="asset"><b>'+esc(t.symbol||'?')+' · '+esc(t.name||'')+'</b><span class="age-chip">'+esc(ageText(t))+'</span>'+(t.kolTrend?'<span class="age-chip">👑 '+Number(t.kolTrend.kolCount||0)+' KOL</span>':'')+whaleTrendBadge(t)+socialTrendBadges(t)+momentumChip(t)+tradePlanChips(t)+'<small>'+esc(short(t.mint))+'</small>'+socialButtons(t)+'</div>'+
-  '<div class="cell"><small>امتیاز گروه</small><b><span class="badge '+bucketSignalClass(bs,t)+'">'+bs+'/100</span></b></div>'+
+  '<div class="asset"><b>'+esc(t.symbol||'?')+' · '+esc(t.name||'')+'</b><span class="age-chip">'+esc(ageText(t))+'</span>'+(t.kolTrend?'<span class="age-chip">👑 '+Number(t.kolTrend.kolCount||0)+' KOL</span>':'')+siteTrendBadges(t)+whaleTrendBadge(t)+socialTrendBadges(t)+momentumChip(t)+tradePlanChips(t)+'<small>'+esc(short(t.mint))+'</small>'+socialButtons(t)+'</div>'+
+  '<div class="cell"><small>امتیاز گروه</small><b><span class="badge '+bucketSignalClass(bs,t)+'">'+bs+'/100</span></b></div>'+'<div class="cell"><small>ترند سایت‌ها</small><b><span class="badge '+(siteTrendScore(t)>=50?'good':siteTrendScore(t)>=20?'mid':'blue')+'">'+siteTrendScore(t)+'/100</span></b></div>'+
   '<div class="cell"><small>کوتاه / میان / بلند</small><b>'+Number(sh.score||0)+' / '+Number(md.score||0)+' / '+Number(lg.score||0)+'</b></div>'+
   '<div class="cell"><small>قدرت خریدار</small><b><span class="badge '+pressureClass(t)+'">'+(fl.buyerPower==null?'—':Number(fl.buyerPower)+'%')+'</span></b></div>'+
   '<div class="cell hide-sm"><small>امنیت</small><b><span class="badge '+secClass(s.tier)+'">'+esc(faSec(s.tier))+'</span></b></div>'+
@@ -2697,11 +2697,15 @@ function renderTopQuick(){
 
   var q=document.getElementById('topTokenQuick');
   if(q){
-    var rows2=tokens.slice().sort(function(a,b){return bucketScore(b,ageBucket(b))-bucketScore(a,ageBucket(a))}).slice(0,8);
+    var rows2=tokens.slice().sort(function(a,b){
+      var sa=a.security?.tier==='MAX SECURITY'?3:a.security?.tier==='HIGH'?2:a.security?.tier==='REVIEW'?1:0;
+      var sb=b.security?.tier==='MAX SECURITY'?3:b.security?.tier==='HIGH'?2:b.security?.tier==='REVIEW'?1:0;
+      return (sb-sa)||(siteTrendScore(b)-siteTrendScore(a))||(bucketScore(b,ageBucket(b))-bucketScore(a,ageBucket(a)));
+    }).slice(0,8);
     q.innerHTML=rows2.length?rows2.map(function(t,i){
       var sec=t.security||{},score=bucketScore(t,ageBucket(t));
-      return '<div class="row"><div class="asset"><b>#'+(i+1)+' 🪙 '+esc(t.symbol||'?')+' · '+esc(t.name||'')+'</b>'+whaleTrendBadge(t)+socialTrendBadges(t)+tradePlanChips(t)+'<small>'+esc(ageText(t))+' · '+esc(bucketSignalLabel(score,t))+'</small></div>'+
-      '<div class="cell"><small>امتیاز</small><b>'+score+'/100</b></div>'+
+      return '<div class="row"><div class="asset"><b>#'+(i+1)+' 🪙 '+esc(t.symbol||'?')+' · '+esc(t.name||'')+'</b>'+siteTrendBadges(t)+whaleTrendBadge(t)+socialTrendBadges(t)+tradePlanChips(t)+'<small>'+esc(ageText(t))+' · '+esc(bucketSignalLabel(score,t))+'</small></div>'+
+      '<div class="cell"><small>امتیاز</small><b>'+score+'/100</b></div>'+'<div class="cell"><small>ترند سایت‌ها</small><b>'+siteTrendScore(t)+'/100</b></div>'+
       '<div class="cell"><small>امنیت</small><b><span class="badge '+secClass(sec.tier)+'">'+esc(faSec(sec.tier))+'</span></b></div>'+
       '<div class="cell"><small>خریدار</small><b>'+Number(t.flow?.buyerPower||0)+'%</b></div>'+
       '<div class="cell hide-sm"><small>حجم</small><b>'+esc(faVolume(t.flow?.volumeLabel))+'</b></div>'+
@@ -2959,9 +2963,18 @@ function renderKolTrends(){
 
 function renderTokens(){
   var r=filteredTokens();
-  var fresh=r.filter(function(t){return ageBucket(t)==='fresh'}).sort(function(a,b){return bucketScore(b,'fresh')-bucketScore(a,'fresh')});
-  var day=r.filter(function(t){return ageBucket(t)==='day'}).sort(function(a,b){return bucketScore(b,'day')-bucketScore(a,'day')});
-  var week=r.filter(function(t){return ageBucket(t)==='week'}).sort(function(a,b){return bucketScore(b,'week')-bucketScore(a,'week')});
+  function tokenSort(bucket){
+    return function(a,b){
+      var sa=a.security?.tier==='MAX SECURITY'?3:a.security?.tier==='HIGH'?2:a.security?.tier==='REVIEW'?1:0;
+      var sb=b.security?.tier==='MAX SECURITY'?3:b.security?.tier==='HIGH'?2:b.security?.tier==='REVIEW'?1:0;
+      return (sb-sa)||
+        (siteTrendScore(b)-siteTrendScore(a))||
+        (bucketScore(b,bucket)-bucketScore(a,bucket));
+    };
+  }
+  var fresh=r.filter(function(t){return ageBucket(t)==='fresh'}).sort(tokenSort('fresh'));
+  var day=r.filter(function(t){return ageBucket(t)==='day'}).sort(tokenSort('day'));
+  var week=r.filter(function(t){return ageBucket(t)==='week'}).sort(tokenSort('week'));
   renderBucketBest('freshBest',fresh,'fresh','تازه و ترند');
   renderBucketBest('dayBest',day,'day','۱ تا ۷ روزه');
   renderBucketBest('weekBest',week,'week','۷ روزه+');
