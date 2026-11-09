@@ -2086,6 +2086,20 @@ html,body,.shell,.panel,.list{overflow-anchor:none}
 
 <script>
 var tokens=[],smart=null,live=null,tracked=null,conviction=null,activeTab='featured',signalFilters={short:'',medium:'',long:'',security:'',holders:'',bigbuyers:''};
+var stickyFeatured=new Map();
+try{
+  var savedFeatured=JSON.parse(sessionStorage.getItem('stickyFeatured')||'[]');
+  if(Array.isArray(savedFeatured))savedFeatured.forEach(function(x){
+    if(x&&x.token&&x.token.mint)stickyFeatured.set(x.token.mint,x);
+  });
+}catch(e){}
+
+function saveStickyFeatured(){
+  try{
+    sessionStorage.setItem('stickyFeatured',JSON.stringify([...stickyFeatured.values()].slice(0,12)));
+  }catch(e){}
+}
+
 function esc(v){return String(v==null?'':v).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]})}
 function money(v){var n=Number(v||0);if(!Number.isFinite(n))return '—';return '$'+n.toLocaleString(undefined,{maximumFractionDigits:n<1?4:0})}
 function pct(v){return v==null?'—':Number(v).toFixed(1)+'%'}
@@ -2461,7 +2475,7 @@ function exitFor(m){var cut=Date.now()-30*60*1000;return live&&live.exits?live.e
 async function safeJson(u){try{var sep=u.includes('?')?'&':'?';var r=await fetch(u+sep+'_ts='+Date.now(),{cache:'no-store',headers:{'cache-control':'no-cache'}});if(!r.ok)throw 0;return await r.json()}catch(e){return null}}
 
 function featuredRows(){
-  return tokens.map(function(t){
+  var fresh=tokens.map(function(t){
     var s=0,w=[],sec=t.security&&t.security.tier?t.security.tier:'REVIEW';
     if(sec==='MAX SECURITY'){s+=22;w.push('امنیت خیلی بالا')}else if(sec==='HIGH')s+=14;
     if(t.activity&&t.activity.score>=72){s+=14;w.push('فعالیت طبیعی')}
@@ -2487,14 +2501,58 @@ function featuredRows(){
     if(tr&&tr.uniqueSellers>=2)s-=18;
     if(exitFor(t.mint).length)s-=28;
     s=Math.max(0,Math.min(100,Math.round(s)));
-    return {token:t,score:s,why:w,whale:wh,smart:sm,tracked:tr};
+    return {token:t,score:s,why:w,whale:wh,smart:sm,tracked:tr,lastSeen:Date.now(),sticky:false};
   }).filter(function(x){
-    var tp=tradePlan(x.token);
-    return tp.status==='ENTRY';
+    return tradePlan(x.token).status==='ENTRY';
   }).sort(function(a,b){
     var ac=tradePlan(a.token).confidence==='HIGH'?1:0,bc=tradePlan(b.token).confidence==='HIGH'?1:0;
     return (bc-ac)||(b.score-a.score);
   }).slice(0,8);
+
+  // Add/update every current valid recommendation in the sticky list.
+  fresh.forEach(function(x){
+    stickyFeatured.set(x.token.mint,x);
+  });
+
+  // Refresh sticky rows from current live token data when available.
+  for(const [mint,old] of [...stickyFeatured.entries()]){
+    var current=findToken(mint);
+    if(current){
+      var tp=tradePlan(current);
+      // Remove only when there is a real exit / critical risk.
+      if(tp.status==='EXIT'){
+        stickyFeatured.delete(mint);
+        continue;
+      }
+      var newer=fresh.find(function(x){return x.token.mint===mint});
+      if(newer){
+        stickyFeatured.set(mint,newer);
+      }else{
+        // Keep the recommendation visible through temporary WAIT/ranking/discovery changes.
+        stickyFeatured.set(mint,Object.assign({},old,{
+          token:current,
+          whale:whaleFor(mint),
+          smart:smartFor(mint),
+          tracked:findTracked(mint),
+          sticky:true
+        }));
+      }
+    }else{
+      // Token temporarily missing from discovery: preserve last known recommendation.
+      stickyFeatured.set(mint,Object.assign({},old,{sticky:true}));
+    }
+  }
+
+  saveStickyFeatured();
+
+  return [...stickyFeatured.values()]
+    .sort(function(a,b){
+      var at=a.token?tradePlan(a.token):null,bt=b.token?tradePlan(b.token):null;
+      var ac=at&&at.confidence==='HIGH'?2:at&&at.status==='ENTRY'?1:0;
+      var bc=bt&&bt.confidence==='HIGH'?2:bt&&bt.status==='ENTRY'?1:0;
+      return (bc-ac)||(Number(b.score||0)-Number(a.score||0))||(Number(b.lastSeen||0)-Number(a.lastSeen||0));
+    })
+    .slice(0,8);
 }
 
 function tokenRow(t,bucket){
@@ -2589,7 +2647,7 @@ function renderTopQuick(){
     var rows=featuredRows().filter(function(x){return passesSignalFilters(x.token)}).slice(0,6);
     f.innerHTML=rows.length?rows.map(function(x,i){
       var t=x.token,tp=tradePlan(t),sec=t.security||{};
-      return '<div class="row"><div class="asset"><b>#'+(i+1)+' 🔥 '+esc(t.symbol||'?')+' · '+esc(t.name||'')+'</b>'+whaleTrendBadge(t)+socialTrendBadges(t)+tradePlanChips(t)+'<small>'+esc(x.why.slice(0,3).join(' • '))+'</small></div>'+
+      return '<div class="row"><div class="asset"><b>#'+(i+1)+' 🔥 '+esc(t.symbol||'?')+' · '+esc(t.name||'')+'</b>'+(x.sticky?'<span class="badge blue">📌 حفظ‌شده</span>':'')+whaleTrendBadge(t)+socialTrendBadges(t)+tradePlanChips(t)+'<small>'+esc(x.why.slice(0,3).join(' • '))+'</small></div>'+
       '<div class="cell"><small>امتیاز</small><b>'+x.score+'/100</b></div>'+
       '<div class="cell"><small>امنیت</small><b><span class="badge '+secClass(sec.tier)+'">'+esc(faSec(sec.tier))+'</span></b></div>'+
       '<div class="cell"><small>خریدار</small><b>'+Number(t.flow?.buyerPower||0)+'%</b></div>'+
@@ -2616,17 +2674,20 @@ function renderTopQuick(){
 }
 
 function renderFeatured(){
-  var r=featuredRows().filter(function(x){return passesSignalFilters(x.token)}).sort(function(a,b){return (b.score-a.score)||(tokenStrength(b.token)-tokenStrength(a.token))});document.getElementById('kFeatured').textContent=r.length;
+  var r=featuredRows().filter(function(x){
+    var any=signalFilters.short||signalFilters.medium||signalFilters.long||signalFilters.security||signalFilters.holders||signalFilters.bigbuyers;
+    return !any||passesSignalFilters(x.token);
+  }).sort(function(a,b){return (b.score-a.score)||(tokenStrength(b.token)-tokenStrength(a.token))});document.getElementById('kFeatured').textContent=r.length;
   document.getElementById('featuredList').innerHTML=r.length?r.map(function(x){
     var t=x.token;
-    return '<div class="row"><div class="asset"><b>🔥 '+esc(t.symbol||'?')+' · '+esc(t.name||'')+'</b>'+whaleTrendBadge(t)+socialTrendBadges(t)+tradePlanChips(t)+'<small>'+esc(x.why.slice(0,3).join(' • '))+'</small>'+socialButtons(t)+'</div>'+
+    return '<div class="row"><div class="asset"><b>🔥 '+esc(t.symbol||'?')+' · '+esc(t.name||'')+'</b>'+(x.sticky?'<span class="badge blue">📌 حفظ‌شده</span>':'')+whaleTrendBadge(t)+socialTrendBadges(t)+tradePlanChips(t)+'<small>'+esc(x.why.slice(0,3).join(' • '))+'</small>'+socialButtons(t)+'</div>'+
     '<div class="cell"><small>امتیاز</small><b><span class="badge good">'+x.score+'/100</span></b></div>'+
     '<div class="cell"><small>نهنگ</small><b>'+money(x.whale.usd)+'</b></div>'+
     '<div class="cell"><small>اسمارت</small><b>'+(x.smart?Number(x.smart.smartMoneyCount||0):0)+'</b></div>'+
     '<div class="cell hide-sm"><small>کیف‌پول برتر</small><b>'+(x.tracked?Number(x.tracked.uniqueBuyers||0):0)+'</b></div>'+
     '<div class="cell hide-md"><small>خریدار / حجم</small><b>'+Number(t.flow?.buyerPower||0)+'% · '+esc(faVolume(t.flow?.volumeLabel))+'</b></div>'+
     '<div class="actions"><a class="action" target="_blank" rel="noopener" href="'+esc(dexUrl(t.mint,t.dexUrl))+'">📈 چارت</a><button class="detail-btn" data-mint="'+esc(t.mint)+'">جزئیات</button></div></div>';
-  }).join(''):'<div class="empty">فعلاً هیچ توکنی معیار سخت‌گیرانه ۹۰/۱۰۰ را رد نکرده.</div>';
+  }).join(''):'<div class="empty">فعلاً پیشنهاد فعالی ثبت نشده؛ پیشنهادهای ثبت‌شده در بروزرسانی‌های بعدی حفظ می‌شوند تا زمانی که خروج/ریسک جدی تأیید شود.</div>';
 }
 function whaleVerification(t){
   if(!t)return {score:0,passed:0,total:6,checks:[]};
