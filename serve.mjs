@@ -1102,7 +1102,7 @@ async function buildFresh(){
       buys1h:num(p.txns?.h1?.buys),sells1h:num(p.txns?.h1?.sells),txns1h:num(p.txns?.h1?.buys)+num(p.txns?.h1?.sells),
       buys6h:num(p.txns?.h6?.buys),sells6h:num(p.txns?.h6?.sells),txns6h:num(p.txns?.h6?.buys)+num(p.txns?.h6?.sells),
       buys24h:num(p.txns?.h24?.buys),sells24h:num(p.txns?.h24?.sells),txns24h:num(p.txns?.h24?.buys)+num(p.txns?.h24?.sells),
-      priceChange5m:num(p.priceChange?.m5),priceChange1h:num(p.priceChange?.h1),priceChange6h:num(p.priceChange?.h6),priceChange24h:num(p.priceChange?.h24),security:sec,kolTrend:s.kolTrend||null
+      priceChange5m:num(p.priceChange?.m5),priceChange1h:num(p.priceChange?.h1),priceChange6h:num(p.priceChange?.h6),priceChange24h:num(p.priceChange?.h24),security:sec,kolTrend:s.kolTrend||null,discoverySources:s.discoverySources||[],boostSeen:!!s.boostSeen,boostTotal:num(s.boostTotal),profileSeen:!!s.profileSeen
     };
     t.socialSources=socialMeta(s,p);
     t.bluesky={mentions2h:0,engagement2h:0};
@@ -1912,7 +1912,7 @@ html,body,.shell,.panel,.list{overflow-anchor:none}
   <details class="accordion highlight" open>
     <summary>🔥 پیشنهادهای ورود برتر</summary>
     <div class="accordion-body">
-      <p class="muted" style="font-size:11px">بهترین گزینه‌های فعلی که نقطه ورود فعال دارند؛ ورود قوی و ورود قابل‌بررسی جدا نمایش داده می‌شوند.</p>
+      <p class="muted" style="font-size:11px">فقط گزینه‌های ترندِ منابع بازار با امنیت MAX SECURITY و نقطه ورود فعال؛ Boost به‌تنهایی معیار انتخاب نیست.</p>
       <div class="list" id="topFeaturedQuick"></div>
     </div>
   </details>
@@ -2474,6 +2474,42 @@ function socialTrendBadges(t){
 function exitFor(m){var cut=Date.now()-30*60*1000;return live&&live.exits?live.exits.filter(function(x){var ts=Number(x.ts||0);if(ts>0&&ts<1e12)ts*=1000;return x.tokenAddress===m&&ts>=cut}):[]}
 async function safeJson(u){try{var sep=u.includes('?')?'&':'?';var r=await fetch(u+sep+'_ts='+Date.now(),{cache:'no-store',headers:{'cache-control':'no-cache'}});if(!r.ok)throw 0;return await r.json()}catch(e){return null}}
 
+function siteTrendSources(t){
+  var src=Array.isArray(t&&t.discoverySources)?t.discoverySources:[];
+  var out=[];
+  if(src.some(function(x){return /DEXScreener/i.test(x)}))out.push('DEXScreener');
+  if(src.some(function(x){return /GeckoTerminal Trending/i.test(x)}))out.push('GeckoTerminal Trending');
+  if(src.some(function(x){return /GeckoTerminal New/i.test(x)}))out.push('GeckoTerminal New');
+  if(src.some(function(x){return /KOL/i.test(x)}))out.push('KOL');
+  if(src.some(function(x){return /Live whale/i.test(x)}))out.push('Live Whale');
+  return [...new Set(out)];
+}
+function siteTrendScore(t){
+  var src=siteTrendSources(t),s=0;
+  if(src.includes('DEXScreener'))s+=25;
+  if(src.includes('GeckoTerminal Trending'))s+=30;
+  if(src.includes('GeckoTerminal New'))s+=12;
+  if(src.includes('KOL'))s+=18;
+  if(src.includes('Live Whale'))s+=20;
+  if(t&&t.boostSeen)s+=Math.min(8,Math.log10(1+Number(t.boostTotal||0))*3);
+  return Math.min(100,Math.round(s));
+}
+function siteTrendBadges(t){
+  var src=siteTrendSources(t);
+  if(!src.length)return '<span class="badge mid">ترند منبعی نامشخص</span>';
+  return src.slice(0,4).map(function(x){
+    var label=x==='DEXScreener'?'🔥 DEX':x==='GeckoTerminal Trending'?'🦎 Gecko ترند':x==='GeckoTerminal New'?'🆕 Gecko':x==='KOL'?'👑 KOL':'🐋 Whale';
+    return '<span class="badge blue">'+label+'</span>';
+  }).join('');
+}
+function highestSecurityTrendOk(t){
+  return !!t&&t.security?.tier==='MAX SECURITY'&&
+    t.security?.mintDisabled===true&&t.security?.freezeDisabled===true&&
+    t.security?.holderPolicyPassed===true&&
+    t.security?.tokenExtensions?.hardFail!==true&&
+    siteTrendSources(t).length>=1;
+}
+
 function featuredRows(){
   var fresh=tokens.map(function(t){
     var s=0,w=[],sec=t.security&&t.security.tier?t.security.tier:'REVIEW';
@@ -2501,9 +2537,10 @@ function featuredRows(){
     if(tr&&tr.uniqueSellers>=2)s-=18;
     if(exitFor(t.mint).length)s-=28;
     s=Math.max(0,Math.min(100,Math.round(s)));
-    return {token:t,score:s,why:w,whale:wh,smart:sm,tracked:tr,lastSeen:Date.now(),sticky:false};
+    var sts=siteTrendScore(t);if(sts){s=Math.min(100,s+Math.round(sts*.16));w.push('ترند چندمنبعی '+sts+'/100')}
+    return {token:t,score:s,why:w,whale:wh,smart:sm,tracked:tr,lastSeen:Date.now(),sticky:false,siteTrendScore:sts};
   }).filter(function(x){
-    return tradePlan(x.token).status==='ENTRY';
+    return highestSecurityTrendOk(x.token)&&tradePlan(x.token).status==='ENTRY';
   }).sort(function(a,b){
     var ac=tradePlan(a.token).confidence==='HIGH'?1:0,bc=tradePlan(b.token).confidence==='HIGH'?1:0;
     return (bc-ac)||(b.score-a.score);
@@ -2519,8 +2556,8 @@ function featuredRows(){
     var current=findToken(mint);
     if(current){
       var tp=tradePlan(current);
-      // Remove only when there is a real exit / critical risk.
-      if(tp.status==='EXIT'){
+      // Featured recommendations must remain MAX SECURITY and trend-backed.
+      if(!highestSecurityTrendOk(current)||tp.status==='EXIT'){
         stickyFeatured.delete(mint);
         continue;
       }
@@ -2545,7 +2582,7 @@ function featuredRows(){
 
   saveStickyFeatured();
 
-  return [...stickyFeatured.values()]
+  return [...stickyFeatured.values()].filter(function(x){return x&&x.token&&highestSecurityTrendOk(x.token)})
     .sort(function(a,b){
       var at=a.token?tradePlan(a.token):null,bt=b.token?tradePlan(b.token):null;
       var ac=at&&at.confidence==='HIGH'?2:at&&at.status==='ENTRY'?1:0;
@@ -2585,10 +2622,11 @@ function beginnerDecision(t,overallScore){
 function overallCandidates(){
   return tokens.map(function(t){
     var tp=tradePlan(t);
-    if(!holderPolicyOk(t)||tp.status!=='ENTRY')return null;
+    if(!highestSecurityTrendOk(t)||!holderPolicyOk(t)||tp.status!=='ENTRY')return null;
 
     var sec=t.security||{},fl=t.flow||{},mq=t.marketQuality||{},sg=t.signals||{};
     var score=0,reasons=[];
+    var sts=siteTrendScore(t);score+=Math.min(15,Math.round(sts*.15));if(sts)reasons.push('ترند سایت‌ها '+sts+'/100');
 
     // Buyer/seller edge is the main ranking factor.
     score+=Math.min(38,Math.max(0,Number(tp.buyerPower||0)-50)*1.9);
@@ -2629,10 +2667,10 @@ function overallCandidates(){
 }
 function renderChampion(){
   var x=overallCandidates()[0],el=document.getElementById('championBox');
-  if(!x){el.innerHTML='<div class="muted">فعلاً هیچ توکنی قدرت خریدار بیشتر از فروشنده و قیمت معتبر، بدون ریسک امنیتی جدی/هشدار خروج ندارد.</div>';return}
+  if(!x){el.innerHTML='<div class="muted">فعلاً توکن ترند با MAX SECURITY، قانون هولدر پاس و نقطه ورود فعال پیدا نشده.</div>';return}
   var t=x.t,sg=t.signals||{},d=beginnerDecision(t,x.score);
   el.innerHTML='<div class="decision-banner '+d.cls+'">'+esc(d.label)+'<div class="beginner-note">'+esc(d.reason)+' · تضمین سود نیست و اندازه پوزیشن باید کوچک بماند.</div></div><div class="champion-grid">'+
-    '<div class="asset"><b>'+esc(t.symbol||'?')+' · '+esc(t.name||'')+'</b>'+whaleTrendBadge(t)+socialTrendBadges(t)+tradePlanChips(t)+'<small>بدون هشدار خروج · امنیت '+esc(faSec(t.security?.tier))+'</small>'+socialButtons(t)+'</div>'+
+    '<div class="asset"><b>'+esc(t.symbol||'?')+' · '+esc(t.name||'')+'</b>'+siteTrendBadges(t)+whaleTrendBadge(t)+socialTrendBadges(t)+tradePlanChips(t)+'<small>بدون هشدار خروج · امنیت '+esc(faSec(t.security?.tier))+'</small>'+socialButtons(t)+'</div>'+
     '<div><small class="muted">امتیاز کل</small><div class="score">'+x.score+'/100</div></div>'+
     '<div class="cell"><small>کوتاه</small><b>'+Number(sg.short?.score||0)+'</b></div>'+
     '<div class="cell"><small>میان</small><b>'+Number(sg.medium?.score||0)+'</b></div>'+
