@@ -1879,7 +1879,7 @@ html,body,.shell,.panel,.list{overflow-anchor:none}
 </section>
 <details class="accordion" open>
     <summary>🔥 پیشنهادهای اولویت‌دار</summary>
-    <div class="accordion-body"><p class="muted" style="font-size:11px">منطق ورود: قدرت خریدار باید از فروشنده بیشتر باشد، قانون هولدر پاس شود، Bot/Wash تشخیص داده نشود و هشدار امنیتی/خروج فعال نباشد. هیچ حداقل مبلغ خریدی برای فعال شدن ورود وجود ندارد. فیلتر مومنتوم DEXScreener فقط برای رتبه‌بندی کیفیت سیگنال است.</p><div class="subfilters">
+    <div class="accordion-body"><p class="muted" style="font-size:11px">منطق ورود متعادل: وقتی قدرت خریدار از فروشنده بیشتر باشد سیگنال ورود فعال می‌شود، مگر اینکه Bot/Wash پرریسک، ریسک امنیتی قطعی، نقض قطعی قانون هولدر یا فشار خروج زنده سنگین وجود داشته باشد. خریدار 100$+ و فیلتر مومنتوم DEX فقط قدرت سیگنال را بیشتر می‌کنند و دیگر شرط اجباری نیستند.</p><div class="subfilters">
 <label>کوتاه‌مدت<select class="signal-filter" data-filter="short"><option value="">همه</option><option value="STRONG">قوی</option><option value="POSITIVE">مثبت</option><option value="NEUTRAL">خنثی</option><option value="WAIT_DATA">داده ناکافی</option><option value="AVOID">ورود نکن</option><option value="BLOCKED">مسدود امنیتی</option></select></label>
 <label>میان‌مدت<select class="signal-filter" data-filter="medium"><option value="">همه</option><option value="STRONG">قوی</option><option value="POSITIVE">مثبت</option><option value="NEUTRAL">خنثی</option><option value="WAIT_DATA">داده ناکافی</option><option value="AVOID">ورود نکن</option><option value="BLOCKED">مسدود امنیتی</option></select></label>
 <label>بلندمدت<select class="signal-filter" data-filter="long"><option value="">همه</option><option value="STRONG">قوی</option><option value="POSITIVE">مثبت</option><option value="NEUTRAL">خنثی</option><option value="WAIT_DATA">داده ناکافی</option><option value="AVOID">ورود نکن</option><option value="BLOCKED">مسدود امنیتی</option></select></label>
@@ -2266,7 +2266,7 @@ function dexscreenerMomentumFilter(t){
   var required=['liq','mc','tx5','tx1','bs5'];
   var coreOk=required.every(function(k){var x=checks.find(function(v){return v.key===k});return x&&x.ok});
   return {
-    ok:passed>=10&&coreOk,
+    ok:passed>=7,
     score,passed,total:checks.length,checks,
     reasons:checks.filter(function(x){return !x.ok}).map(function(x){return x.name}),
     buySell5:+buySell5.toFixed(2),
@@ -2281,21 +2281,30 @@ function momentumChip(t){
 
 function entryQualityGate(t){
   if(!t)return {ok:false,reasons:['توکن نامشخص']};
-  var fl=t.flow||{},act=t.activity||{},reasons=[];
+  var fl=t.flow||{},act=t.activity||{},tr=findTracked(t.mint),reasons=[];
   var momentum=dexscreenerMomentumFilter(t);
-
-  var botFree=act.label!=='BOT RISK'&&
-    !(act.flags||[]).some(function(x){return /ربات|wash|فرکانس بسیار بالا|تراکنش‌های بسیار ریز/i.test(String(x))});
-  if(!botFree)reasons.push('الگوی ربات/Wash تشخیص داده شده');
 
   var buyerPower=Number(fl.buyerPower||0);
   var sellerPower=Math.max(0,100-buyerPower);
   var buyerDominant=buyerPower>sellerPower;
   if(!buyerDominant)reasons.push('قدرت خریدار از فروشنده بیشتر نیست');
 
+  // Only an explicit BOT RISK blocks entry. MIXED/unknown is allowed but lowers confidence.
+  var botBlocked=act.label==='BOT RISK'||
+    (act.flags||[]).some(function(x){return /wash محتمل|ربات/فرکانس بسیار بالا/i.test(String(x))});
+  if(botBlocked)reasons.push('ریسک Bot/Wash بالا تشخیص داده شده');
+
+  // $100 tracked buyers are a confidence booster, not a hard requirement,
+  // because tracked-wallet coverage is not complete for every token.
+  var buyers100=tr&&Array.isArray(tr.convictionHolders)?tr.convictionHolders:[];
+  var buyer100Ok=buyers100.length>=1;
+
   return {
-    ok:botFree&&buyerDominant,
-    botFree,buyerDominant,momentum,
+    ok:buyerDominant&&!botBlocked,
+    buyerDominant,botBlocked,buyer100Ok,
+    buyers100Count:buyers100.length,
+    buyers100Usd:buyers100.reduce(function(a,x){return a+Number(x.buyUsd||0)},0),
+    momentum,
     buyerPower,sellerPower,
     reasons
   };
@@ -2312,20 +2321,28 @@ function tradePlan(t){
   var invalidation=p>0?p*(1-riskPct):null;
   var entryLow=p>0?p*0.99:null,entryHigh=p>0?p*1.01:null;
 
+  // Block only on explicit, confirmed critical risks.
+  var holderKnown=Array.isArray(sec.topHolders)&&sec.topHolders.length>=5;
+  var holderViolation=holderKnown&&(
+    sec.holderPolicyPassed===false||
+    Number(sec.largestHolder||0)>=10||
+    Number(sec.maxOtherHolder||0)>=5
+  );
   var criticalSecurity=
     sec.mintDisabled===false||
     sec.freezeDisabled===false||
-    sec.holderPolicyPassed!==true||
-    Number(sec.largestHolder||0)>=10||
-    Number(sec.maxOtherHolder||0)>=5||
+    holderViolation||
     sec.tokenExtensions?.hardFail===true||
     t.chart?.pumpDumpRisk==='HIGH'||
     (Number(t.liquidity||0)>0&&Number(t.liquidity||0)<3000);
 
-  if(criticalSecurity||ws.count>0||ex.length>0){
+  // A single sell event should not kill all entries. Only heavy/multiple live exits block.
+  var heavyLiveExit=(ws.count>=2||Number(ws.usd||0)>=10000||ex.length>=2);
+
+  if(criticalSecurity||heavyLiveExit){
     return {
       status:'EXIT',entry:null,entryLow:null,entryHigh:null,exit:invalidation,
-      reason:criticalSecurity?'ریسک امنیتی/هولدر جدی فعال است':'فروش نهنگ یا هشدار خروج زنده ثبت شده',
+      reason:criticalSecurity?'ریسک امنیتی/هولدر قطعی فعال است':'فشار خروج زنده سنگین ثبت شده',
       riskPct:riskPct*100,buyerPower,sellerPower,quality:q
     };
   }
@@ -2339,27 +2356,26 @@ function tradePlan(t){
 
   if(!q.ok){
     return {
-      status:'WAIT',entry:null,entryLow:null,entryHigh:null,exit:invalidation,
-      reason:q.reasons.slice(0,3).join(' • '),
+      status:buyerPower<sellerPower?'EXIT':'WAIT',
+      entry:null,entryLow:null,entryHigh:null,exit:invalidation,
+      reason:q.reasons.slice(0,3).join(' • ')||'در انتظار برتری خریدار',
       riskPct:riskPct*100,buyerPower,sellerPower,quality:q
     };
   }
 
-  if(buyerPower>sellerPower){
-    var edge=buyerPower-sellerPower;
-    return {
-      status:'ENTRY',
-      confidence:(buyerPower>=60&&q.momentum&&q.momentum.score>=70)?'HIGH':buyerPower>=55?'MEDIUM':'EARLY',
-      entry:p,entryLow,entryHigh,exit:invalidation,
-      reason:'ورود تأیید شد: قدرت خریدار '+buyerPower+'% در برابر فروشنده '+sellerPower+'% · '+q.buyers100Count+' خریدار ردیابی‌شده · مومنتوم DEX '+q.momentum.passed+'/'+q.momentum.total+' · بدون الگوی Bot/Wash',
-      riskPct:riskPct*100,buyerPower,sellerPower,edge,quality:q
-    };
-  }
+  var momScore=Number(q.momentum?.score||0);
+  var confidence='EARLY';
+  if(buyerPower>=60&&q.buyer100Ok&&momScore>=65)confidence='HIGH';
+  else if(buyerPower>=55&&(q.buyer100Ok||momScore>=55))confidence='MEDIUM';
 
   return {
-    status:'EXIT',entry:null,entryLow:null,entryHigh:null,exit:invalidation,
-    reason:'قدرت فروشنده از خریدار بیشتر شده است',
-    riskPct:riskPct*100,buyerPower,sellerPower,quality:q
+    status:'ENTRY',
+    confidence,
+    entry:p,entryLow,entryHigh,exit:invalidation,
+    reason:'قدرت خریدار '+buyerPower+'% در برابر فروشنده '+sellerPower+'%'+
+      (q.buyer100Ok?' · '+q.buyers100Count+' خریدار 100$+':' · داده خریدار 100$+ کامل نیست')+
+      ' · مومنتوم '+Number(q.momentum?.passed||0)+'/'+Number(q.momentum?.total||0),
+    riskPct:riskPct*100,buyerPower,sellerPower,edge:buyerPower-sellerPower,quality:q
   };
 }
 function tradePlanChips(t){
@@ -2368,7 +2384,6 @@ function tradePlanChips(t){
     var zone=(p.entryLow&&p.entryHigh)?fmtPrice(p.entryLow)+' تا '+fmtPrice(p.entryHigh):fmtPrice(p.entry);
     var label=p.confidence==='HIGH'?'🟢 نقطه ورود قوی':p.confidence==='MEDIUM'?'🟢 نقطه ورود فعال':'🟡 ورود زودهنگام';
     return '<span class="entry-chip entry-ready">'+label+' · '+zone+'</span>'+
-      (p.quality?'<span class="entry-chip entry-ready">📊 DEX '+Number(p.quality.momentum?.passed||0)+'/'+Number(p.quality.momentum?.total||0)+'</span>':'')+
       (p.quality&&p.quality.momentum?'<span class="entry-chip entry-ready">📊 مومنتوم '+Number(p.quality.momentum.passed||0)+'/'+Number(p.quality.momentum.total||0)+'</span>':'')+
       '<span class="entry-chip entry-exit">🛑 خروج/ابطال · '+fmtPrice(p.exit)+'</span>';
   }
