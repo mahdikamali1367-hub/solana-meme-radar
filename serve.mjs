@@ -2,7 +2,7 @@ import {createServer} from 'node:http';
 
 const PORT=Number(process.env.PORT||4173);
 const RPC=process.env.SOLANA_RPC_URL||'https://api.mainnet.solana.com';
-const CACHE_MS=55_000;
+const CACHE_MS=15_000;
 const SOCIAL_QUERY_CACHE_MS=2*60*60*1000;
 const socialQueryCache=new Map();
 const SECURITY_CACHE_MS=2*60*1000;
@@ -55,7 +55,7 @@ const TRACKED_WALLETS=[
   {name:'moonlobsterdisc',address:'CFzVktB6sfK8rpewZeJ5VRPcvG5BBtK6pSbZ7FHVze4V',source:'Solana Tracker',sourceUrl:'https://www.solanatracker.io/wallet/CFzVktB6sfK8rpewZeJ5VRPcvG5BBtK6pSbZ7FHVze4V',seedPnl30d:9530000,seedWinRate:37.3,medianHoldSec:null}
 ];
 let trackedWalletCache={at:0,data:null};
-const TRACKED_WALLET_CACHE_MS=5*60*1000;
+const TRACKED_WALLET_CACHE_MS=60*1000;
 let convictionCache={at:0,data:null};
 const CONVICTION_CACHE_MS=30*60*1000;
 
@@ -1816,7 +1816,7 @@ const html=()=>`<!doctype html>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>رادار سولانا</title>
+<title>رادار سولانا · live-v4</title>
 <style>
 :root{color-scheme:dark;--bg:#07101d;--panel:#0d1829;--line:#203653;--text:#eef5ff;--muted:#8ea3c2;--good:#69efaa;--warn:#ffd36a;--bad:#ff8799;--blue:#9bd4ff}
 *{box-sizing:border-box}
@@ -2416,7 +2416,7 @@ function socialTrendBadges(t){
 }
 
 function exitFor(m){var cut=Date.now()-30*60*1000;return live&&live.exits?live.exits.filter(function(x){var ts=Number(x.ts||0);if(ts>0&&ts<1e12)ts*=1000;return x.tokenAddress===m&&ts>=cut}):[]}
-async function safeJson(u){try{var r=await fetch(u,{cache:'no-store'});if(!r.ok)throw 0;return await r.json()}catch(e){return null}}
+async function safeJson(u){try{var sep=u.includes('?')?'&':'?';var r=await fetch(u+sep+'_ts='+Date.now(),{cache:'no-store',headers:{'cache-control':'no-cache'}});if(!r.ok)throw 0;return await r.json()}catch(e){return null}}
 
 function featuredRows(){
   return tokens.map(function(t){
@@ -3001,8 +3001,8 @@ document.getElementById('search').addEventListener('input',function(e){
     else tokens.unshift(x.token);
     renderActivePanel();
   },250);
-});document.getElementById('securityFilter').addEventListener('change',renderTokens);document.getElementById('activityFilter').addEventListener('change',renderTokens);document.getElementById('refresh').addEventListener('click',loadAll);document.getElementById('closeDetail').addEventListener('click',function(){document.getElementById('detailDialog').close()});document.getElementById('detailDialog').addEventListener('click',function(e){if(e.target===this)this.close()});
-loadAll();startLivePush();marketLiveTimer=setInterval(pollMarketLive,2000);setTimeout(pollMarketLive,1200);setInterval(loadAll,60000);
+});document.getElementById('securityFilter').addEventListener('change',renderTokens);document.getElementById('activityFilter').addEventListener('change',renderTokens);document.getElementById('refresh').addEventListener('click',async function(){try{await safeJson('/api/v1/force-refresh')}catch(e){}await loadAll()});document.getElementById('closeDetail').addEventListener('click',function(){document.getElementById('detailDialog').close()});document.getElementById('detailDialog').addEventListener('click',function(e){if(e.target===this)this.close()});
+loadAll();startLivePush();marketLiveTimer=setInterval(pollMarketLive,1500);setTimeout(pollMarketLive,700);setInterval(loadAll,20000);
 </script>
 </body>
 </html>`;
@@ -3011,6 +3011,11 @@ createServer(async(req,res)=>{
   const url=new URL(req.url,'http://localhost');
   try{
     if(url.pathname==='/api/health'){res.writeHead(200,{'content-type':'application/json',...headers});return res.end(JSON.stringify({ok:true,time:new Date().toISOString()}))}
+    if(url.pathname==='/api/v1/force-refresh'){
+      cache={at:0,data:null};marketLiveCache={at:0,data:null};trackedWalletCache={at:0,data:null};smartMoneyCache={at:0,data:null};convictionCache={at:0,data:null};
+      res.writeHead(200,{'content-type':'application/json; charset=utf-8','cache-control':'no-store',...headers});
+      return res.end(JSON.stringify({ok:true,clearedAt:new Date().toISOString()}));
+    }
     if(url.pathname==='/api/v1/conviction-wallets'){const cw=await buildConvictionWallets();res.writeHead(200,{'content-type':'application/json; charset=utf-8','cache-control':'no-store',...headers});return res.end(JSON.stringify(cw))}
     if(url.pathname==='/api/v1/tracked-wallets'){const tw=await buildTrackedWallets();res.writeHead(200,{'content-type':'application/json; charset=utf-8','cache-control':'no-store',...headers});return res.end(JSON.stringify(tw))}
     if(url.pathname==='/api/v1/smart-money'){const sm=await buildSmartMoney();res.writeHead(200,{'content-type':'application/json; charset=utf-8','cache-control':'no-store',...headers});return res.end(JSON.stringify(sm))}
@@ -3062,7 +3067,7 @@ createServer(async(req,res)=>{
       if(url.pathname==='/api/v1/trending')body={...d,tokens:[...d.tokens].sort((a,b)=>b.trend.score-a.trend.score)};
       res.writeHead(200,{'content-type':'application/json; charset=utf-8','cache-control':'no-store',...headers});return res.end(JSON.stringify(body));
     }
-    if(url.pathname==='/'){res.writeHead(200,{'content-type':'text/html; charset=utf-8','cache-control':'no-store',...headers});return res.end(html())}
+    if(url.pathname==='/'){res.writeHead(200,{'content-type':'text/html; charset=utf-8','cache-control':'no-store, no-cache, must-revalidate, max-age=0','pragma':'no-cache','expires':'0',...headers});return res.end(html())}
     res.writeHead(404,headers);res.end('Not found');
   }catch(e){res.writeHead(502,{'content-type':'application/json',...headers});res.end(JSON.stringify({ok:false,error:String(e?.message||e)}))}
 }).listen(PORT,'0.0.0.0',()=>console.log('Solana Meme Radar v3 live on '+PORT));
