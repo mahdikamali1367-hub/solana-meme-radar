@@ -215,9 +215,24 @@ async function discovery(){
     'https://api.dexscreener.com/token-boosts/latest/v1',
     'https://api.dexscreener.com/token-boosts/top/v1'
   ];
-  const [sets,kol]=await Promise.all([Promise.allSettled(urls.map(u=>jfetch(u))),kolTrendDiscovery()]);
+
+  const blank=mint=>({mint,description:'',image:'',links:[],boostAmount:0,boostTotal:0,boostSeen:false,profileSeen:false,kolTrend:null,discoverySources:[]});
   const m=new Map();
-  const blank=mint=>({mint,description:'',image:'',links:[],boostAmount:0,boostTotal:0,boostSeen:false,profileSeen:false,kolTrend:null});
+  const addMint=(mint,patch={})=>{
+    if(!mint||typeof mint!=='string')return;
+    const old=m.get(mint)||blank(mint);
+    Object.assign(old,patch);
+    old.discoverySources=[...new Set([...(old.discoverySources||[]),...(patch.discoverySources||[])])];
+    m.set(mint,old);
+  };
+
+  const [sets,kol,gtTrend,gtNew]=await Promise.all([
+    Promise.allSettled(urls.map(u=>jfetch(u))),
+    kolTrendDiscovery(),
+    jfetch('https://api.geckoterminal.com/api/v2/networks/solana/trending_pools?page=1',{},12000).catch(()=>null),
+    jfetch('https://api.geckoterminal.com/api/v2/networks/solana/new_pools?page=1',{},12000).catch(()=>null)
+  ]);
+
   sets.forEach((r,idx)=>{
     if(r.status!=='fulfilled')return;
     for(const x of (Array.isArray(r.value)?r.value:[])){
@@ -232,20 +247,46 @@ async function discovery(){
         old.boostAmount=Math.max(old.boostAmount,num(x.amount));
         old.boostTotal=Math.max(old.boostTotal,num(x.totalAmount));
       }
+      old.discoverySources=[...new Set([...(old.discoverySources||[]),'DEXScreener'])];
       m.set(x.tokenAddress,old);
     }
   });
+
   for(const k of (kol?.tokens||[])){
     const old=m.get(k.mint)||blank(k.mint);
     old.kolTrend=k;
+    old.discoverySources=[...new Set([...(old.discoverySources||[]),'KOL'])];
     m.set(k.mint,old);
   }
 
-  // Do not let KOL/boost ranking hide an actively bought fresh token.
-  // Pull lightweight market data for the candidate pool and rank buyer activity first.
-  const raw=[...m.values()].slice(0,120);
+  // GeckoTerminal fallback/secondary discovery. Public endpoint, no API key required.
+  const ingestGt=(payload,label)=>{
+    for(const row of (payload?.data||[])){
+      const rel=row?.relationships||{};
+      const ids=[
+        rel?.base_token?.data?.id,
+        rel?.quote_token?.data?.id
+      ].filter(Boolean);
+      for(const id of ids){
+        const mint=String(id).replace(/^solana_/,'');
+        if(!mint||mint===WSOL_MINT||STABLE_MINTS.has(mint))continue;
+        addMint(mint,{discoverySources:[label]});
+      }
+    }
+  };
+  ingestGt(gtTrend,'GeckoTerminal Trending');
+  ingestGt(gtNew,'GeckoTerminal New Pools');
+
+  // Live whale stream is also a valid discovery source.
+  for(const e of (liveFomoState.events||[]).slice(0,120)){
+    const mint=e?.tokenAddress;
+    if(mint)addMint(mint,{discoverySources:['Live whale stream']});
+  }
+
+  const raw=[...m.values()].slice(0,180);
   let pairs=new Map();
   try{pairs=await pairsForMany(raw.map(x=>x.mint))}catch{}
+
   for(const s of raw){
     const p=pairs.get(s.mint);
     if(!p){s.marketDiscoveryScore=0;continue}
@@ -260,7 +301,9 @@ async function discovery(){
     ms+=Math.min(20,n5/8);
     ms+=Math.min(18,v5/1500);
     if(liq>=3000)ms+=5;if(liq>=10000)ms+=4;
-    if(pc5>80)ms-=6; // still discover it, but don't reward extreme FOMO.
+    if(pc5>80)ms-=6;
+    if((s.discoverySources||[]).includes('GeckoTerminal Trending'))ms+=8;
+    if((s.discoverySources||[]).includes('Live whale stream'))ms+=10;
     s.marketDiscoveryScore=Math.round(ms);
     s.discoveryBuyer5=+buyer5.toFixed(1);
     s.discoveryBuyer1=+buyer1.toFixed(1);
@@ -268,15 +311,14 @@ async function discovery(){
     s.discoveryLiquidity=liq;
   }
 
-  return raw.sort((a,b)=>{
-    // Active buyer flow is the primary discovery signal.
+  return raw.filter(x=>pairs.has(x.mint)).sort((a,b)=>{
     const ma=num(a.marketDiscoveryScore),mb=num(b.marketDiscoveryScore);
     if(mb!==ma)return mb-ma;
     const ka=num(a.kolTrend?.score),kb=num(b.kolTrend?.score);
     if(kb!==ka)return kb-ka;
     if(a.profileSeen&&!b.profileSeen)return -1;if(b.profileSeen&&!a.profileSeen)return 1;
     return num(b.boostTotal)-num(a.boostTotal);
-  }).slice(0,80);
+  }).slice(0,100);
 }
 async function pairFor(mint){
   try{
@@ -1043,7 +1085,7 @@ async function buildFresh(){
   if(cache.data&&Date.now()-cache.at<CACHE_MS)return cache.data;
   const seeds=await discovery();
   const out=[];
-  for(const s of seeds.slice(0,70)){
+  for(const s of seeds.slice(0,85)){
     const p=await pairFor(s.mint); if(!p)continue;
     const created=num(p.pairCreatedAt);
     if(!created)continue;
@@ -1111,7 +1153,7 @@ async function buildFresh(){
   out.sort((a,b)=>(rank[b.verdict]-rank[a.verdict])||(b.trend.score-a.trend.score)||(b.volume5m-a.volume5m));
   const strong=out.filter(x=>x.verdict==='STRONG WATCH').length;
   const trending=out.filter(x=>x.trend.score>=50).length;
-  const data={ok:true,generatedAt:new Date().toISOString(),refreshSeconds:60,marketLiveRefreshSeconds:2,count:out.length,strong,trending,tokens:out,
+  const data={ok:true,generatedAt:new Date().toISOString(),refreshSeconds:20,marketLiveRefreshSeconds:1.5,count:out.length,strong,trending,discovered:seeds.length,tokens:out,
     sourceStatus:{dexscreener:'live',solanaRpc:'live',kolExplorer:'live-public profiles + on-chain holdings/trades',kolX:process.env.X_BEARER_TOKEN?'live-api':'on-chain fallback; X API key not configured',bluesky:'live-public',x:process.env.X_BEARER_TOKEN?'live-api':'needs API key',youtube:process.env.YOUTUBE_API_KEY?'live-api':'needs API key',reddit:process.env.REDDIT_CLIENT_ID?'configured':'presence-only',instagram:'presence-only',facebook:'presence-only',tiktok:'presence-only',telegram:'presence-only'},
     holderPolicy:{hardRules:{holder1MustBeBelowPct:10,holders2to10EachMustBeBelowPct:5,exclusive:true},gradeA:{holder1MaxPct:5,holders2to10EachMaxPct:2.5},gradeB:{holder1MaxPct:7.5,holders2to10EachMaxPct:4},gradeC:{holder1MaxPct:10,holders2to10EachMaxPct:5},unknownFailsStrong:true},
     activityPolicy:{probableOrganicMin:72,highSecurityMin:58,method:'aggregate heuristics; not proof of human identity'},
