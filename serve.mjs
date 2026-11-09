@@ -1852,7 +1852,7 @@ html,body,.shell,.panel,.list{overflow-anchor:none}
 <header>
 <div class="head">
   <div class="brand"><div class="logo">S</div><div><b>رادار سولانا</b><small>میم‌کوین · نهنگ · اسمارت‌مانی</small></div></div>
-  <div style="display:flex;align-items:center;gap:7px"><span class="muted status" id="updated">در حال اتصال…</span><button class="primary" id="refresh">↻ بروزرسانی</button></div>
+  <div style="display:flex;align-items:center;gap:7px"><span class="muted status" id="updated">در حال راه‌اندازی داده زنده…</span><button class="primary" id="refresh">↻ بروزرسانی</button></div>
 </div>
 </header>
 
@@ -2949,39 +2949,84 @@ async function pollMarketLive(){
   }finally{marketLiveBusy=false}
 }
 
-var liveStream=null,liveStreamConnected=false,liveFallbackTimer=null;
+var liveStream=null,liveStreamConnected=false,liveFallbackTimer=null,liveConnectTimeout=null;
+
+function setLiveStatus(txt){
+  var u=document.getElementById('updated');
+  if(u)u.textContent=txt;
+}
+
 function applyLivePayload(x,label){
   if(!x)return;
   live=x;
   renderActivePanel();
-  document.getElementById('updated').textContent=(label||'زنده')+': '+new Date().toLocaleTimeString('fa-IR');
+  setLiveStatus((label||'زنده')+': '+new Date().toLocaleTimeString('fa-IR'));
 }
+
 async function pollLiveFallback(){
   if(liveStreamConnected)return;
   var x=await safeJson('/api/v1/smart-money-live');
-  applyLivePayload(x,'fallback');
+  if(x){
+    applyLivePayload(x,'اتصال جایگزین فعال');
+  }else{
+    setLiveStatus('داده بازار فعال · منبع نهنگ موقتاً در دسترس نیست');
+  }
 }
+
+function enableLiveFallback(){
+  liveStreamConnected=false;
+  if(liveConnectTimeout){clearTimeout(liveConnectTimeout);liveConnectTimeout=null}
+  if(!liveFallbackTimer){
+    pollLiveFallback();
+    liveFallbackTimer=setInterval(pollLiveFallback,1500);
+  }
+  setLiveStatus('اتصال جایگزین فعال · در حال دریافت داده زنده');
+}
+
 function startLivePush(){
-  if(typeof EventSource==='undefined'){liveFallbackTimer=setInterval(pollLiveFallback,1000);return}
+  setLiveStatus('در حال اتصال زنده…');
+  if(typeof EventSource==='undefined'){
+    enableLiveFallback();
+    return;
+  }
+
   try{
-    liveStream=new EventSource('/api/v1/live-stream');
-    var handler=function(ev){try{applyLivePayload(JSON.parse(ev.data),'push زنده')}catch(e){}};
+    liveStream=new EventSource('/api/v1/live-stream?ts='+Date.now());
+
+    var handler=function(ev){
+      try{
+        applyLivePayload(JSON.parse(ev.data),'Push زنده');
+      }catch(e){}
+    };
+
     liveStream.addEventListener('snapshot',handler);
     liveStream.addEventListener('market',handler);
     liveStream.addEventListener('position',handler);
     liveStream.addEventListener('status',handler);
+
     liveStream.onopen=function(){
       liveStreamConnected=true;
+      if(liveConnectTimeout){clearTimeout(liveConnectTimeout);liveConnectTimeout=null}
       if(liveFallbackTimer){clearInterval(liveFallbackTimer);liveFallbackTimer=null}
-      document.getElementById('updated').textContent='اتصال Push زنده برقرار';
+      setLiveStatus('اتصال Push زنده برقرار');
     };
+
     liveStream.onerror=function(){
-      liveStreamConnected=false;
-      if(!liveFallbackTimer)liveFallbackTimer=setInterval(pollLiveFallback,1000);
+      try{liveStream.close()}catch(e){}
+      enableLiveFallback();
     };
+
+    // Some browsers/proxies leave EventSource in CONNECTING forever.
+    // Fall back automatically instead of showing "connecting" indefinitely.
+    liveConnectTimeout=setTimeout(function(){
+      if(!liveStreamConnected){
+        try{liveStream.close()}catch(e){}
+        enableLiveFallback();
+      }
+    },3500);
+
   }catch(e){
-    liveStreamConnected=false;
-    if(!liveFallbackTimer)liveFallbackTimer=setInterval(pollLiveFallback,1000);
+    enableLiveFallback();
   }
 }
 document.addEventListener('click',function(e){var d=e.target.closest('.detail-btn');if(!d)return;openDetail(d.getAttribute('data-mint')||'')});
