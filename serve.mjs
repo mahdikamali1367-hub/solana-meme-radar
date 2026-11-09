@@ -2291,7 +2291,7 @@ function entryQualityGate(t){
 
   // Only an explicit BOT RISK blocks entry. MIXED/unknown is allowed but lowers confidence.
   var botBlocked=act.label==='BOT RISK'||
-    (act.flags||[]).some(function(x){return /wash محتمل|ربات/فرکانس بسیار بالا/i.test(String(x))});
+    (act.flags||[]).some(function(x){return /wash محتمل|ربات|فرکانس بسیار بالا/i.test(String(x))});
   if(botBlocked)reasons.push('ریسک Bot/Wash بالا تشخیص داده شده');
 
   // $100 tracked buyers are a confidence booster, not a hard requirement,
@@ -2848,7 +2848,7 @@ function openDetail(m){
   if(t&&socialTrendBadges(t))h+='<div class="note"><b>📣 شبکه‌های ترند تأییدشده:</b><div>'+socialTrendBadges(t)+'</div></div>';
   if(t){var tp=tradePlan(t);h+='<div class="note"><b>🎯 برنامه ورود/خروج:</b> '+tradePlanChips(t)+'<div style="margin-top:5px">'+esc(tp.reason||'')+(tp.riskPct?' · فاصله ابطال تقریبی '+Number(tp.riskPct).toFixed(1)+'%':'')+'</div><div class="muted" style="margin-top:4px">قیمت‌ها مرجع مدیریت ریسک‌اند، نه تضمین اجرا یا سود.</div></div>';}
   if(t){var tg=trustGuard(t),hb=t.holderBehavior||{};h+='<div class="note"><b>🛡 Trust Guard:</b> <span class="'+trustClass(t)+'">'+esc(trustLabel(t))+'</span> · snapshot هولدر '+Number(hb.snapshots||0)+' · خروج هولدر '+Number(hb.outflowPct||0).toFixed(2)+'% · نسبت Sell/Buy '+Number(hb.sellBuyRatio||0).toFixed(2)+(tg.reasons&&tg.reasons.length?' · '+esc(tg.reasons.join(' • ')):'')+'</div>';}
-  if(t.kolTrend){var k=t.kolTrend;h+='<details class="accordion" open><summary>👑 شواهد KOL</summary><div class="accordion-body"><div class="note"><b>KOLها:</b> '+esc((k.kolNames||[]).join('، ')||'—')+' · معامله اخیر '+Number(k.recentCount||0)+' · هولد '+Number(k.holdingCount||0)+' · اشاره X '+Number(k.xMentionCount||0)+'</div>'+(k.evidence||[]).slice(0,8).map(function(e){return '<div class="check"><span>'+esc(e.kol||'KOL')+' · '+esc(e.type||'')+'</span><span class="manual">'+esc(e.label||'')+'</span></div>'}).join('')+'</div></details>';}
+  if(t&&t.kolTrend){var k=t.kolTrend;h+='<details class="accordion" open><summary>👑 شواهد KOL</summary><div class="accordion-body"><div class="note"><b>KOLها:</b> '+esc((k.kolNames||[]).join('، ')||'—')+' · معامله اخیر '+Number(k.recentCount||0)+' · هولد '+Number(k.holdingCount||0)+' · اشاره X '+Number(k.xMentionCount||0)+'</div>'+(k.evidence||[]).slice(0,8).map(function(e){return '<div class="check"><span>'+esc(e.kol||'KOL')+' · '+esc(e.type||'')+'</span><span class="manual">'+esc(e.label||'')+'</span></div>'}).join('')+'</div></details>';}
   if(tr){var bf=largeBuyerFlow(t);h+='<div class="note"><b>خریدارهای ردیابی‌شده ۵۰۰$+:</b> '+bf.buyers+' کیف‌پول ('+money(bf.buyerUsd)+') · <b>فروشنده خالص:</b> '+bf.sellers+' کیف‌پول ('+money(bf.sellerUsd)+') · '+(bf.dominant?'<span class="pass">✓ خریدارها بیشترند</span>':'<span class="manual">خریدارها بیشتر نیستند</span>')+'</div>';}
   if(tr&&tr.convictionHolders&&tr.convictionHolders.length)h+='<details class="accordion"><summary>💎 هولدرهای ردیابی‌شده با خرید ۱۰۰۰$+ و فروش کمتر</summary><div class="accordion-body">'+tr.convictionHolders.map(function(x){return '<div class="check"><span>'+esc(x.wallet)+' · خرید '+money(x.buyUsd)+' · فروش '+money(x.sellUsd)+'</span><span class="pass">هولد فعلی '+money(x.currentHoldingUsd)+'</span></div>'}).join('')+'<div class="note">بر اساس Swapهای قابل‌تشخیص ۴۸ ساعت اخیر کیف‌پول‌های تحت ردیابی؛ پوشش کل بازار نیست.</div></div></details>';
   if(sm)h+='<div class="note"><b>اسمارت‌مانی:</b> '+Number(sm.smartMoneyCount||0)+' کیف‌پول · '+money(sm.totalValueUsd)+' پوزیشن</div>';
@@ -3002,6 +3002,10 @@ document.getElementById('search').addEventListener('input',function(e){
     renderActivePanel();
   },250);
 });document.getElementById('securityFilter').addEventListener('change',renderTokens);document.getElementById('activityFilter').addEventListener('change',renderTokens);document.getElementById('refresh').addEventListener('click',async function(){try{await safeJson('/api/v1/force-refresh')}catch(e){}await loadAll()});document.getElementById('closeDetail').addEventListener('click',function(){document.getElementById('detailDialog').close()});document.getElementById('detailDialog').addEventListener('click',function(e){if(e.target===this)this.close()});
+window.addEventListener('error',function(e){
+  var u=document.getElementById('updated');
+  if(u)u.textContent='خطای رابط: '+String(e.message||'JavaScript');
+});
 loadAll();startLivePush();marketLiveTimer=setInterval(pollMarketLive,1500);setTimeout(pollMarketLive,700);setInterval(loadAll,20000);
 </script>
 </body>
