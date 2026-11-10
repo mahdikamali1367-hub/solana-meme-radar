@@ -547,7 +547,7 @@ async function buildPrelaunchLive(){
     const p=pairs.get(x.mint);
     const current=p?num(p.priceUsd):num(x.currentPrice);
     const base=num(x.launchPrice);
-    const growthPct=current>0&&base>0?+(((current/base)-1)*100).toFixed(4):null;
+    const growthPct=current>0&&base>0?+(((current-base)/base)*100).toFixed(4):null;
     return {mint:x.mint,currentPrice:current,growthPct,dexUrl:p?.url||x.dexUrl||'',updatedAt:Date.now()};
   });
   return {ok:true,generatedAt:new Date().toISOString(),tokens};
@@ -2534,13 +2534,27 @@ var livePriceCache=new Map();
 var lastMarketLiveAt=0;
 try{
   var savedLivePrices=JSON.parse(localStorage.getItem('livePriceCache')||'[]');
-  if(Array.isArray(savedLivePrices))savedLivePrices.forEach(function(x){if(x&&x[0])livePriceCache.set(x[0],x[1])});
+  if(Array.isArray(savedLivePrices))savedLivePrices.forEach(function(x){
+    if(!x||!x[0]||!x[1])return;
+    var v=x[1];
+    if(Number(v.price||0)>0)livePriceCache.set(x[0],{price:Number(v.price),at:Number(v.at||0),source:v.source||'stored'});
+  });
 }catch(e){}
 var livePriceSaveTimer=null;
-function rememberLivePrice(mint,price){
+function rememberLivePrice(mint,price,source,observedAt){
   price=Number(price||0);
   if(!mint||!(price>0))return;
-  livePriceCache.set(mint,{price:price,at:Date.now()});
+  source=source||'live';
+  observedAt=Number(observedAt||Date.now());
+
+  var old=livePriceCache.get(mint);
+  var oldAt=Number(old&&old.at||0);
+
+  // Never let an older/slower full-scan snapshot overwrite a newer live market price.
+  if(old&&oldAt>observedAt)return;
+  if(old&&source==='snapshot'&&old.source==='live'&&Date.now()-oldAt<15000)return;
+
+  livePriceCache.set(mint,{price:price,at:observedAt,source:source});
   if(!livePriceSaveTimer){
     livePriceSaveTimer=setTimeout(function(){
       livePriceSaveTimer=null;
@@ -2552,22 +2566,34 @@ function saveLivePrices(){
   try{localStorage.setItem('livePriceCache',JSON.stringify([...livePriceCache.entries()].slice(-600)))}catch(e){}
 }
 function currentPriceForMint(mint){
-  var t=findToken(mint);
-  var p=Number(t&&t.priceUsd||0);
-  if(p>0){rememberLivePrice(mint,p);return p}
   var hit=livePriceCache.get(mint);
-  return hit&&Number(hit.price||0)>0?Number(hit.price):null;
+  var cached=hit&&Number(hit.price||0)>0?Number(hit.price):null;
+  var cachedAt=Number(hit&&hit.at||0);
+
+  var t=findToken(mint);
+  var tokenPrice=Number(t&&t.priceUsd||0);
+
+  // Live market cache is authoritative while fresh.
+  if(cached&&Date.now()-cachedAt<=15000)return cached;
+
+  // If live data is stale/unavailable, fall back to the latest full-scan token price.
+  if(tokenPrice>0){
+    rememberLivePrice(mint,tokenPrice,'snapshot',Date.now());
+    return tokenPrice;
+  }
+  return cached;
 }
 function livePnlPct(mint,base){
   var cur=currentPriceForMint(mint),b=Number(base||0);
-  return cur&&b>0?((cur/b)-1)*100:null;
+  if(!(cur>0)||!(b>0))return null;
+  return ((cur-b)/b)*100;
 }
 function updateLiveProfitDom(){
   document.querySelectorAll('[data-live-profit-mint]').forEach(function(el){
     var mint=el.getAttribute('data-live-profit-mint');
     var base=Number(el.getAttribute('data-live-profit-base')||0);
     var p=livePnlPct(mint,base);
-    el.textContent=p==null?'—':(p>0?'+':'')+p.toFixed(2)+'%';
+    el.textContent=p==null?'—':(p>=0?'+':'')+p.toFixed(2)+'%';
     el.classList.remove('return-pos','return-neg','return-flat');
     el.classList.add(p==null?'return-flat':p>=0?'return-pos':'return-neg');
   });
@@ -2612,7 +2638,7 @@ function rememberTokenRadar(t){
 function tokenRadarPerformanceRows(){
   return [...tokenRadarHistory.values()].map(function(h){
     var t=findToken(h.mint),current=currentPriceForMint(h.mint),base=Number(h.introducedPrice||0);
-    var pnl=(current!=null&&current>0&&base>0)?((current/base)-1)*100:null;
+    var pnl=(current!=null&&current>0&&base>0)?((current-base)/base)*100:null;
     return {history:h,token:t,currentPrice:current,pnlPct:pnl};
   }).sort(function(a,b){
     return (b.pnlPct==null?-1e9:b.pnlPct)-(a.pnlPct==null?-1e9:a.pnlPct);
@@ -2664,7 +2690,7 @@ function socialSignalPerformanceRows(){
     var t=findToken(h.mint);
     var current=currentPriceForMint(h.mint);
     var base=Number(h.introducedPrice||0);
-    var pnl=(current!=null&&current>0&&base>0)?((current/base)-1)*100:null;
+    var pnl=(current!=null&&current>0&&base>0)?((current-base)/base)*100:null;
     return {history:h,token:t,currentPrice:current,pnlPct:pnl};
   }).sort(function(a,b){
     var av=a.pnlPct==null?-1e9:a.pnlPct,bv=b.pnlPct==null?-1e9:b.pnlPct;
@@ -2711,7 +2737,7 @@ function recommendationPerformanceRows(){
     var t=findToken(h.mint);
     var current=currentPriceForMint(h.mint);
     var base=Number(h.introducedPrice||0);
-    var pnl=(current!=null&&current>0&&base>0)?((current/base)-1)*100:null;
+    var pnl=(current!=null&&current>0&&base>0)?((current-base)/base)*100:null;
     return {history:h,token:t,currentPrice:current,pnlPct:pnl};
   }).sort(function(a,b){
     var av=a.pnlPct==null?-1e9:a.pnlPct,bv=b.pnlPct==null?-1e9:b.pnlPct;
@@ -3967,7 +3993,7 @@ function renderActivePanel(){
 function mergeMarketLive(x){
   if(!x||!Array.isArray(x.tokens)||!x.tokens.length)return false;
   var byMint=new Map(x.tokens.map(function(p){
-    if(p&&p.mint&&Number(p.priceUsd||0)>0)rememberLivePrice(p.mint,p.priceUsd);
+    if(p&&p.mint&&Number(p.priceUsd||0)>0)rememberLivePrice(p.mint,p.priceUsd,'live',Date.now());
     return [p.mint,p];
   }));
   var changed=false;
@@ -3996,7 +4022,7 @@ function mergePrelaunchLive(x){
     if(pnl){
       var base=Number(pnl.getAttribute('data-prelaunch-live-base')||0);
       var cur=Number(v.currentPrice||0);
-      var g=cur>0&&base>0?((cur/base)-1)*100:null;
+      var g=cur>0&&base>0?((cur-base)/base)*100:null;
       pnl.textContent=g==null?'—':(g>0?'+':'')+g.toFixed(2)+'%';
       pnl.classList.remove('return-pos','return-neg','return-flat');
       pnl.classList.add(g==null?'return-flat':g>=0?'return-pos':'return-neg');
@@ -4021,7 +4047,7 @@ async function loadAll(){
     var r=await Promise.all([safeJson('/api/v1/tokens'),safeJson('/api/v1/smart-money'),safeJson('/api/v1/smart-money-live'),safeJson('/api/v1/tracked-wallets'),safeJson('/api/v1/conviction-wallets'),safeJson('/api/v1/prelaunch')]);
     if(r[0]&&Array.isArray(r[0].tokens)&&r[0].tokens.length){
       tokens=r[0].tokens;
-      tokens.forEach(function(t){rememberLivePrice(t.mint,t.priceUsd)});
+      tokens.forEach(function(t){rememberLivePrice(t.mint,t.priceUsd,'snapshot',Date.now())});
       saveLivePrices();
     }
     if(r[1])smart=r[1];
