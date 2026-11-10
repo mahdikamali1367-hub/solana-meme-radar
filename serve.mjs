@@ -2437,7 +2437,7 @@ html,body,.shell,.panel,.list{overflow-anchor:none}
   <details class="accordion highlight" open>
     <summary>💰 عملکرد سیگنال‌های ترند اجتماعی از زمان معرفی</summary>
     <div class="accordion-body">
-      <p class="muted" style="font-size:11px">مبنای هر توکن اولین Social Trend است؛ قیمت مبنا ثابت می‌ماند و قیمت فعلی/سود تقریباً هر ۱ ثانیه زنده می‌شود، با حفظ آخرین مقدار در قطع کوتاه.</p>
+      <p class="muted" style="font-size:11px">مبنای هر توکن اولین Social Trend است؛ قیمت ورود ثابت و سود لحظه‌ای زنده است. ورود نهنگ و اسمارت‌مانی روی همان Mint نیز کنار هر سیگنال نمایش داده می‌شود.</p>
       <div id="socialPerformanceSummary"></div>
       <div class="list" id="socialPerformanceList"></div>
     </div>
@@ -2888,6 +2888,24 @@ function findTracked(m){return tracked&&tracked.tokens?tracked.tokens.find(funct
 function smartFor(m){return smart&&smart.tokens?smart.tokens.find(function(x){return x.address===m}):null}
 function whaleFor(m){var r=live&&live.whaleBuys?live.whaleBuys.filter(function(x){return x.tokenAddress===m}):[];return {count:r.length,usd:r.reduce(function(a,x){return a+Number(x.tradeUsd||0)},0)}}
 function whaleSellsFor(m){var r=live&&live.whaleSells?live.whaleSells.filter(function(x){return x.tokenAddress===m}):[];return {count:r.length,usd:r.reduce(function(a,x){return a+Number(x.tradeUsd||0)},0)}}
+function socialMoneyFlow(t){
+  if(!t)return {whale:{count:0,usd:0},smart:null,tracked:null};
+  var wh=whaleFor(t.mint),sm=smartFor(t.mint),tr=findTracked(t.mint);
+  return {whale:wh,smart:sm,tracked:tr};
+}
+function socialMoneyBadges(t){
+  var f=socialMoneyFlow(t),rows=[];
+  if(f.whale.count>0)rows.push('<span class="whale-buy-chip">🐋 ورود نهنگ · '+f.whale.count+' خرید · '+money(f.whale.usd)+'</span>');
+  if(f.smart){
+    var n=Number(f.smart.smartMoneyCount||f.smart.buyers||0);
+    var usd=Number(f.smart.totalValueUsd||f.smart.netFlowUsd||f.smart.currentHoldingUsd||0);
+    rows.push('<span class="badge good">🧠 اسمارت‌مانی · '+(n>0?n+' کیف‌پول': 'فعال')+(usd>0?' · '+money(usd):'')+'</span>');
+  }else if(f.tracked&&Number(f.tracked.uniqueBuyers||0)>0&&Number(f.tracked.netFlowUsd||0)>0){
+    rows.push('<span class="badge good">🧠 جریان کیف‌پول هوشمند · '+Number(f.tracked.uniqueBuyers||0)+' خریدار · '+money(f.tracked.netFlowUsd)+'</span>');
+  }
+  return rows.join('');
+}
+
 function trustGuard(t){
   if(!t)return {status:'BLOCK',reasons:['توکن نامشخص']};
   var pre=t.preSignalGuard||{},tr=findTracked(t.mint),ws=whaleSellsFor(t.mint),ex=exitFor(t.mint),reasons=[];
@@ -3679,6 +3697,7 @@ function renderSocialTrends(){
     el.innerHTML=r.length?r.map(function(t,i){
       var h=t.socialHeat||{},s=t.security||{};
       var hist=socialSignalHistory.get(t.mint);
+      var moneyFlow=socialMoneyFlow(t),wh=moneyFlow.whale,sm=moneyFlow.smart,trMoney=moneyFlow.tracked;
       var pnl=null;
       var liveNow=currentPriceForMint(t.mint);
       if(hist&&Number(hist.introducedPrice||0)>0&&Number(liveNow||0)>0){
@@ -3686,7 +3705,7 @@ function renderSocialTrends(){
       }
       var pnlText=pnl==null?'—':(pnl>0?'+':'')+pnl.toFixed(1)+'%';
       var pnlClass=pnl==null?'return-flat':pnl>=0?'return-pos':'return-neg';
-      return '<div class="row"><div class="asset"><b>#'+(i+1)+' 📣 '+esc(t.symbol||'?')+' · '+esc(t.name||'')+'</b>'+whaleTrendBadge(t)+socialTrendBadges(t)+tradePlanChips(t)+
+      return '<div class="row"><div class="asset"><b>#'+(i+1)+' 📣 '+esc(t.symbol||'?')+' · '+esc(t.name||'')+'</b>'+socialMoneyBadges(t)+socialTrendBadges(t)+tradePlanChips(t)+
         '<small>'+esc((h.reasons||[]).slice(0,3).join(' • '))+'</small>'+
         (hist?'<small>اولین سیگنال اجتماعی: '+new Date(hist.introducedAt).toLocaleString('fa-IR')+' · قیمت '+fmtPrice(hist.introducedPrice)+'</small>':'')+
         socialButtons(t)+'</div>'+
@@ -3694,6 +3713,11 @@ function renderSocialTrends(){
         '<div class="cell"><small>💵 قیمت ورود</small><b>'+fmtPrice(hist&&hist.introducedPrice)+'</b></div>'+
         '<div class="cell"><small>⚡ قیمت لحظه‌ای</small><b data-live-price-mint="'+esc(t.mint)+'">'+(liveNow?fmtPrice(liveNow):'—')+'</b></div>'+
         '<div class="cell"><small>💰 سود لحظه‌ای</small><b data-live-profit-mint="'+esc(t.mint)+'" data-live-profit-base="'+Number(hist&&hist.introducedPrice||0)+'" class="'+pnlClass+'">'+pnlText+'</b></div>'+
+        '<div class="cell"><small>🐋 نهنگ</small><b class="'+(wh.count>0?'return-pos':'return-flat')+'">'+(wh.count>0?wh.count+' خرید · '+money(wh.usd):'ندارد')+'</b></div>'+
+        '<div class="cell"><small>🧠 اسمارت‌مانی</small><b class="'+(sm||(trMoney&&Number(trMoney.netFlowUsd||0)>0)?'return-pos':'return-flat')+'">'+
+          (sm?((Number(sm.smartMoneyCount||sm.buyers||0)>0?Number(sm.smartMoneyCount||sm.buyers||0)+' کیف‌پول':'فعال')+(Number(sm.totalValueUsd||sm.netFlowUsd||sm.currentHoldingUsd||0)>0?' · '+money(sm.totalValueUsd||sm.netFlowUsd||sm.currentHoldingUsd):'')):
+          (trMoney&&Number(trMoney.netFlowUsd||0)>0?Number(trMoney.uniqueBuyers||0)+' خریدار · '+money(trMoney.netFlowUsd):'ندارد'))+
+        '</b></div>'+
         '<div class="cell"><small>X / 2h</small><b>'+Number(h.xPosts2h||0)+'</b></div>'+
         '<div class="cell hide-sm"><small>YouTube / 24h</small><b>'+Number(h.youtubeVideos24h||0)+'</b></div>'+
         '<div class="cell hide-md"><small>امنیت</small><b><span class="badge '+secClass(s.tier)+'">'+esc(faSec(s.tier))+'</span></b></div>'+
@@ -3718,6 +3742,7 @@ function renderSocialTrends(){
 
     perfList.innerHTML=rows.length?rows.map(function(x,i){
       var h=x.history,t=x.token,p=x.pnlPct;
+      var currentFlow=t?socialMoneyFlow(t):{whale:{count:0,usd:0},smart:null,tracked:null};
       var cls=p==null?'return-flat':p>=0?'return-pos':'return-neg';
       var txt=p==null?'—':(p>0?'+':'')+p.toFixed(1)+'%';
       return '<div class="row"><div class="asset"><b>#'+(i+1)+' 📣 '+esc(h.symbol||'?')+' · '+esc(h.name||'')+'</b>'+
@@ -3726,6 +3751,9 @@ function renderSocialTrends(){
         '<div class="cell"><small>⚡ قیمت لحظه‌ای</small><b data-live-price-mint="'+esc(h.mint)+'">'+(x.currentPrice?fmtPrice(x.currentPrice):'—')+'</b></div>'+
         '<div class="cell"><small>💰 سود لحظه‌ای</small><b data-live-profit-mint="'+esc(h.mint)+'" data-live-profit-base="'+Number(h.introducedPrice||0)+'" class="'+cls+'">'+txt+'</b></div>'+
         '<div class="cell hide-sm"><small>Heat اولیه</small><b>'+Number(h.introducedSocialHeat||0)+'/100</b></div>'+
+        '<div class="cell"><small>🐋 نهنگ الان</small><b class="'+(currentFlow.whale.count>0?'return-pos':'return-flat')+'">'+(currentFlow.whale.count>0?currentFlow.whale.count+' · '+money(currentFlow.whale.usd):'ندارد')+'</b></div>'+
+        '<div class="cell"><small>🧠 اسمارت‌مانی الان</small><b class="'+(currentFlow.smart||(currentFlow.tracked&&Number(currentFlow.tracked.netFlowUsd||0)>0)?'return-pos':'return-flat')+'">'+
+          (currentFlow.smart?'فعال':currentFlow.tracked&&Number(currentFlow.tracked.netFlowUsd||0)>0?money(currentFlow.tracked.netFlowUsd):'ندارد')+'</b></div>'+
         '<div class="actions"><a class="action" target="_blank" rel="noopener" href="'+esc(dexUrl(h.mint,h.dexUrl||t&&t.dexUrl))+'">📈 چارت</a></div></div>';
     }).join(''):'<div class="empty">هنوز سیگنال اجتماعی ثبت‌شده‌ای برای محاسبه عملکرد وجود ندارد.</div>';
   }
