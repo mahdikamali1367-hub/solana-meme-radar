@@ -17,7 +17,7 @@ let prelaunchCache={at:0,data:null};
 const prelaunchWatchState=new Map();
 const launchPerfCache=new Map();
 
-const PRELAUNCH_CACHE_MS=10*60*1000;
+const PRELAUNCH_CACHE_MS=2*60*1000;
 
 let marketLiveInFlight=null;
 const MARKET_LIVE_CACHE_MS=900;
@@ -452,27 +452,36 @@ async function launchPerformanceForProject(x){
 }
 
 
-function parsePrelaunchWatchCandidates(html,sourceName,baseUrl){
+function parsePrelaunchWatchCandidates(html,sourceName,baseUrl,options={}){
   const out=[],src=String(html||'');
   const re=/<a\b[^>]*href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi;
+  const sourceSolana=options.sourceSolana===true;
+  const allowUnconfirmed=options.allowUnconfirmed===true;
   let m;
   while((m=re.exec(src))){
     const href=String(m[1]||''),name=stripHtml(m[2]).replace(/\s+/g,' ').trim();
-    if(!name||name.length<2||name.length>80)continue;
-    if(/^(home|login|sign in|learn more|read more|projects?|calendar|launchpad)$/i.test(name))continue;
-    const around=stripHtml(src.slice(Math.max(0,m.index-1100),Math.min(src.length,m.index+2200)));
-    const prelaunchHint=/(TGE|token generation|token sale|presale|pre-sale|upcoming|launch date|launching|not launched|IDO|IEO)/i.test(around);
-    const solanaHint=/\bSolana\b|\bSOL\b/i.test(around);
-    if(!prelaunchHint||!solanaHint)continue;
+    if(!name||name.length<2||name.length>90)continue;
+    if(/^(home|login|sign in|learn more|read more|projects?|calendar|launchpad|all|upcoming|live|closed)$/i.test(name))continue;
+
+    const around=stripHtml(src.slice(Math.max(0,m.index-1800),Math.min(src.length,m.index+3200)));
+    const prelaunchHint=/(TGE|token generation|token public offering|token sale|presale|pre-sale|upcoming|launch date|launching|not launched|not issued|IDO|IEO|allowlist open|fundraise goal)/i.test(around);
+    if(!prelaunchHint)continue;
+
+    const explicitSolana=/\bSolana\b|\bSOL\b/i.test(around);
+    const solanaConfirmed=sourceSolana||explicitSolana;
+    if(!solanaConfirmed&&!allowUnconfirmed)continue;
+
     const hasTeam=/founder|co-founder|team|doxxed|linkedin/i.test(around);
-    const hasBacking=/investor|backed by|funding|raised|seed|venture/i.test(around);
+    const hasBacking=/investor|backed by|funding|raised|seed|venture|fundraise goal/i.test(around);
     const hasTokenomics=/tokenomics|vesting|allocation|cliff/i.test(around);
     const hasAudit=/audit|audited|certik|solidproof|security audit/i.test(around);
     const hasKyc=/\bKYC\b|identity verified|team verified/i.test(around);
-    const socialBuzz=/trending|popular|heat|community|followers|mentions/i.test(around);
+    const socialBuzz=/trending|popular|heat|community|followers|mentions|allowlist open/i.test(around);
 
     out.push(prelaunchScore({
-      name,symbol:'',ecosystem:'Solana',source:sourceName,
+      name,symbol:'',ecosystem:solanaConfirmed?'Solana':'UNCONFIRMED',
+      solanaConfirmed:solanaConfirmed,
+      source:sourceName,
       sourceUrl:href.startsWith('http')?href:(baseUrl||'')+href,
       website:'',launchpad:sourceName,socials:[],tge:'',
       socialScore:socialBuzz?10:4,
@@ -489,11 +498,14 @@ function parsePrelaunchWatchCandidates(html,sourceName,baseUrl){
       securityEvidence:[
         hasAudit?'Audit mention/claim — نیازمند تأیید مستقل':null,
         hasKyc?'KYC mention/claim — نیازمند تأیید مستقل':null,
-        hasTokenomics?'Tokenomics/Vesting mention موجود':null
+        hasTokenomics?'Tokenomics/Vesting mention موجود':null,
+        solanaConfirmed?'اکوسیستم Solana در منبع تأیید شد':'اکوسیستم Solana هنوز تأیید نشده'
       ].filter(Boolean),
       backingEvidence:hasBacking?['Investor/Funding mention موجود']:[],
       launchEvidence:['Upcoming/TGE/Presale evidence در '+sourceName],
-      notes:'Watch Candidate؛ ادعاها تا قبل از مدرک مستقل امتیاز تأیید کامل نمی‌گیرند.'
+      notes:solanaConfirmed
+        ?'Watch Candidate سولانا؛ ادعاها تا قبل از مدرک مستقل امتیاز تأیید کامل نمی‌گیرند.'
+        :'Watch Candidate عمومی؛ تا تأیید اکوسیستم Solana فقط برای بررسی نمایش داده می‌شود.'
     }));
   }
   const seen=new Map();
@@ -501,7 +513,20 @@ function parsePrelaunchWatchCandidates(html,sourceName,baseUrl){
     const k=String(x.name||'').toLowerCase().replace(/\s+/g,' ').trim();
     const old=seen.get(k);if(!old||Number(x.score||0)>Number(old.score||0))seen.set(k,x);
   }
-  return [...seen.values()].slice(0,40);
+  return [...seen.values()].slice(0,50);
+}
+
+function parseRootDataCalendarWatch(html){
+  const txt=String(html||'');
+  const out=[];
+  // Re-use anchor parser with unconfirmed ecosystem allowed. RootData Calendar
+  // explicitly lists Token Public Offerings/TGE events, but ecosystem may not
+  // appear in the compact event row.
+  out.push(...parsePrelaunchWatchCandidates(
+    txt,'RootData Calendar','https://www.rootdata.com',
+    {allowUnconfirmed:true}
+  ));
+  return out;
 }
 
 async function buildPrelaunchRadar(){
@@ -512,7 +537,7 @@ async function buildPrelaunchRadar(){
       tfetch('https://www.rootdata.com/projects',{},12000),
       tfetch('https://www.rootdata.com/calendar',{},12000),
       tfetch('https://polkastarter.com/projects',{},12000),
-      tfetch('https://www.pinksale.finance/launchpads?chain=SOL',{},12000)
+      tfetch('https://www.pinksale.finance/solana/launchpads/contribution',{},12000)
     ]);
     const projectsHtml=results[0].status==='fulfilled'?results[0].value:'';
     const calendarHtml=results[1].status==='fulfilled'?results[1].value:'';
@@ -520,9 +545,9 @@ async function buildPrelaunchRadar(){
     const pinkHtml=results[3].status==='fulfilled'?results[3].value:'';
     publicRows=[
       ...parseRootDataPublicProjects(projectsHtml),
-      ...parsePrelaunchWatchCandidates(calendarHtml,'RootData Calendar','https://www.rootdata.com'),
-      ...parsePrelaunchWatchCandidates(polkaHtml,'Polkastarter','https://polkastarter.com'),
-      ...parsePrelaunchWatchCandidates(pinkHtml,'PinkSale','https://www.pinksale.finance')
+      ...parseRootDataCalendarWatch(calendarHtml),
+      ...parsePrelaunchWatchCandidates(polkaHtml,'Polkastarter','https://polkastarter.com',{allowUnconfirmed:true}),
+      ...parsePrelaunchWatchCandidates(pinkHtml,'PinkSale Solana','https://www.pinksale.finance',{sourceSolana:true})
     ];
     const cal=stripHtml(calendarHtml);
     for(const x of publicRows){
@@ -540,10 +565,18 @@ async function buildPrelaunchRadar(){
     const old=byName.get(k);if(!old||Number(x.score||0)>Number(old.score||0))byName.set(k,x);
   }
 
-  const projects=[...byName.values()]
-    .filter(x=>/solana/i.test(String(x.ecosystem||'')))
-    .sort((a,b)=>(Number(b.score||0)-Number(a.score||0))||(Number(b.securityScore||0)-Number(a.securityScore||0))||(Number(b.socialScore||0)-Number(a.socialScore||0)))
+  const allCandidates=[...byName.values()]
+    .sort((a,b)=>{
+      const as=(x=>x.solanaConfirmed===true||/solana/i.test(String(x.ecosystem||''))?1:0)(a);
+      const bs=(x=>x.solanaConfirmed===true||/solana/i.test(String(x.ecosystem||''))?1:0)(b);
+      return (bs-as)||(Number(b.score||0)-Number(a.score||0))||(Number(b.socialScore||0)-Number(a.socialScore||0));
+    });
+  const projects=allCandidates
+    .filter(x=>x.solanaConfirmed===true||/solana/i.test(String(x.ecosystem||'')))
     .slice(0,50);
+  const watchUnconfirmed=allCandidates
+    .filter(x=>!(x.solanaConfirmed===true||/solana/i.test(String(x.ecosystem||''))))
+    .slice(0,20);
 
   // Keep a watch record so a recommendation can still be evaluated after it leaves pre-launch lists.
   projects.forEach(rememberPrelaunchProject);
@@ -563,13 +596,22 @@ async function buildPrelaunchRadar(){
   }
   launched.sort((a,b)=>Number(b.growthPct??-1e9)-Number(a.growthPct??-1e9));
 
-  const suggested=projects.filter(x=>x.risk!=='HIGH').sort((a,b)=>{
+  const suggestedConfirmed=projects.filter(x=>x.risk!=='HIGH').sort((a,b)=>{
     const ar=a.fullVerified?3:a.corePassed>=2?2:Number(a.score||0)>=35?1:0;
     const br=b.fullVerified?3:b.corePassed>=2?2:Number(b.score||0)>=35?1:0;
     return (br-ar)||(Number(b.score||0)-Number(a.score||0));
-  }).slice(0,12);
+  });
+  const suggested=suggestedConfirmed.length
+    ?suggestedConfirmed.slice(0,12)
+    :watchUnconfirmed.filter(x=>x.risk!=='HIGH').slice(0,12).map(x=>({...x,ecosystem:'نیازمند تأیید Solana',solanaConfirmed:false}));
   const data={
-    ok:true,generatedAt:new Date().toISOString(),projects,suggested,launched,sourceError,
+    ok:true,generatedAt:new Date().toISOString(),projects,suggested,watchUnconfirmed,launched,sourceError,
+    sourceDiagnostics:{
+      manual:manual.length,
+      publicRows:publicRows.length,
+      confirmedSolana:projects.length,
+      unconfirmedWatch:watchUnconfirmed.length
+    },
     scoring:{social:20,team:15,teamVerified:5,kyc:10,audit:15,lpLock:15,tokenomics:10,backing:10,launchTransparency:5},
     policy:{
       prelaunchOnly:true,noOnchainSecurityClaim:true,evidenceRequired:true,
@@ -3680,9 +3722,10 @@ function renderPrelaunch(){
   var rows=prelaunch&&Array.isArray(prelaunch.projects)?prelaunch.projects:[];
   var status=document.getElementById('prelaunchStatus');
   var k=document.getElementById('kPrelaunch'),ks=document.getElementById('kPrelaunchStrong'),ksec=document.getElementById('kPrelaunchSecurity');
-  var high=rows.filter(function(x){return prelaunchSecurityBucket(x)==='high'});
-  var medium=rows.filter(function(x){return prelaunchSecurityBucket(x)==='medium'});
-  var low=rows.filter(function(x){return prelaunchSecurityBucket(x)==='low'});
+  var confirmedRows=rows.filter(function(x){return x.solanaConfirmed===true||/solana/i.test(String(x.ecosystem||''))});
+  var high=confirmedRows.filter(function(x){return prelaunchSecurityBucket(x)==='high'});
+  var medium=confirmedRows.filter(function(x){return prelaunchSecurityBucket(x)==='medium'});
+  var low=confirmedRows.filter(function(x){return prelaunchSecurityBucket(x)==='low'});
   if(k)k.textContent=rows.length;
   if(ks)ks.textContent=high.length;
   if(ksec)ksec.textContent=rows.filter(function(x){return Number(x.corePassed||0)>=2}).length;
@@ -3692,7 +3735,8 @@ function renderPrelaunch(){
   if(sugEl){
     sugEl.innerHTML=suggested.length?suggested.map(function(x,i){
       var bucket=prelaunchSecurityBucket(x),cls=prelaunchSecurityBucketClass(bucket);
-      var trust=x.fullVerified?'تأیید قوی':Number(x.corePassed||0)>=2?'بررسی خوب':'Watch';
+      var solOk=x.solanaConfirmed===true||/solana/i.test(String(x.ecosystem||''));
+      var trust=!solOk?'Watch · Solana تأیید نشده':x.fullVerified?'تأیید قوی':Number(x.corePassed||0)>=2?'بررسی خوب':'Watch';
       return '<div class="row"><div class="asset"><b>#'+(i+1)+' ⭐ '+esc(x.name||'?')+(x.symbol?' · '+esc(x.symbol):'')+'</b>'+
         '<span class="badge '+cls+'">'+trust+' · '+Number(x.score||0)+'/100</span>'+
         '<small>'+esc(x.source||'')+(x.launchpad?' · '+esc(x.launchpad):'')+(x.tge?' · TGE '+esc(x.tge):'')+'</small>'+
@@ -4453,7 +4497,7 @@ createServer(async(req,res)=>{
   try{
     if(url.pathname==='/api/health'){res.writeHead(200,{'content-type':'application/json',...headers});return res.end(JSON.stringify({ok:true,time:new Date().toISOString()}))}
     if(url.pathname==='/api/v1/force-refresh'){
-      cache={at:0,data:null};marketLiveCache={at:0,data:null};exactDexPriceCache.clear();trackedWalletCache={at:0,data:null};smartMoneyCache={at:0,data:null};convictionCache={at:0,data:null};
+      cache={at:0,data:null};marketLiveCache={at:0,data:null};exactDexPriceCache.clear();prelaunchCache={at:0,data:null};trackedWalletCache={at:0,data:null};smartMoneyCache={at:0,data:null};convictionCache={at:0,data:null};
       res.writeHead(200,{'content-type':'application/json; charset=utf-8','cache-control':'no-store',...headers});
       return res.end(JSON.stringify({ok:true,clearedAt:new Date().toISOString()}));
     }
