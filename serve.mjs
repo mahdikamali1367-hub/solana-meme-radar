@@ -1390,31 +1390,55 @@ function multiHorizonSignals(t){
 }
 
 function assessSecurity(t){
-  const s=t.security||{};
+  const s=t.security||{},academy=t.academy||{},mq=t.marketQuality||{},chart=t.chart||{};
+  const holderKnown=Array.isArray(s.topHolders)&&s.topHolders.length>=10&&s.ownerAggregationComplete===true;
+  const holderPass=holderKnown&&s.holderPolicyPassed===true&&num(s.largestHolder)<10&&num(s.maxOtherHolder)<5;
+
   const explicitFail=
     s.mintDisabled===false||
     s.freezeDisabled===false||
-    s.holderPolicyPassed!==true||
+    (holderKnown&&holderPass===false)||
     s.tokenExtensions?.hardFail===true||
     t.activity?.label==='BOT RISK'||
-    t.chart?.pumpDumpRisk==='HIGH'||
-    t.academy?.blocked===true||
+    chart.pumpDumpRisk==='HIGH'||
+    num(academy.fail)>0||
     (num(t.liquidity)>0&&num(t.liquidity)<3000);
 
-  const verifiedCore=s.mintDisabled===true&&s.freezeDisabled===true&&s.holderPolicyPassed===true;
-  const organicOk=t.activity&&t.activity.score>=72&&t.activity.label==='PROBABLE ORGANIC';
-  const organicHigh=t.activity&&t.activity.score>=58&&t.activity.label!=='BOT RISK';
-  const academy=t.academy||{};
+  const verifiedCore=
+    s.mintDisabled===true&&
+    s.freezeDisabled===true&&
+    holderPass===true&&
+    s.tokenExtensions?.hardFail!==true;
+
   const criticalNames=['Liquidity Lock/Burn خودکار','Dev holding خودکار','Bundle/Sniper/Insider خودکار','Sellability / Honeypot خودکار','RugCheck ریسک کلی','Token-2022 extensionهای پرریسک','سابقه سازنده / Rug history'];
   const criticalChecks=(academy.checks||[]).filter(x=>criticalNames.includes(x.name));
-  const criticalEvidenceComplete=criticalChecks.length===criticalNames.length&&criticalChecks.every(x=>x.state!=='unknown'&&x.state!=='fail');
-  const fullAutoEvidence=num(academy.manual)===0&&num(academy.unknown)===0&&num(academy.fail)===0;
-  const knowledgeOk=academy.blocked!==true&&criticalEvidenceComplete&&(t.marketQuality?.score??0)>=65&&t.chart?.pumpDumpRisk!=='HIGH';
+  const criticalFail=criticalChecks.some(x=>x.state==='fail');
+  const criticalComplete=criticalChecks.length===criticalNames.length&&criticalChecks.every(x=>x.state!=='unknown'&&x.state!=='fail');
 
-  const maxOk=!explicitFail&&verifiedCore&&organicOk&&knowledgeOk&&fullAutoEvidence&&academy.warn<=2&&s.holderStrong===true&&s.score>=85&&t.liquidity>=10000;
-  const highOk=!explicitFail&&verifiedCore&&organicHigh&&knowledgeOk&&num(academy.unknown)===0&&num(academy.fail)===0&&s.score>=75&&t.liquidity>=5000;
-  const tier=explicitFail?'REJECT':maxOk?'MAX SECURITY':highOk?'HIGH':'REVIEW';
-  return {tier,maxOk,highOk,explicitFail,verifiedCore};
+  const organicStrong=t.activity?.label==='PROBABLE ORGANIC'&&num(t.activity?.score)>=72;
+  const organicAccept=t.activity?.label!=='BOT RISK'&&num(t.activity?.score)>=48;
+  const fullEvidence=num(academy.unknown)===0&&num(academy.fail)===0&&criticalComplete;
+
+  // MAX remains fully verified.
+  const maxOk=
+    !explicitFail&&verifiedCore&&!criticalFail&&
+    organicStrong&&fullEvidence&&
+    num(mq.score)>=65&&num(academy.warn)<=2&&
+    s.holderStrong===true&&num(s.score)>=85&&num(t.liquidity)>=10000;
+
+  // HIGH = core on-chain safety is verified and no explicit red flag.
+  // Missing supplemental evidence is a caution, not an automatic rejection.
+  const highOk=
+    !explicitFail&&verifiedCore&&!criticalFail&&
+    organicAccept&&num(academy.fail)===0&&
+    num(s.score)>=65&&num(t.liquidity)>=10000;
+
+  const tier=explicitFail||criticalFail?'REJECT':maxOk?'MAX SECURITY':highOk?'HIGH':'REVIEW';
+  return {
+    tier,maxOk,highOk,explicitFail:explicitFail||criticalFail,verifiedCore,
+    supplementalComplete:fullEvidence,
+    supplementalUnknown:num(academy.unknown||0)
+  };
 }
 function verdict(t){
   const sec=assessSecurity(t);
@@ -2258,7 +2282,7 @@ html,body,.shell,.panel,.list{overflow-anchor:none}
   <details class="accordion highlight" open>
     <summary>🔥 پیشنهادهای ورود برتر</summary>
     <div class="accordion-body">
-      <p class="muted" style="font-size:11px">پیشنهاد ویژه: فقط توکن‌های HIGH/MAX با قانون هولدر پاس، Mint/Freeze امن، بدون ریسک قطعی Rug/Bot/PumpDump و قدرت خریدار غالب. نامشخص بودن منابع تکمیلی به‌تنهایی سیگنال را خاموش نمی‌کند.</p>
+      <p class="muted" style="font-size:11px">پیشنهاد ویژه: HIGH/MAX با امنیت هسته‌ای تأییدشده و بدون ریسک قطعی Rug/Bot/PumpDump. ENTRY فعال بالاتر می‌آید؛ کاندید امنی که هنوز خریدار غالب نشده با برچسب «صبر / در انتظار ورود» نمایش داده می‌شود. UNKNOWN جانبی فقط اعتماد را کم می‌کند.</p>
       <div class="list" id="topFeaturedQuick"></div>
     </div>
   </details>
@@ -3169,6 +3193,21 @@ function highestSecurityTrendOk(t){
     siteTrendSources(t).length>=1;
 }
 
+function featuredWatchOk(t){
+  if(!t)return false;
+  var sec=t.security||{},rug=antiRugGate(t),tp=tradePlan(t);
+  return (sec.tier==='MAX SECURITY'||sec.tier==='HIGH')&&
+    sec.mintDisabled===true&&sec.freezeDisabled===true&&
+    sec.holderPolicyPassed===true&&
+    sec.tokenExtensions?.hardFail!==true&&
+    rug.ok===true&&
+    t.activity?.label!=='BOT RISK'&&
+    t.chart?.pumpDumpRisk!=='HIGH'&&
+    Number(t.liquidity||0)>=10000&&
+    siteTrendSources(t).length>=1&&
+    tp.status!=='EXIT';
+}
+
 function featuredRows(){
   var fresh=tokens.map(function(t){
     var s=0,w=[],sec=t.security&&t.security.tier?t.security.tier:'REVIEW';
@@ -3199,16 +3238,20 @@ function featuredRows(){
     var sts=siteTrendScore(t);if(sts){s=Math.min(100,s+Math.round(sts*.16));w.push('ترند چندمنبعی '+sts+'/100')}
     return {token:t,score:s,why:w,whale:wh,smart:sm,tracked:tr,lastSeen:Date.now(),sticky:false,siteTrendScore:sts};
   }).filter(function(x){
-    return highestSecurityTrendOk(x.token)&&tradePlan(x.token).status==='ENTRY';
+    return featuredWatchOk(x.token);
   }).sort(function(a,b){
-    var ac=tradePlan(a.token).confidence==='HIGH'?1:0,bc=tradePlan(b.token).confidence==='HIGH'?1:0;
-    return (bc-ac)||(b.score-a.score);
+    var at=tradePlan(a.token),bt=tradePlan(b.token);
+    var ae=at.status==='ENTRY'?3:at.status==='WAIT'?1:0;
+    var be=bt.status==='ENTRY'?3:bt.status==='WAIT'?1:0;
+    var ac=at.confidence==='HIGH'?2:at.confidence==='MEDIUM'?1:0;
+    var bc=bt.confidence==='HIGH'?2:bt.confidence==='MEDIUM'?1:0;
+    return (be-ae)||(bc-ac)||(b.score-a.score);
   }).slice(0,8);
 
   // Add/update every current valid recommendation in the sticky list.
   fresh.forEach(function(x){
     stickyFeatured.set(x.token.mint,x);
-    rememberRecommendation(x.token,x.score);
+    if(tradePlan(x.token).status==='ENTRY')rememberRecommendation(x.token,x.score);
   });
 
   // Refresh sticky rows from current live token data when available.
@@ -3216,8 +3259,8 @@ function featuredRows(){
     var current=findToken(mint);
     if(current){
       var tp=tradePlan(current);
-      // Featured recommendations must remain MAX SECURITY and trend-backed.
-      if(!highestSecurityTrendOk(current)||tp.status==='EXIT'){
+      // Keep safe WATCH/WAIT candidates visible; remove only if safety/trend is lost or EXIT is confirmed.
+      if(!featuredWatchOk(current)||tp.status==='EXIT'){
         stickyFeatured.delete(mint);
         continue;
       }
@@ -3242,7 +3285,7 @@ function featuredRows(){
 
   saveStickyFeatured();
 
-  return [...stickyFeatured.values()].filter(function(x){return x&&x.token&&highestSecurityTrendOk(x.token)})
+  return [...stickyFeatured.values()].filter(function(x){return x&&x.token&&featuredWatchOk(x.token)})
     .sort(function(a,b){
       var at=a.token?tradePlan(a.token):null,bt=b.token?tradePlan(b.token):null;
       var ac=at&&at.confidence==='HIGH'?2:at&&at.status==='ENTRY'?1:0;
@@ -3282,7 +3325,7 @@ function beginnerDecision(t,overallScore){
 function overallCandidates(){
   return tokens.map(function(t){
     var tp=tradePlan(t);
-    if(!highestSecurityTrendOk(t)||!holderPolicyOk(t)||tp.status!=='ENTRY')return null;
+    if(!featuredWatchOk(t))return null;
 
     var sec=t.security||{},fl=t.flow||{},mq=t.marketQuality||{},sg=t.signals||{};
     var score=0,reasons=[];
@@ -3327,7 +3370,7 @@ function overallCandidates(){
 }
 function renderChampion(){
   var x=overallCandidates()[0],el=document.getElementById('championBox');
-  if(!x){el.innerHTML='<div class="muted">فعلاً پیشنهاد ویژه‌ای با HIGH/MAX، قانون هولدر پاس، امنیت هسته‌ای سالم و قدرت خریدار غالب پیدا نشده.</div>';return}
+  if(!x){el.innerHTML='<div class="muted">فعلاً حتی کاندید HIGH/MAX با امنیت هسته‌ای سالم پیدا نشده؛ به محض پیدا شدن، ENTRY یا «در انتظار ورود» نمایش داده می‌شود.</div>';return}
   var t=x.t,sg=t.signals||{},d=beginnerDecision(t,x.score);
   el.innerHTML='<div class="decision-banner '+d.cls+'">'+esc(d.label)+'<div class="beginner-note">'+esc(d.reason)+' · تضمین سود نیست و اندازه پوزیشن باید کوچک بماند.</div></div><div class="champion-grid">'+
     '<div class="asset"><b>'+esc(t.symbol||'?')+' · '+esc(t.name||'')+'</b>'+siteTrendBadges(t)+whaleTrendBadge(t)+socialTrendBadges(t)+tradePlanChips(t)+'<small>بدون هشدار خروج · امنیت '+esc(faSec(t.security?.tier))+'</small>'+socialButtons(t)+'</div>'+
@@ -3785,8 +3828,8 @@ function renderKolTrends(){
 function tokenSecurityBucket(t){
   if(!t)return 'low';
   var sec=t.security||{},gate=t.securityGate||securityGate(t),rug=antiRugGate(t);
-  if(sec.tier==='MAX SECURITY'&&rug.ok===true&&!gate.blocked)return 'high';
-  if((sec.tier==='HIGH'||sec.tier==='REVIEW')&&!gate.blocked&&sec.holderPolicyPassed!==false&&sec.mintDisabled!==false&&sec.freezeDisabled!==false)return 'medium';
+  if((sec.tier==='MAX SECURITY'||sec.tier==='HIGH')&&rug.ok===true&&sec.mintDisabled===true&&sec.freezeDisabled===true&&sec.holderPolicyPassed===true)return 'high';
+  if(sec.tier==='REVIEW'&&!gate.blocked&&sec.holderPolicyPassed!==false&&sec.mintDisabled!==false&&sec.freezeDisabled!==false)return 'medium';
   return 'low';
 }
 function tokenSecurityBucketLabel(v){return v==='high'?'امنیت بالا':v==='medium'?'امنیت متوسط':'امنیت بسیار کم'}
