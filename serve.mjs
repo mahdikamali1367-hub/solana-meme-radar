@@ -17,7 +17,7 @@ const launchPerfCache=new Map();
 const PRELAUNCH_CACHE_MS=10*60*1000;
 
 let marketLiveInFlight=null;
-const MARKET_LIVE_CACHE_MS=1500;
+const MARKET_LIVE_CACHE_MS=900;
 const securityCache=new Map();
 const externalSecurityCache=new Map();
 const holderBehaviorState=new Map();
@@ -1452,7 +1452,7 @@ async function buildMarketLive(){
       patch.chart=chartDiscipline({...merged,flow:patch.flow,activity:patch.activity});
       rows.push(patch);
     }
-    const data={ok:true,generatedAt:new Date().toISOString(),refreshMs:2000,tokens:rows};
+    const data={ok:true,generatedAt:new Date().toISOString(),refreshMs:1000,tokens:rows};
     marketLiveCache={at:Date.now(),data};
     return data;
   })();
@@ -2194,7 +2194,7 @@ html,body,.shell,.panel,.list{overflow-anchor:none}
   <details class="accordion highlight" open>
     <summary>💰 سود/ضرر از زمان معرفی رادار</summary>
     <div class="accordion-body">
-      <p class="muted" style="font-size:11px">قیمت اولین لحظه‌ای که رادار توکن را به‌عنوان پیشنهاد ثبت کرده ثابت نگه داشته می‌شود؛ درصد زیر از همان قیمت تا قیمت فعلی محاسبه می‌شود.</p>
+      <p class="muted" style="font-size:11px">قیمت اولین لحظه معرفی ثابت می‌ماند؛ قیمت فعلی و سود/ضرر تقریباً هر ۱ ثانیه زنده به‌روزرسانی می‌شود و هنگام قطع کوتاه اتصال آخرین مقدار معتبر حفظ می‌شود.</p>
       <div id="recommendationPerformanceSummary"></div>
       <div class="list" id="recommendationPerformanceList"></div>
     </div>
@@ -2317,7 +2317,7 @@ html,body,.shell,.panel,.list{overflow-anchor:none}
   <details class="accordion highlight" open>
     <summary>💰 عملکرد سیگنال‌های ترند اجتماعی از زمان معرفی</summary>
     <div class="accordion-body">
-      <p class="muted" style="font-size:11px">مبنای هر توکن، اولین لحظه‌ای است که وارد Social Trend رادار شده؛ قیمت همان لحظه ثابت می‌ماند و سود/ضرر تا قیمت فعلی محاسبه می‌شود.</p>
+      <p class="muted" style="font-size:11px">مبنای هر توکن اولین Social Trend است؛ قیمت مبنا ثابت می‌ماند و قیمت فعلی/سود تقریباً هر ۱ ثانیه زنده می‌شود، با حفظ آخرین مقدار در قطع کوتاه.</p>
       <div id="socialPerformanceSummary"></div>
       <div class="list" id="socialPerformanceList"></div>
     </div>
@@ -2381,7 +2381,7 @@ html,body,.shell,.panel,.list{overflow-anchor:none}
   <details class="accordion highlight" open>
     <summary>💰 عملکرد توکن‌ها از اولین ورود به رادار</summary>
     <div class="accordion-body">
-      <p class="muted" style="font-size:11px">اولین قیمت و زمان دیده‌شدن هر توکن در تب توکن‌ها ثابت ذخیره می‌شود و سود/ضرر تا قیمت فعلی از همان مبنا محاسبه می‌شود.</p>
+      <p class="muted" style="font-size:11px">اولین قیمت و زمان دیده‌شدن ثابت ذخیره می‌شود؛ قیمت فعلی و سود/ضرر تقریباً هر ۱ ثانیه زنده می‌شود و در اختلال کوتاه آخرین مقدار معتبر باقی می‌ماند.</p>
       <div id="tokenRadarPerformanceSummary"></div>
       <div class="list" id="tokenRadarPerformanceList"></div>
     </div>
@@ -2411,14 +2411,22 @@ html,body,.shell,.panel,.list{overflow-anchor:none}
 <script>
 var tokens=[],smart=null,live=null,tracked=null,conviction=null,prelaunch=null,activeTab='featured',signalFilters={short:'',medium:'',long:'',security:'',holders:'',bigbuyers:''};
 var livePriceCache=new Map();
+var lastMarketLiveAt=0;
 try{
   var savedLivePrices=JSON.parse(localStorage.getItem('livePriceCache')||'[]');
   if(Array.isArray(savedLivePrices))savedLivePrices.forEach(function(x){if(x&&x[0])livePriceCache.set(x[0],x[1])});
 }catch(e){}
+var livePriceSaveTimer=null;
 function rememberLivePrice(mint,price){
   price=Number(price||0);
   if(!mint||!(price>0))return;
   livePriceCache.set(mint,{price:price,at:Date.now()});
+  if(!livePriceSaveTimer){
+    livePriceSaveTimer=setTimeout(function(){
+      livePriceSaveTimer=null;
+      saveLivePrices();
+    },1000);
+  }
 }
 function saveLivePrices(){
   try{localStorage.setItem('livePriceCache',JSON.stringify([...livePriceCache.entries()].slice(-600)))}catch(e){}
@@ -2581,7 +2589,7 @@ function rememberRecommendation(t,score){
 function recommendationPerformanceRows(){
   return [...recommendationHistory.values()].map(function(h){
     var t=findToken(h.mint);
-    var current=t?Number(t.priceUsd||0):null;
+    var current=currentPriceForMint(h.mint);
     var base=Number(h.introducedPrice||0);
     var pnl=(current!=null&&current>0&&base>0)?((current/base)-1)*100:null;
     return {history:h,token:t,currentPrice:current,pnlPct:pnl};
@@ -3717,7 +3725,7 @@ function renderTokens(){
       return '<div class="row"><div class="asset"><b>#'+(i+1)+' 🪙 '+esc(h.symbol||'?')+' · '+esc(h.name||'')+'</b>'+
         '<small>اولین ورود '+new Date(h.introducedAt).toLocaleString('fa-IR')+' · امنیت اولیه '+esc(faSec(h.introducedSecurity))+' · امتیاز '+Number(h.introducedScore||0)+'/100</small></div>'+
         '<div class="cell"><small>قیمت اولین ورود</small><b>'+fmtPrice(h.introducedPrice)+'</b></div>'+
-        '<div class="cell"><small>قیمت فعلی</small><b>'+(x.currentPrice?fmtPrice(x.currentPrice):'—')+'</b></div>'+
+        '<div class="cell"><small>قیمت فعلی</small><b data-live-price-mint="'+esc(h.mint)+'">'+(x.currentPrice?fmtPrice(x.currentPrice):'—')+'</b></div>'+
         '<div class="cell"><small>سود/ضرر</small><b data-live-profit-mint="'+esc(h.mint)+'" data-live-profit-base="'+Number(h.introducedPrice||0)+'" class="'+cls+'">'+txt+'</b></div>'+
         '<div class="actions"><a class="action" target="_blank" rel="noopener" href="'+esc(dexUrl(h.mint,h.dexUrl||t&&t.dexUrl))+'">📈 چارت</a></div></div>';
     }).join(''):'<div class="empty">هنوز سابقه‌ای برای عملکرد توکن‌ها ثبت نشده.</div>';
@@ -3844,13 +3852,13 @@ async function loadAll(){
 }
 
 async function pollMarketLive(){
-  if(marketLiveBusy||document.hidden)return;
+  if(marketLiveBusy)return;
   marketLiveBusy=true;
   try{
     var x=await safeJson('/api/v1/market-live');
     if(mergeMarketLive(x)){
+      lastMarketLiveAt=Date.now();
       updateLiveProfitDom();
-      saveLivePrices();
       document.getElementById('updated').textContent='بازار زنده: '+new Date().toLocaleTimeString('fa-IR');
     }
   }finally{marketLiveBusy=false}
@@ -3885,7 +3893,7 @@ function enableLiveFallback(){
   if(liveConnectTimeout){clearTimeout(liveConnectTimeout);liveConnectTimeout=null}
   if(!liveFallbackTimer){
     pollLiveFallback();
-    liveFallbackTimer=setInterval(pollLiveFallback,1500);
+    liveFallbackTimer=setInterval(pollLiveFallback,1000);
   }
   setLiveStatus('اتصال جایگزین فعال · در حال دریافت داده زنده');
 }
@@ -3958,7 +3966,7 @@ window.addEventListener('error',function(e){
   var u=document.getElementById('updated');
   if(u)u.textContent='خطای رابط: '+String(e.message||'JavaScript');
 });
-loadAll();startLivePush();marketLiveTimer=setInterval(pollMarketLive,1500);setTimeout(pollMarketLive,700);setInterval(loadAll,20000);
+loadAll();startLivePush();marketLiveTimer=setInterval(pollMarketLive,1000);setTimeout(pollMarketLive,350);setInterval(loadAll,20000);
 </script>
 </body>
 </html>`;
