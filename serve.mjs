@@ -71,6 +71,68 @@ const TRACKED_WALLETS=[
   {name:'Cap',address:'CAPn1yH4oSywsxGU456jfgTrSSUidf9jgeAnHceNUJdw',source:'KOL Explorer',sourceUrl:'https://kolexplorer.com/kol/cap',seedPnl30d:234612,seedWinRate:41.8,medianHoldSec:60},
   {name:'moonlobsterdisc',address:'CFzVktB6sfK8rpewZeJ5VRPcvG5BBtK6pSbZ7FHVze4V',source:'Solana Tracker',sourceUrl:'https://www.solanatracker.io/wallet/CFzVktB6sfK8rpewZeJ5VRPcvG5BBtK6pSbZ7FHVze4V',seedPnl30d:9530000,seedWinRate:37.3,medianHoldSec:null}
 ];
+
+const USER_TOP_TRADER_ADDRESSES=[
+'8k1sAmVUjzaZkxqexeYkCPphjcQobYugQeGmCyvKtHNG',
+'5YRgrP3mjGzrzirYYN5HAQH19cTYREYwGxW6XRJQUzij',
+'Be24Gbf5KisDk1LcWWZsBn8dvB816By7YzYF5zWZnRR6',
+'6DQAGJT7VZPVBsuG4kn3AvpyHCEi7B2RFFvMZdbqQqqP',
+'87rRdssFiTJKY4MGARa4G5vQ31hmR7MxSmhzeaJ5AAxJ',
+'DuARUpsEzdVbVpSnbGipLJvWxaXUCPLDJDjNov6Rc6s6',
+'CE44oKS3wpUerx8afyeii56u5oQjBLZknzm4Q2CYHUz9',
+'BAr5csYtpWoNpwhUjixX7ZPHXkUciFZzjBp9uNxZXJPh',
+'6qudAN2kV8mtCcYJxb5QQ6Vr15itdHHdeVbYm99NKMhy',
+'9z332Pxs4xaz7CdE4sYPEHu9a9qrxcUTkbvMXVo1q1Q8',
+'5hAgYC8TJCcEZV7LTXAzkTrm7YL29YXyQQJPCNrG84zM',
+'HVaeUPbAwFhZnY8T3MrUzTWqpHiAbTU1NACmCQdJrqZp',
+'AvGiSdrkwtGYhrrFXZPtdhNhV4pASUR67TmRjfaKGdMP',
+'CAPn1yH4oSywsxGU456jfgTrSSUidf9jgeAnHceNUJdw',
+'5B52w1ZW9tuwUduueP5J7HXz5AcGfruGoX6YoAudvyxG',
+'2ksQ77e9e5SS6VA6poanRGWfkU3R4R5wZnptbJHb2nx9',
+'6vbrTLsWy76TxDQAUKLqZrPohQuq6EVaJgfGzR82paFa',
+'DrJ6SnDXkEsPeGdmSs93v5rwWumv5QMvAGSZjAyWSd5o',
+'7g5CJ754NboeY6D44MDdGwQmVX4Fvu59Q47c9ZKLPMkE',
+'8deJ9xeUvXSJwicYptA9mHsU2rN2pDx37KWzkDkEXhU6',
+'4y2T1ghykCTq4EddoXjptZamk4qAsqcZw6eKxS8jdvE1',
+'BSzpGGB3AMwtW126RT3Z27STSBrVjKV5A96H4BsUKdtD',
+'6yVb4pxNwDfr6rovwNnBg3SyKSvDcHGD4WdFPN1JJBqm',
+'DAEdBmTPEKM6xkwfzC3d411QUe6coKpkND6UURa4CvHC',
+'8MaVa9kdt3NW4Q5HyNAm1X5LbR8PQRVDc1W8NMVK88D5',
+'DdM1tyCdoEyoxYYmGMjdf5rRPcpmj3UzZTpE7ScuTf7d',
+'2M2vLX34LXMg24dMEnjWHvRXS1tshpEDRWzmXgV8ENNZ',
+'29yFzeBZgxf5zqrAkKXwgZtQehRf4pL8WbV2nRJikbw8',
+'4vw54BmAogeRV3vPKWyFet5yf8DTLcREzdSzx4rw9Ud9',
+'2jgmHtkCkJXm3Xq4dp9DgippkQjXLK3rhaREAz7oG7s7',
+'J23qr98GjGJJqKq9CBEnyRhHbmkaVxtTJNNxKu597wsA',
+'ardinRsN1mNYVeoJWTBsWeYeXvuR9UUDGMsCDKpb6AT',
+'FFdBLYqL9rs5fUT38ArE8GV2L3BziEgG5LJUu6sshfkF',
+'6HJetMbdHBuk3mLUainxAPpBpWzDgYbHGTS2TqDAUSX2',
+'24L6uekgvsQRgT41DZRhahEAAVnkseTT7x4qyigC3HvH',
+'GeUnv1jmtviRbR7Gu1JnXSGkUMUgFVBHuEVQVpTaUX1W',
+'3VUNtVtjjx5ckUojT7UocJ5fbuAJRsNUXNfTBnPte9vC',
+'GijFWw4oNyh9ko3FaZforNsi3jk6wDovARpkKahPD4o5',
+'F9zT1F46HAoPanR4NC1Yw7TyP8Z9tCavTe48mrzK7aN4',
+'B5TrL7PsRUwCTL5bVcueieht5QchTw4TWLQDKqEaxEzi',
+'6mrqa4cDaqBCD9UrUiUyoK78e4AJ8XzRaF8uTbcuTVae',
+'EqBQhoU88ty3a3aDphDRCBuiRirjUsFSFi4UHGY64qvv',
+'CwUHN4zTn5wiEYoZjsP4FrDvAT9heDWewCTQjhgwhJqS'
+];
+const USER_TOP_TRADERS=[...new Set(USER_TOP_TRADER_ADDRESSES)]
+  .filter(a=>/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(a))
+  .map((address,i)=>{
+    const known=TRACKED_WALLETS.find(w=>w.address===address);
+    return {
+      name:known?.name||('Top Trader '+String(i+1).padStart(2,'0')),
+      address,source:'User supplied top traders',
+      knownName:known?.name||null
+    };
+  });
+
+let topTraderIntelCache={at:0,data:null};
+const TOP_TRADER_INTEL_CACHE_MS=12*1000;
+const topTraderPreviousBalances=new Map();
+const topTraderPositionBaselines=new Map();
+let topTraderBuyEvents=[];
 let trackedWalletCache={at:0,data:null};
 const TRACKED_WALLET_CACHE_MS=60*1000;
 let convictionCache={at:0,data:null};prelaunchCache={at:0,data:null};
@@ -2239,6 +2301,198 @@ async function walletTokenBalances(wallet){
 async function currentSolPrice(){
   try{const p=await pairFor(WSOL_MINT);return num(p?.priceUsd,0)}catch{return 0}
 }
+
+async function buildUserTopTraderIntel(){
+  if(topTraderIntelCache.data&&Date.now()-topTraderIntelCache.at<TOP_TRADER_INTEL_CACHE_MS)return topTraderIntelCache.data;
+
+  const now=Date.now();
+  const scans=[];
+  // Chunked concurrency keeps ~40 wallets from saturating the RPC.
+  for(let i=0;i<USER_TOP_TRADERS.length;i+=6){
+    const group=USER_TOP_TRADERS.slice(i,i+6);
+    const settled=await Promise.allSettled(group.map(async w=>{
+      const balances=await walletTokenBalances(w.address);
+      return {w,balances,rpcOk:true};
+    }));
+    for(let j=0;j<settled.length;j++){
+      if(settled[j].status==='fulfilled')scans.push(settled[j].value);
+      else scans.push({w:group[j],balances:new Map(),rpcOk:false});
+    }
+    await sleep(40);
+  }
+
+  const mintAgg=new Map();
+  for(const row of scans){
+    for(const [mint,amount] of row.balances.entries()){
+      if(!mint||amount<=0||STABLE_MINTS.has(mint)||mint===WSOL_MINT)continue;
+      const a=mintAgg.get(mint)||{mint,holders:[],holderCount:0,totalAmount:0};
+      a.holders.push({name:row.w.name,address:row.w.address,amount});
+      a.holderCount++;a.totalAmount+=amount;mintAgg.set(mint,a);
+    }
+  }
+
+  const pairs=await pairsForMany([...mintAgg.keys()]);
+  for(const [mint,a] of mintAgg){
+    const p=pairs.get(mint);
+    if(!p)continue;
+    const price=num(p.priceUsd);
+    a.symbol=p?.baseToken?.symbol||'?';
+    a.name=p?.baseToken?.name||'Unknown';
+    a.priceUsd=price;
+    a.dexUrl=p.url||'';
+    a.pairAddress=p.pairAddress||'';
+    a.liquidity=num(p?.liquidity?.usd);
+    a.marketCap=num(p?.marketCap||p?.fdv);
+    a.totalValueUsd=0;
+    for(const h of a.holders){
+      h.valueUsd=price>0?h.amount*price:0;
+      a.totalValueUsd+=h.valueUsd;
+    }
+    a.holders.sort((x,y)=>y.valueUsd-x.valueUsd);
+  }
+
+  // Compare current balances with the previous snapshot. Existing positions on the
+  // first scan are not mislabeled as buys. Future increases are tracked as accumulation.
+  const changedWallets=[];
+  for(const row of scans){
+    const prev=topTraderPreviousBalances.get(row.w.address);
+    const changes=[];
+    for(const [mint,amount] of row.balances.entries()){
+      if(!mint||STABLE_MINTS.has(mint)||mint===WSOL_MINT)continue;
+      const old=prev?num(prev.get(mint)):null;
+      const a=mintAgg.get(mint);
+      const price=num(a?.priceUsd);
+      const key=row.w.address+'|'+mint;
+      let base=topTraderPositionBaselines.get(key);
+      if(!base&&price>0){
+        base={firstSeenAt:now,firstSeenPrice:price,detectedBuyAt:null,detectedBuyPrice:null,detectedBuyUsd:0};
+        topTraderPositionBaselines.set(key,base);
+      }
+      if(prev&&old!=null&&amount>old&&price>0){
+        const delta=amount-old,usd=delta*price;
+        if(usd>=20){
+          changes.push({mint,delta,usd,price});
+          if(!base){
+            base={firstSeenAt:now,firstSeenPrice:price,detectedBuyAt:now,detectedBuyPrice:price,detectedBuyUsd:usd};
+          }else if(!base.detectedBuyAt){
+            base.detectedBuyAt=now;base.detectedBuyPrice=price;base.detectedBuyUsd=usd;
+          }else{
+            const oldUsd=num(base.detectedBuyUsd),newUsd=oldUsd+usd;
+            base.detectedBuyPrice=newUsd>0?((num(base.detectedBuyPrice)*oldUsd)+(price*usd))/newUsd:price;
+            base.detectedBuyUsd=newUsd;
+          }
+          topTraderPositionBaselines.set(key,base);
+        }
+      }
+    }
+    if(changes.length)changedWallets.push({row,changes});
+    topTraderPreviousBalances.set(row.w.address,new Map(row.balances));
+  }
+
+  // Verify only changed wallets against their newest transactions. This provides
+  // a real on-chain timestamp when the balance increase came from a detectable swap.
+  for(const x of changedWallets.slice(0,12)){
+    let verified=[];
+    try{
+      const sigs=await rpc('getSignaturesForAddress',[x.row.w.address,{limit:6,commitment:'confirmed'}]);
+      for(const sig of (sigs?.result||[]).slice(0,6)){
+        if(!sig.blockTime||now-num(sig.blockTime)*1000>10*60*1000)continue;
+        try{
+          const tx=await rpc('getTransaction',[sig.signature,{encoding:'jsonParsed',commitment:'confirmed',maxSupportedTransactionVersion:0}]);
+          const parsed=parseTrackedWalletTx(tx,x.row.w.address,await currentSolPrice());
+          for(const e of parsed.filter(e=>e.side==='BUY')){
+            const ch=x.changes.find(v=>v.mint===e.mint);
+            if(!ch)continue;
+            verified.push({mint:e.mint,signature:sig.signature,ts:num(sig.blockTime)*1000,approxUsd:num(e.approxUsd)||ch.usd});
+          }
+        }catch{}
+      }
+    }catch{}
+    for(const ch of x.changes){
+      const v=verified.find(z=>z.mint===ch.mint);
+      const a=mintAgg.get(ch.mint);
+      const evt={
+        id:(v?.signature||('obs:'+now))+':'+x.row.w.address+':'+ch.mint,
+        trader:x.row.w.name,address:x.row.w.address,mint:ch.mint,
+        symbol:a?.symbol||'?',name:a?.name||'',
+        usd:v?.approxUsd||ch.usd,price:ch.price,
+        ts:v?.ts||now,signature:v?.signature||null,
+        verifiedSwap:!!v,source:v?'Solana RPC confirmed swap':'Solana RPC balance increase'
+      };
+      if(!topTraderBuyEvents.some(e=>e.id===evt.id))topTraderBuyEvents.unshift(evt);
+    }
+  }
+  topTraderBuyEvents=topTraderBuyEvents.filter(e=>now-e.ts<=24*60*60*1000).slice(0,250);
+
+  const sharedHoldings=[...mintAgg.values()]
+    .filter(x=>x.priceUsd>0&&x.totalValueUsd>0)
+    .map(x=>{
+      const radar=(cache.data?.tokens||[]).find(t=>t.mint===x.mint)||null;
+      const recent=topTraderBuyEvents.filter(e=>e.mint===x.mint&&now-e.ts<=6*60*60*1000);
+      const recentTraderSet=new Set(recent.map(e=>e.address));
+      const safe=!!(radar&&['MAX SECURITY','HIGH'].includes(radar.security?.tier)&&
+        radar.security?.mintDisabled===true&&radar.security?.freezeDisabled===true&&
+        radar.security?.holderPolicyPassed===true&&radar.academy?.blocked!==true&&
+        radar.activity?.label!=='BOT RISK'&&radar.chart?.pumpDumpRisk!=='HIGH');
+      let score=0;
+      score+=Math.min(40,x.holderCount*7);
+      score+=Math.min(18,Math.log10(1+x.totalValueUsd)*4);
+      score+=Math.min(20,recentTraderSet.size*7);
+      if(x.liquidity>=10000)score+=7;
+      if(x.liquidity>=25000)score+=5;
+      if(safe)score+=10;
+      return {...x,radar,recentBuyers:recentTraderSet.size,recentBuyUsd:recent.reduce((n,e)=>n+num(e.usd),0),
+        safe,score:clamp(Math.round(score))};
+    })
+    .sort((a,b)=>(b.holderCount-a.holderCount)||(b.recentBuyers-a.recentBuyers)||(b.totalValueUsd-a.totalValueUsd));
+
+  const walletRows=scans.map(row=>{
+    const portfolio=[];
+    for(const [mint,amount] of row.balances.entries()){
+      const a=mintAgg.get(mint);if(!a||!(a.priceUsd>0))continue;
+      const valueUsd=amount*a.priceUsd;
+      const base=topTraderPositionBaselines.get(row.w.address+'|'+mint);
+      const refPrice=num(base?.detectedBuyPrice)||num(base?.firstSeenPrice);
+      const returnPct=refPrice>0?((a.priceUsd-refPrice)/refPrice)*100:null;
+      portfolio.push({
+        mint,symbol:a.symbol,name:a.name,amount,valueUsd,priceUsd:a.priceUsd,dexUrl:a.dexUrl,
+        returnPct,
+        returnBasis:base?.detectedBuyAt?'از خرید/انباشت مشاهده‌شده':'از شروع ردیابی',
+        firstSeenAt:base?.firstSeenAt||null,
+        detectedBuyAt:base?.detectedBuyAt||null,
+        detectedBuyPrice:base?.detectedBuyPrice||null
+      });
+    }
+    portfolio.sort((a,b)=>b.valueUsd-a.valueUsd);
+    return {
+      ...row.w,rpcOk:row.rpcOk,portfolio:portfolio.slice(0,12),
+      portfolioValueUsd:portfolio.reduce((n,x)=>n+x.valueUsd,0),
+      topPosition:portfolio[0]||null
+    };
+  }).sort((a,b)=>b.portfolioValueUsd-a.portfolioValueUsd);
+
+  const recommendations=sharedHoldings
+    .filter(x=>x.holderCount>=2)
+    .map(x=>({
+      ...x,
+      recommendation:x.safe&&x.score>=65?'پیشنهاد برتر برای بررسی':x.safe?'کاندید امن مشترک':'Watch مشترک'
+    }))
+    .sort((a,b)=>(Number(b.safe)-Number(a.safe))||(b.score-a.score)||(b.holderCount-a.holderCount))
+    .slice(0,15);
+
+  const best=recommendations.find(x=>x.safe)||null;
+  const data={
+    ok:true,generatedAt:new Date().toISOString(),refreshSeconds:12,
+    walletCount:USER_TOP_TRADERS.length,wallets:walletRows,
+    sharedHoldings:sharedHoldings.slice(0,30),
+    recommendations,best,
+    recentBuys:topTraderBuyEvents.slice(0,80),
+    source:'User supplied wallets + Solana RPC balances/transactions + DEXScreener valuation',
+    disclaimer:'پوزیشن‌های موجود قبل از شروع مانیتور، زمان خرید تاریخی قطعی ندارند و بازده آن‌ها از شروع ردیابی محاسبه می‌شود. فقط افزایش موجودی بعد از شروع مانیتور می‌تواند زمان خرید/انباشت مشاهده‌شده داشته باشد.'
+  };
+  topTraderIntelCache={at:Date.now(),data};return data;
+}
+
 async function buildTrackedWallets(){
   if(trackedWalletCache.data&&Date.now()-trackedWalletCache.at<TRACKED_WALLET_CACHE_MS)return trackedWalletCache.data;
   const solPrice=await currentSolPrice();
@@ -2376,7 +2630,7 @@ async function buildTrackedWallets(){
     const topPortfolio=portfolio.slice(0,8).map(x=>({...x,sharePct:portfolioValueUsd>0?x.valueUsd/portfolioValueUsd*100:null}));
     return {...rest,speed,portfolioValueUsd,topPosition,portfolio:topPortfolio,solscanUrl:'https://solscan.io/account/'+w.address,gmgnUrl:'https://gmgn.ai/sol/address/'+w.address};
   });
-  const data={ok:true,generatedAt:new Date().toISOString(),refreshSeconds:300,source:'Solana RPC live + seed rankings from KOL Explorer/Solana Tracker',solPrice,wallets:publicWallets,tokens,topHoldings,marketTopHoldings,topNetBuys,consensus,
+  const data={ok:true,generatedAt:new Date().toISOString(),refreshSeconds:300,source:'Solana RPC live + seed rankings from KOL Explorer/Solana Tracker + user supplied top traders',solPrice,wallets:publicWallets,tokens,topHoldings,marketTopHoldings,topNetBuys,consensus,
     disclaimer:'خرید/فروش از تغییر موجودی توکن همراه با خروج/ورود SOL یا استیبل‌کوین استنباط می‌شود. انتقال ساده حذف می‌شود اما تشخیص Swap صددرصد نیست. رتبه/سود تاریخی Seed است و تصمیم خرید نیست.'};
   trackedWalletCache={at:Date.now(),data};return data;
 }
@@ -3166,6 +3420,21 @@ html,body,.shell,.panel,.list{overflow-anchor:none}
 </section>
 
 <section class="panel" id="walletsPanel">
+  <details class="accordion highlight" open>
+    <summary>🏆 تریدرهای برتر — سرمایه‌گذاری مشترک و پیشنهاد رادار</summary>
+    <div class="accordion-body">
+      <p class="muted" id="topTraderStatus" style="font-size:11px">در حال اسکن آدرس‌های ارسالی…</p>
+      <div id="topTraderBest"></div>
+      <h3 style="font-size:13px">🤝 ارزهای مشترک بین چند تریدر</h3>
+      <div class="list" id="topTraderShared"></div>
+      <h3 style="font-size:13px">⚡ شروع خرید/انباشت مشاهده‌شده</h3>
+      <div class="list" id="topTraderRecentBuys"></div>
+    </div>
+  </details>
+  <details class="accordion" open>
+    <summary>💼 پرتفوی تریدرهای برتر</summary>
+    <div class="accordion-body"><div class="list" id="topTraderWallets"></div></div>
+  </details>
   <details class="accordion" open>
     <summary>🏆 وضعیت کیف‌پول‌های برتر</summary>
     <div class="accordion-body"><p class="muted" id="walletStatus" style="font-size:11px">در حال اسکن آن‌چین…</p></div>
@@ -3246,7 +3515,7 @@ html,body,.shell,.panel,.list{overflow-anchor:none}
 </dialog>
 
 <script>
-var tokens=[],smart=null,live=null,tracked=null,conviction=null,prelaunch=null,prelaunchLive=null,activeTab='featured',signalFilters={short:'',medium:'',long:'',security:'',holders:'',bigbuyers:''};
+var tokens=[],smart=null,live=null,tracked=null,conviction=null,prelaunch=null,prelaunchLive=null,topTraders=null,activeTab='featured',signalFilters={short:'',medium:'',long:'',security:'',holders:'',bigbuyers:''};
 try{
   if(localStorage.getItem('priceCacheSchemaV7')!=='dexscreener-primary-v7'){
     localStorage.removeItem('livePriceCache');
@@ -4083,7 +4352,7 @@ function featuredRows(){
 function tokenRow(t,bucket){
   var s=t.security||{},sg=t.signals||{},sh=sg.short||{},md=sg.medium||{},lg=sg.long||{},fl=t.flow||{},bs=bucketScore(t,bucket||ageBucket(t));
   return '<div class="row">'+
-  '<div class="asset"><b>'+esc(t.symbol||'?')+' · '+esc(t.name||'')+'</b><span class="age-chip">'+esc(ageText(t))+'</span>'+(t.kolTrend?'<span class="age-chip">👑 '+Number(t.kolTrend.kolCount||0)+' KOL</span>':'')+siteTrendBadges(t)+whaleTrendBadge(t)+socialTrendBadges(t)+momentumChip(t)+tradePlanChips(t)+'<small>'+esc(short(t.mint))+'</small>'+socialButtons(t)+'</div>'+
+  '<div class="asset"><b>'+esc(t.symbol||'?')+' · '+esc(t.name||'')+'</b><span class="age-chip">'+esc(ageText(t))+'</span>'+(t.kolTrend?'<span class="age-chip">👑 '+Number(t.kolTrend.kolCount||0)+' KOL</span>':'')+siteTrendBadges(t)+whaleTrendBadge(t)+socialTrendBadges(t)+topTraderBadge(t)+momentumChip(t)+tradePlanChips(t)+'<small>'+esc(short(t.mint))+'</small>'+socialButtons(t)+'</div>'+
   '<div class="cell"><small>امتیاز گروه</small><b><span class="badge '+bucketSignalClass(bs,t)+'">'+bs+'/100</span></b></div>'+'<div class="cell"><small>ترند سایت‌ها</small><b><span class="badge '+(siteTrendScore(t)>=50?'good':siteTrendScore(t)>=20?'mid':'blue')+'">'+siteTrendScore(t)+'/100</span></b></div>'+
   '<div class="cell"><small>کوتاه / میان / بلند</small><b>'+Number(sh.score||0)+' / '+Number(md.score||0)+' / '+Number(lg.score||0)+'</b></div>'+
   '<div class="cell"><small>قدرت خریدار</small><b><span class="badge '+pressureClass(t)+'">'+(fl.buyerPower==null?'—':Number(fl.buyerPower)+'%')+'</span></b></div>'+
@@ -4142,6 +4411,12 @@ function overallCandidates(){
     if(wh.count){score+=Math.min(8,3+wh.count*2);reasons.push('خرید نهنگ')}
     if(sm){score+=4;reasons.push('اسمارت‌مانی')}
     if(tr&&Number(tr.uniqueBuyers||0)>Number(tr.uniqueSellers||0)){score+=2;reasons.push('کیف‌پول‌های ردیابی‌شده خریدار غالب')}
+    var tt=topTraderForMint(t.mint);
+    if(tt&&Number(tt.holderCount||0)>=2){
+      score+=Math.min(10,Number(tt.holderCount||0)*2);
+      reasons.push('اجماع '+Number(tt.holderCount||0)+' تریدر برتر');
+      if(Number(tt.recentBuyers||0)>0){score+=Math.min(5,Number(tt.recentBuyers||0)*2);reasons.push('خرید تازه تریدرهای برتر')}
+    }
 
     var shortScore=Number(sg.short?.score||0),medScore=Number(sg.medium?.score||0);
     score+=Math.min(6,(shortScore+medScore)/40);
@@ -4507,7 +4782,7 @@ function renderSocialTrends(){
       }
       var pnlText=pnl==null?'—':(pnl>0?'+':'')+pnl.toFixed(1)+'%';
       var pnlClass=pnl==null?'return-flat':pnl>=0?'return-pos':'return-neg';
-      return '<div class="row"><div class="asset"><b>#'+(i+1)+' 📣 '+esc(t.symbol||'?')+' · '+esc(t.name||'')+'</b>'+socialMoneyBadges(t)+socialTrendBadges(t)+tradePlanChips(t)+
+      return '<div class="row"><div class="asset"><b>#'+(i+1)+' 📣 '+esc(t.symbol||'?')+' · '+esc(t.name||'')+'</b>'+socialMoneyBadges(t)+socialTrendBadges(t)+topTraderBadge(t)+tradePlanChips(t)+
         '<small>'+esc((h.reasons||[]).slice(0,3).join(' • '))+'</small>'+
         (hist?'<small>اولین سیگنال اجتماعی: '+new Date(hist.introducedAt).toLocaleString('fa-IR')+' · قیمت '+fmtPrice(hist.introducedPrice)+'</small>':'')+
         socialButtons(t)+'</div>'+
@@ -4559,6 +4834,67 @@ function renderSocialTrends(){
         '<div class="actions"><a class="action" target="_blank" rel="noopener" href="'+esc(dexUrl(h.mint,h.dexUrl||t&&t.dexUrl))+'">📈 چارت</a></div></div>';
     }).join(''):'<div class="empty">هنوز سیگنال اجتماعی ثبت‌شده‌ای برای محاسبه عملکرد وجود ندارد.</div>';
   }
+}
+
+
+function topTraderForMint(mint){
+  return topTraders&&Array.isArray(topTraders.sharedHoldings)
+    ?topTraders.sharedHoldings.find(function(x){return x.mint===mint})||null:null;
+}
+function topTraderBadge(t){
+  if(!t)return '';
+  var x=topTraderForMint(t.mint);
+  if(!x||Number(x.holderCount||0)<2)return '';
+  var cls=x.safe?'good':x.holderCount>=3?'mid':'blue';
+  return '<span class="badge '+cls+'">🏆 '+Number(x.holderCount||0)+' تریدر · '+money(x.totalValueUsd)+(Number(x.recentBuyers||0)>0?' · ⚡ '+Number(x.recentBuyers)+' خریدار تازه':'')+'</span>';
+}
+function renderTopTraders(){
+  var d=topTraders||{},wallets=Array.isArray(d.wallets)?d.wallets:[],shared=Array.isArray(d.sharedHoldings)?d.sharedHoldings:[],
+      buys=Array.isArray(d.recentBuys)?d.recentBuys:[],best=d.best||null;
+  var st=document.getElementById('topTraderStatus');
+  if(st)st.textContent=Number(d.walletCount||wallets.length)+' کیف‌پول · اسکن '+(d.generatedAt?new Date(d.generatedAt).toLocaleTimeString('fa-IR'):'—')+
+    ' · بازده پوزیشن قدیمی = از شروع ردیابی، نه زمان خرید تاریخی';
+
+  var be=document.getElementById('topTraderBest');
+  if(be){
+    be.innerHTML=best?'<div class="decision-banner decision-buy"><b>⭐ بهترین اجماع فعلی برای بررسی: '+esc(best.symbol||'?')+' · '+esc(best.name||'')+'</b>'+
+      '<div class="beginner-note">'+Number(best.holderCount||0)+' تریدر مشترک · '+money(best.totalValueUsd)+' سرمایه فعلی · '+Number(best.recentBuyers||0)+' خریدار تازه · امتیاز '+Number(best.score||0)+'/100 · امنیت '+esc(faSec(best.radar?.security?.tier))+'</div>'+
+      '<div class="actions"><a class="action" target="_blank" rel="noopener" href="'+esc(dexUrl(best.mint,best.dexUrl))+'">DEX</a><button class="detail-btn" data-mint="'+esc(best.mint)+'">جزئیات</button></div></div>'
+      :'<div class="note">فعلاً اجماع چندتریدر که همزمان فیلتر امنیتی HIGH/MAX را پاس کند پیدا نشده؛ موارد مشترک پایین به‌صورت Watch نمایش داده می‌شوند.</div>';
+  }
+
+  var se=document.getElementById('topTraderShared');
+  if(se)se.innerHTML=shared.filter(x=>Number(x.holderCount||0)>=2).slice(0,20).map(function(x,i){
+    return '<div class="row"><div class="asset"><b>#'+(i+1)+' 🤝 '+esc(x.symbol||'?')+' · '+esc(x.name||'')+'</b>'+
+      '<span class="badge '+(x.safe?'good':x.holderCount>=3?'mid':'blue')+'">'+Number(x.holderCount||0)+' تریدر مشترک</span>'+
+      '<small>'+esc((x.holders||[]).slice(0,5).map(h=>h.name+' '+money(h.valueUsd)).join(' · '))+'</small></div>'+
+      '<div class="cell"><small>سرمایه فعلی</small><b>'+money(x.totalValueUsd)+'</b></div>'+
+      '<div class="cell"><small>خرید تازه 6h</small><b>'+Number(x.recentBuyers||0)+' · '+money(x.recentBuyUsd)+'</b></div>'+
+      '<div class="cell"><small>امتیاز</small><b>'+Number(x.score||0)+'/100</b></div>'+
+      '<div class="cell"><small>امنیت</small><b>'+(x.radar?esc(faSec(x.radar.security?.tier)):'خارج رادار')+'</b></div>'+
+      '<div class="actions"><a class="action" target="_blank" rel="noopener" href="'+esc(dexUrl(x.mint,x.dexUrl))+'">DEX</a></div></div>';
+  }).join('')||'<div class="empty">فعلاً پوزیشن مشترک بین حداقل دو تریدر پیدا نشده.</div>';
+
+  var re=document.getElementById('topTraderRecentBuys');
+  if(re)re.innerHTML=buys.slice(0,25).map(function(x){
+    var ret=livePnlPct(x.mint,x.price);
+    return '<div class="row"><div class="asset"><b>⚡ '+esc(x.trader)+' → '+esc(x.symbol||short(x.mint))+'</b>'+
+      '<small>'+new Date(x.ts).toLocaleString('fa-IR')+' · '+esc(x.source)+(x.verifiedSwap?' · تراکنش تأییدشده':' · افزایش موجودی مشاهده‌شده')+'</small></div>'+
+      '<div class="cell"><small>مقدار خرید</small><b>'+money(x.usd)+'</b></div>'+
+      '<div class="cell"><small>قیمت شروع</small><b>'+fmtPrice(x.price)+'</b></div>'+
+      '<div class="cell"><small>بازده از خرید</small><b class="'+(ret==null?'return-flat':ret>=0?'return-pos':'return-neg')+'">'+(ret==null?'—':(ret>=0?'+':'')+ret.toFixed(2)+'%')+'</b></div>'+
+      '<div class="actions"><a class="action" target="_blank" rel="noopener" href="'+esc(dexUrl(x.mint,''))+'">DEX</a></div></div>';
+  }).join('')||'<div class="empty">از زمان فعال شدن این مانیتور هنوز خرید/انباشت جدیدی ثبت نشده.</div>';
+
+  var we=document.getElementById('topTraderWallets');
+  if(we)we.innerHTML=wallets.slice(0,50).map(function(w,i){
+    var top=(w.portfolio||[])[0],ret=top&&top.returnPct;
+    return '<div class="row"><div class="asset"><b>#'+(i+1)+' 🏆 '+esc(w.name||'Top Trader')+'</b><small>'+esc(short(w.address))+'</small></div>'+
+      '<div class="cell"><small>ارزش پرتفوی ردیابی‌شده</small><b>'+money(w.portfolioValueUsd)+'</b></div>'+
+      '<div class="cell"><small>بزرگترین پوزیشن</small><b>'+(top?esc(top.symbol)+' · '+money(top.valueUsd):'—')+'</b></div>'+
+      '<div class="cell"><small>بازده پوزیشن برتر</small><b class="'+(ret==null?'return-flat':ret>=0?'return-pos':'return-neg')+'">'+(ret==null?'—':(ret>=0?'+':'')+ret.toFixed(2)+'%')+'</b><small>'+(top?esc(top.returnBasis):'')+'</small></div>'+
+      '<div class="actions"><a class="action" target="_blank" rel="noopener" href="https://solscan.io/account/'+esc(w.address)+'">Solscan</a></div></div>';
+  }).join('')||'<div class="empty">هنوز پرتفوی کیف‌پول‌ها دریافت نشده.</div>';
 }
 
 function renderWallets(){
@@ -4785,6 +5121,8 @@ function renderAll(){
   safeUiRender('اسمارت‌مانی',renderSmart);
   safeUiRender('پیش‌لانچ',renderPrelaunch);
   safeUiRender('ترند اجتماعی',renderSocialTrends);
+  safeUiRender('تریدرهای برتر',renderTopTraders);
+      safeUiRender('تریدرهای برتر',renderTopTraders);
   safeUiRender('کیف‌پول‌ها',renderWallets);
   safeUiRender('Conviction',renderConviction);
   safeUiRender('عملکرد پیشنهادها',renderRecommendationPerformance);
@@ -4813,6 +5151,8 @@ function openDetail(m){
   if(tr&&tr.convictionHolders&&tr.convictionHolders.length)h+='<details class="accordion"><summary>💎 هولدرهای ردیابی‌شده با خرید ۱۰۰۰$+ و فروش کمتر</summary><div class="accordion-body">'+tr.convictionHolders.map(function(x){return '<div class="check"><span>'+esc(x.wallet)+' · خرید '+money(x.buyUsd)+' · فروش '+money(x.sellUsd)+'</span><span class="pass">هولد فعلی '+money(x.currentHoldingUsd)+'</span></div>'}).join('')+'<div class="note">بر اساس Swapهای قابل‌تشخیص ۴۸ ساعت اخیر کیف‌پول‌های تحت ردیابی؛ پوشش کل بازار نیست.</div></div></details>';
   if(sm)h+='<div class="note"><b>اسمارت‌مانی:</b> '+Number(sm.smartMoneyCount||0)+' کیف‌پول · '+money(sm.totalValueUsd)+' پوزیشن</div>';
   if(wh.count)h+='<div class="note"><b>نهنگ:</b> '+wh.count+' خرید بزرگ · '+money(wh.usd)+'</div>';
+  var tt=topTraderForMint(m);
+  if(tt)h+='<div class="note"><b>🏆 تریدرهای برتر:</b> '+Number(tt.holderCount||0)+' کیف‌پول مشترک · '+money(tt.totalValueUsd)+' سرمایه فعلی · '+Number(tt.recentBuyers||0)+' خریدار تازه</div>';
   if(t){
     var mm=momentumFilter(t);
     h+='<details class="accordion"><summary>📊 فیلتر مومنتوم DEXScreener · '+mm.passed+'/'+mm.total+'</summary><div class="accordion-body">'+
@@ -4952,7 +5292,7 @@ async function loadAll(){
   if(b){b.disabled=true;b.textContent='در حال دریافت…'}
   var sx=window.scrollX,sy=window.scrollY;
   try{
-    var r=await Promise.all([safeJson('/api/v1/tokens'),safeJson('/api/v1/smart-money'),safeJson('/api/v1/smart-money-live'),safeJson('/api/v1/tracked-wallets'),safeJson('/api/v1/conviction-wallets'),safeJson('/api/v1/prelaunch')]);
+    var r=await Promise.all([safeJson('/api/v1/tokens'),safeJson('/api/v1/smart-money'),safeJson('/api/v1/smart-money-live'),safeJson('/api/v1/tracked-wallets'),safeJson('/api/v1/conviction-wallets'),safeJson('/api/v1/prelaunch'),safeJson('/api/v1/top-traders')]);
     if(r[0]&&Array.isArray(r[0].tokens)){
       if(r[0].tokens.length){
         tokens=r[0].tokens;
@@ -4969,6 +5309,7 @@ async function loadAll(){
     if(r[3])tracked=r[3];
     if(r[4])conviction=r[4];
     if(r[5])prelaunch=r[5];
+    if(r[6])topTraders=r[6];
     document.getElementById('updated').textContent='آخرین اسکن کامل: '+new Date().toLocaleTimeString('fa-IR');
     preserveViewport(renderAll);
   }finally{
@@ -5024,6 +5365,19 @@ async function pollVisibleDexPrices(){
   }finally{
     visibleDexPriceBusy=false;
   }
+}
+
+var topTraderPollBusy=false;
+async function pollTopTraders(){
+  if(topTraderPollBusy)return;
+  topTraderPollBusy=true;
+  try{
+    var x=await safeJson('/api/v1/top-traders');
+    if(x&&x.ok){
+      topTraders=x;
+      if(activeTab==='wallets'||activeTab==='tokens'||activeTab==='social')renderActivePanel();
+    }
+  }finally{topTraderPollBusy=false}
 }
 
 async function pollMarketLive(){
@@ -5141,7 +5495,7 @@ window.addEventListener('error',function(e){
   var u=document.getElementById('updated');
   if(u)u.textContent='خطای رابط: '+String(e.message||'JavaScript');
 });
-loadAll();startLivePush();marketLiveTimer=setInterval(pollMarketLive,1000);setTimeout(pollMarketLive,350);setInterval(pollVisibleDexPrices,1000);setTimeout(pollVisibleDexPrices,250);setInterval(pollPrelaunchLive,1000);setTimeout(pollPrelaunchLive,500);setInterval(loadAll,20000);
+loadAll();startLivePush();marketLiveTimer=setInterval(pollMarketLive,1000);setTimeout(pollMarketLive,350);setInterval(pollTopTraders,12000);setTimeout(pollTopTraders,2500);setInterval(pollVisibleDexPrices,1000);setTimeout(pollVisibleDexPrices,250);setInterval(pollPrelaunchLive,1000);setTimeout(pollPrelaunchLive,500);setInterval(loadAll,20000);
 </script>
 </body>
 </html>`;
@@ -5151,11 +5505,16 @@ createServer(async(req,res)=>{
   try{
     if(url.pathname==='/api/health'){res.writeHead(200,{'content-type':'application/json',...headers});return res.end(JSON.stringify({ok:true,time:new Date().toISOString()}))}
     if(url.pathname==='/api/v1/force-refresh'){
-      cache={at:0,data:null};marketLiveCache={at:0,data:null};exactDexPriceCache.clear();contractPriceCache.clear();prelaunchCache={at:0,data:null};pumpTraderIntelCache={at:0,data:null};solidProofIntelCache={at:0,data:null};trackedWalletCache={at:0,data:null};smartMoneyCache={at:0,data:null};convictionCache={at:0,data:null};
+      cache={at:0,data:null};marketLiveCache={at:0,data:null};exactDexPriceCache.clear();contractPriceCache.clear();prelaunchCache={at:0,data:null};pumpTraderIntelCache={at:0,data:null};solidProofIntelCache={at:0,data:null};trackedWalletCache={at:0,data:null};topTraderIntelCache={at:0,data:null};smartMoneyCache={at:0,data:null};convictionCache={at:0,data:null};
       res.writeHead(200,{'content-type':'application/json; charset=utf-8','cache-control':'no-store',...headers});
       return res.end(JSON.stringify({ok:true,clearedAt:new Date().toISOString()}));
     }
     if(url.pathname==='/api/v1/conviction-wallets'){const cw=await buildConvictionWallets();res.writeHead(200,{'content-type':'application/json; charset=utf-8','cache-control':'no-store',...headers});return res.end(JSON.stringify(cw))}
+    if(url.pathname==='/api/v1/top-traders'){
+      const d=await buildUserTopTraderIntel();
+      res.writeHead(200,{'content-type':'application/json; charset=utf-8','cache-control':'no-store',...headers});
+      return res.end(JSON.stringify(d))
+    }
     if(url.pathname==='/api/v1/tracked-wallets'){const tw=await buildTrackedWallets();res.writeHead(200,{'content-type':'application/json; charset=utf-8','cache-control':'no-store',...headers});return res.end(JSON.stringify(tw))}
     if(url.pathname==='/api/v1/prelaunch-live'){const pl=await buildPrelaunchLive();res.writeHead(200,{'content-type':'application/json; charset=utf-8','cache-control':'no-store',...headers});return res.end(JSON.stringify(pl))}
     if(url.pathname==='/api/v1/launch-intelligence'){
