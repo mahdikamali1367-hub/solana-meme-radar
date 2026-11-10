@@ -116,20 +116,19 @@ function canonicalPairScore(p,mint){
   if(!(price>0))return -1;
   const liq=num(p?.liquidity?.usd),v5=num(p?.volume?.m5),v1=num(p?.volume?.h1),v24=num(p?.volume?.h24);
   const tx5=num(p?.txns?.m5?.buys)+num(p?.txns?.m5?.sells);
-  const trusted=isTrustedQuotePair(p);
-  return (trusted?10000:0)+
-    Math.log10(1+Math.max(0,liq))*100+
+  return Math.log10(1+Math.max(0,liq))*100+
     Math.log10(1+Math.max(0,v24))*8+
     Math.log10(1+Math.max(0,v1))*5+
     Math.log10(1+Math.max(0,v5))*3+
     Math.min(20,tx5/5);
 }
 function chooseCanonicalPair(rows,mint){
-  const valid=(Array.isArray(rows)?rows:[])
-    .filter(p=>canonicalPairScore(p,mint)>=0);
-  const trusted=valid.filter(isTrustedQuotePair);
-  const pool=trusted.length?trusted:valid;
-  return pool.sort((a,b)=>canonicalPairScore(b,mint)-canonicalPairScore(a,mint))[0]||null;
+  // DEXScreener token-pairs endpoint is the source of truth.
+  // Keep its first valid base-token pair instead of imposing our own quote-token preference.
+  const valid=(Array.isArray(rows)?rows:[]).filter(function(p){
+    return canonicalPairScore(p,mint)>=0;
+  });
+  return valid[0]||null;
 }
 
 async function pairsForMany(mints,preferredPairs=null){
@@ -154,14 +153,11 @@ async function pairsForMany(mints,preferredPairs=null){
   for(const mint of uniq){
     const rows=candidates.get(mint)||[];
     const preferred=preferredPairs&&typeof preferredPairs.get==='function'?String(preferredPairs.get(mint)||''):'';
-    const trustedRows=rows.filter(function(x){return canonicalPairScore(x,mint)>=0&&isTrustedQuotePair(x)});
     let p=null;
     if(preferred){
-      var pinned=rows.find(function(x){
+      p=rows.find(function(x){
         return String(x?.pairAddress||'')===preferred&&canonicalPairScore(x,mint)>=0;
       })||null;
-      // Keep a pin only if it is a trusted SOL/USDC/USDT market, or there is no trusted alternative.
-      if(pinned&&(isTrustedQuotePair(pinned)||trustedRows.length===0))p=pinned;
     }
     if(!p)p=chooseCanonicalPair(rows,mint);
     if(p)out.set(mint,p);
@@ -1508,7 +1504,7 @@ async function buildFresh(){
     const buys5m=num(p.txns?.m5?.buys),sells5m=num(p.txns?.m5?.sells);
     const t={
       name:p.baseToken?.name||'Unknown',symbol:p.baseToken?.symbol||'?',mint:s.mint,
-      dexId:p.dexId||'',dexUrl:p.url||'',pairAddress:p.pairAddress||'',quoteTokenAddress:p.quoteToken?.address||'',priceQuoteTrusted:isTrustedQuotePair(p),image:p.info?.imageUrl||s.image||'',description:s.description,
+      dexId:p.dexId||'',dexUrl:p.url||'',pairAddress:p.pairAddress||'',quoteTokenAddress:p.quoteToken?.address||'',priceQuoteTrusted:true,image:p.info?.imageUrl||s.image||'',description:s.description,
       ageMinutes:+ageMinutes.toFixed(1),priceUsd:num(p.priceUsd),marketCap:num(p.marketCap||p.fdv),
       liquidity:num(p.liquidity?.usd),volume5m:num(p.volume?.m5),volume1h:num(p.volume?.h1),volume6h:num(p.volume?.h6),volume24h:num(p.volume?.h24),
       buys5m,sells5m,txns5m:buys5m+sells5m,
@@ -1605,8 +1601,8 @@ async function buildMarketLive(){
         dexUrl:p.url||t.dexUrl||'',
         pairAddress:p.pairAddress||'',
         quoteTokenAddress:p.quoteToken?.address||'',
-        priceQuoteTrusted:isTrustedQuotePair(p),
-        priceSource:(isTrustedQuotePair(p)?'DEXScreener trusted '+String(p.quoteToken?.symbol||'quote'):'DEXScreener untrusted quote fallback'),
+        priceQuoteTrusted:true,
+        priceSource:'DEXScreener exact pair '+String(p.pairAddress||''),
         priceObservedAt:Date.now()
       };
       var merged={...t,...patch};
@@ -2581,9 +2577,9 @@ html,body,.shell,.panel,.list{overflow-anchor:none}
 <script>
 var tokens=[],smart=null,live=null,tracked=null,conviction=null,prelaunch=null,prelaunchLive=null,activeTab='featured',signalFilters={short:'',medium:'',long:'',security:'',holders:'',bigbuyers:''};
 try{
-  if(localStorage.getItem('priceCacheSchemaV2')!=='trusted-quotes-v2'){
+  if(localStorage.getItem('priceCacheSchemaV3')!=='dexscreener-exact-pair-v3'){
     localStorage.removeItem('livePriceCache');
-    localStorage.setItem('priceCacheSchemaV2','trusted-quotes-v2');
+    localStorage.setItem('priceCacheSchemaV3','dexscreener-exact-pair-v3');
   }
 }catch(e){}
 var livePriceCache=new Map();
@@ -2626,23 +2622,23 @@ function currentPriceForMint(mint){
   var hit=livePriceCache.get(mint);
   var cached=hit&&Number(hit.price||0)>0?Number(hit.price):null;
   var cachedAt=Number(hit&&hit.at||0);
+  var cachedPair=String(hit&&hit.pairAddress||'');
 
   var t=findToken(mint);
   var tokenPrice=Number(t&&t.priceUsd||0);
   var tokenPair=String(t&&t.pairAddress||'');
-  var cachedPair=String(hit&&hit.pairAddress||'');
 
-  // Live market cache is authoritative while fresh, but only for the same pinned pair.
-  var pairMatches=!tokenPair||!cachedPair||tokenPair===cachedPair;
-  if(cached&&pairMatches&&Date.now()-cachedAt<=15000)return cached;
+  // Exact DEXScreener pair live price is authoritative while fresh.
+  if(cached&&Date.now()-cachedAt<=15000&&(!tokenPair||!cachedPair||tokenPair===cachedPair))return cached;
 
-  // If live data is stale/unavailable, fall back to the latest full-scan token price.
+  // Full-scan price is from the same DEXScreener pair and is the fallback.
   if(tokenPrice>0){
-    rememberLivePrice(mint,tokenPrice,'snapshot',Date.now(),tokenPair);
+    rememberLivePrice(mint,tokenPrice,'dexscreener-snapshot',Date.now(),tokenPair);
     return tokenPrice;
   }
-  return pairMatches?cached:null;
+  return cached;
 }
+
 function livePnlPct(mint,base){
   var cur=currentPriceForMint(mint),b=Number(base||0);
   if(!(cur>0)||!(b>0))return null;
@@ -4086,21 +4082,28 @@ function renderActivePanel(){
 function mergeMarketLive(x){
   if(!x||!Array.isArray(x.tokens)||!x.tokens.length)return false;
   var byMint=new Map(x.tokens.map(function(p){
-    var t=findToken(p&&p.mint);
-    var acceptable=!!(p&&p.mint&&Number(p.priceUsd||0)>0);
-    // Never replace a trusted SOL/stable price with a quote-token market.
-    if(t&&t.priceQuoteTrusted===true&&p.priceQuoteTrusted!==true)acceptable=false;
-    // One-second live prices should not jump 20x away from the last trusted snapshot.
-    if(acceptable&&t&&Number(t.priceUsd||0)>0&&p.priceQuoteTrusted===true){
-      var ratio=Number(p.priceUsd)/Number(t.priceUsd);
-      if(ratio>20||ratio<0.05)acceptable=false;
+    if(!p||!p.mint||!(Number(p.priceUsd)>0))return [p&&p.mint||'',null];
+    var t=findToken(p.mint);
+
+    // If a token already has a DEXScreener pair pinned, only accept that exact pair.
+    if(t&&t.pairAddress&&p.pairAddress&&String(t.pairAddress)!==String(p.pairAddress)){
+      return [p.mint,null];
     }
-    if(acceptable)rememberLivePrice(p.mint,p.priceUsd,'live',Number(p.priceObservedAt||Date.now()),p.pairAddress||'');
-    return [p.mint,acceptable?p:null];
+
+    rememberLivePrice(
+      p.mint,
+      p.priceUsd,
+      'dexscreener',
+      Number(p.priceObservedAt||Date.now()),
+      p.pairAddress||''
+    );
+    return [p.mint,p];
   }));
+
   var changed=false;
   tokens=tokens.map(function(t){
-    var p=byMint.get(t.mint);if(!p)return t;
+    var p=byMint.get(t.mint);
+    if(!p)return t;
     changed=true;
     return Object.assign({},t,p,{flow:p.flow||t.flow});
   });
@@ -4324,7 +4327,7 @@ createServer(async(req,res)=>{
       const buys5m=num(p.txns?.m5?.buys),sells5m=num(p.txns?.m5?.sells);
       const t={
         name:p.baseToken?.name||'Unknown',symbol:p.baseToken?.symbol||'?',mint,
-        dexId:p.dexId||'',dexUrl:p.url||'',pairAddress:p.pairAddress||'',quoteTokenAddress:p.quoteToken?.address||'',priceQuoteTrusted:isTrustedQuotePair(p),image:p.info?.imageUrl||'',description:'',
+        dexId:p.dexId||'',dexUrl:p.url||'',pairAddress:p.pairAddress||'',quoteTokenAddress:p.quoteToken?.address||'',priceQuoteTrusted:true,image:p.info?.imageUrl||'',description:'',
         ageMinutes:Math.max(0,(Date.now()-num(p.pairCreatedAt))/60000),
         priceUsd:num(p.priceUsd),marketCap:num(p.marketCap||p.fdv),liquidity:num(p.liquidity?.usd),
         volume5m:num(p.volume?.m5),volume1h:num(p.volume?.h1),volume6h:num(p.volume?.h6),volume24h:num(p.volume?.h24),
