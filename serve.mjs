@@ -2459,7 +2459,7 @@ async function buildUserTopTraderIntel(){
       const returnPct=refPrice>0?((a.priceUsd-refPrice)/refPrice)*100:null;
       portfolio.push({
         mint,symbol:a.symbol,name:a.name,amount,valueUsd,priceUsd:a.priceUsd,dexUrl:a.dexUrl,
-        returnPct,
+        returnPct,referencePrice:refPrice>0?refPrice:null,
         returnBasis:base?.detectedBuyAt?'از خرید/انباشت مشاهده‌شده':'از شروع ردیابی',
         firstSeenAt:base?.firstSeenAt||null,
         detectedBuyAt:base?.detectedBuyAt||null,
@@ -3606,6 +3606,19 @@ function updateLiveProfitDom(){
     el.classList.remove('return-pos','return-neg','return-flat');
     el.classList.add(val===null?'return-flat':val>=0?'return-pos':'return-neg');
     el.title='تغییر ارزش تخمینی مبلغ مشاهده‌شده بر اساس قیمت فعلی؛ سود محقق‌نشده واقعی کیف‌پول یا PnL کل تریدر نیست';
+  });
+  document.querySelectorAll('[data-trader-position-mint]').forEach(function(el){
+    var mint=el.getAttribute('data-trader-position-mint');
+    var entry=Number(el.getAttribute('data-trader-position-entry')||0);
+    var amount=Number(el.getAttribute('data-trader-position-amount')||0);
+    var hit=livePriceCache.get(mint);
+    var fresh=hit&&Number(hit.price)>0&&Date.now()-Number(hit.at||0)<15000&&
+      ['dexscreener-exact','pumpfun-fallback'].includes(hit.source);
+    var pnl=fresh&&entry>0&&amount>0?(Number(hit.price)-entry)*amount:null;
+    el.textContent=pnl===null?'—':(pnl>=0?'+':'')+money(pnl);
+    el.classList.remove('return-pos','return-neg','return-flat');
+    el.classList.add(pnl===null?'return-flat':pnl>=0?'return-pos':'return-neg');
+    el.title='تغییر ارزش پوزیشن فعلی از قیمت مرجع ردیابی؛ بدون درنظرگرفتن معاملات قبلی، و نه سود واقعی تریدر';
   });
   document.querySelectorAll('[data-live-profit-mint]').forEach(function(el){
     var mint=el.getAttribute('data-live-profit-mint');
@@ -4918,6 +4931,7 @@ function renderTopTraders(){
       '<div class="cell"><small>ارزش پرتفوی ردیابی‌شده</small><b>'+money(w.portfolioValueUsd)+'</b></div>'+
       '<div class="cell"><small>بزرگترین پوزیشن</small><b>'+(top?esc(top.symbol)+' · '+money(top.valueUsd):'—')+'</b></div>'+
       '<div class="cell"><small>بازده پوزیشن برتر</small><b class="'+(ret==null?'return-flat':ret>=0?'return-pos':'return-neg')+'">'+(ret==null?'—':(ret>=0?'+':'')+ret.toFixed(2)+'%')+'</b><small>'+(top?esc(top.returnBasis):'')+'</small></div>'+
+      '<div class="cell"><small>تغییر ارزش زنده پوزیشن برتر (تخمینی)</small><b '+(top?'data-trader-position-mint="'+esc(top.mint)+'" data-trader-position-entry="'+Number(top.referencePrice||0)+'" data-trader-position-amount="'+Number(top.amount||0)+'"':'')+'>—</b></div>'+
       '<div class="actions"><a class="action" target="_blank" rel="noopener" href="https://solscan.io/account/'+esc(w.address)+'">Solscan</a></div></div>';
   }).join('')||'<div class="empty">هنوز پرتفوی کیف‌پول‌ها دریافت نشده.</div>';
 }
