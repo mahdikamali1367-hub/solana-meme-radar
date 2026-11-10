@@ -3592,6 +3592,21 @@ function livePnlPct(mint,base){
   return ((cur-b)/b)*100;
 }
 function updateLiveProfitDom(){
+  document.querySelectorAll('[data-trader-pnl-mint]').forEach(function(el){
+    var mint=el.getAttribute('data-trader-pnl-mint');
+    var entry=Number(el.getAttribute('data-trader-entry-price')||0);
+    var buyUsd=Number(el.getAttribute('data-trader-buy-usd')||0);
+    var hit=livePriceCache.get(mint);
+    // Never show stale prices as live trader PnL.
+    var fresh=hit&&Number(hit.price)>0&&Date.now()-Number(hit.at||0)<15000&&
+      ['dexscreener-exact','pumpfun-fallback'].includes(hit.source);
+    var ret=fresh&&entry>0?((Number(hit.price)-entry)/entry)*100:null;
+    var val=ret===null?null:buyUsd*ret/100;
+    el.textContent=val===null?'قیمت زنده در دسترس نیست':((val>=0?'+':'')+money(val)+' ('+(ret>=0?'+':'')+ret.toFixed(2)+'%)');
+    el.classList.remove('return-pos','return-neg','return-flat');
+    el.classList.add(val===null?'return-flat':val>=0?'return-pos':'return-neg');
+    el.title='تغییر ارزش تخمینی مبلغ مشاهده‌شده بر اساس قیمت فعلی؛ سود محقق‌نشده واقعی کیف‌پول یا PnL کل تریدر نیست';
+  });
   document.querySelectorAll('[data-live-profit-mint]').forEach(function(el){
     var mint=el.getAttribute('data-live-profit-mint');
     var base=Number(el.getAttribute('data-live-profit-base')||0);
@@ -4858,7 +4873,8 @@ function renderTopTraders(){
       buys=Array.isArray(d.recentBuys)?d.recentBuys:[],best=d.best||null;
   var st=document.getElementById('topTraderStatus');
   if(st)st.textContent=Number(d.walletCount||wallets.length)+' کیف‌پول · اسکن '+(d.generatedAt?new Date(d.generatedAt).toLocaleTimeString('fa-IR'):'—')+
-    ' · بازده پوزیشن قدیمی = از شروع ردیابی، نه زمان خرید تاریخی';
+    ' · اسکن موفق '+Number(d.scannedWalletCount||0)+' · خطای RPC '+Number(d.failedWalletCount||0)+
+    ' · افزایش موجودی بدون تراکنش تأییدشده، خرید قطعی نیست · سود نمایش‌داده‌شده برآورد تغییر ارزش است';
 
   var be=document.getElementById('topTraderBest');
   if(be){
@@ -4881,15 +4897,19 @@ function renderTopTraders(){
   }).join('')||'<div class="empty">فعلاً پوزیشن مشترک بین حداقل دو تریدر پیدا نشده.</div>';
 
   var re=document.getElementById('topTraderRecentBuys');
-  if(re)re.innerHTML=buys.slice(0,25).map(function(x){
-    var ret=livePnlPct(x.mint,x.price);
-    return '<div class="row"><div class="asset"><b>⚡ '+esc(x.trader)+' → '+esc(x.symbol||short(x.mint))+'</b>'+
-      '<small>'+new Date(x.ts).toLocaleString('fa-IR')+' · '+esc(x.source)+(x.verifiedSwap?' · تراکنش تأییدشده':' · افزایش موجودی مشاهده‌شده')+'</small></div>'+
-      '<div class="cell"><small>مقدار خرید</small><b>'+money(x.usd)+'</b></div>'+
-      '<div class="cell"><small>قیمت شروع</small><b>'+fmtPrice(x.price)+'</b></div>'+
-      '<div class="cell"><small>بازده از خرید</small><b class="'+(ret==null?'return-flat':ret>=0?'return-pos':'return-neg')+'">'+(ret==null?'—':(ret>=0?'+':'')+ret.toFixed(2)+'%')+'</b></div>'+
-      '<div class="actions"><a class="action" target="_blank" rel="noopener" href="'+esc(dexUrl(x.mint,''))+'">DEX</a></div></div>';
-  }).join('')||'<div class="empty">از زمان فعال شدن این مانیتور هنوز خرید/انباشت جدیدی ثبت نشده.</div>';
+  if(re)re.innerHTML=buys.slice(0,40).map(function(x){
+    var verified=!!x.verifiedSwap;
+    return '<div class="row"><div class="asset"><b>'+(verified?'✅ خرید تأییدشده':'👁 افزایش موجودی')+' · '+esc(x.trader)+' → '+esc(x.symbol||short(x.mint))+'</b>'+
+      '<small>'+new Date(x.ts).toLocaleString('fa-IR')+' · '+(verified?'تراکنش در Solana RPC تأیید شده':'خرید قطعی نیست؛ تغییر موجودی در اسکن ثبت شده')+'</small>'+
+      (x.signature?'<small>Tx: '+esc(short(x.signature))+'</small>':'')+'</div>'+
+      '<div class="cell"><small>'+(verified?'ارزش تخمینی خرید':'ارزش افزایش موجودی')+'</small><b>'+money(x.usd)+'</b></div>'+
+      '<div class="cell"><small>قیمت زمان شناسایی</small><b>'+fmtPrice(x.price)+'</b></div>'+
+      '<div class="cell"><small>قیمت فعلی</small><b data-live-price-mint="'+esc(x.mint)+'">—</b></div>'+
+      '<div class="cell"><small>تغییر ارزش از شناسایی</small><b data-trader-pnl-mint="'+esc(x.mint)+'" data-trader-entry-price="'+Number(x.price||0)+'" data-trader-buy-usd="'+Number(x.usd||0)+'">در حال دریافت قیمت…</b></div>'+
+      '<div class="actions"><a class="action" target="_blank" rel="noopener" href="'+esc(dexUrl(x.mint,''))+'">DEX</a>'+
+      (x.signature?'<a class="action" target="_blank" rel="noopener" href="https://solscan.io/tx/'+esc(x.signature)+'">Tx</a>':'')+'</div></div>';
+  }).join('')||'<div class="empty">از زمان شروع مانیتور هنوز خرید یا افزایش موجودی جدیدی ثبت نشده است.</div>';
+  updateLiveProfitDom();
 
   var we=document.getElementById('topTraderWallets');
   if(we)we.innerHTML=wallets.slice(0,50).map(function(w,i){
