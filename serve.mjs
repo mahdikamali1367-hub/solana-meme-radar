@@ -2484,13 +2484,44 @@ async function buildUserTopTraderIntel(){
     .slice(0,15);
 
   const best=recommendations.find(x=>x.safe)||null;
+  // A shared holding is not proof of a shared purchase. Only observed
+  // on-chain events from this monitor are eligible for recent buy consensus.
+  const sharedBuyMap=new Map();
+  for(const e of topTraderBuyEvents){
+    if(!e?.mint||!e?.address||now-num(e.ts)>24*60*60*1000)continue;
+    const a=sharedBuyMap.get(e.mint)||{mint:e.mint,traders:new Map(),events:[]};
+    a.events.push(e);
+    const old=a.traders.get(e.address);
+    if(!old)a.traders.set(e.address,{name:e.trader,address:e.address,usd:0,lastBuyAt:0,verifiedSwap:false,observedCount:0,verifiedCount:0});
+    const t=a.traders.get(e.address);
+    t.usd+=num(e.usd);
+    t.lastBuyAt=Math.max(t.lastBuyAt,num(e.ts));
+    t.observedCount++;
+    if(e.verifiedSwap){t.verifiedCount++;t.verifiedSwap=true}
+    sharedBuyMap.set(e.mint,a);
+  }
+  const sharedBuys=[...sharedBuyMap.values()].map(a=>{
+    const holding=mintAgg.get(a.mint);
+    const traders=[...a.traders.values()].sort((x,y)=>y.usd-x.usd);
+    const verified=traders.filter(x=>x.verifiedSwap);
+    return {mint:a.mint,symbol:holding?.symbol||a.events[0]?.symbol||'?',
+      name:holding?.name||a.events[0]?.name||'',dexUrl:holding?.dexUrl||'',
+      traderCount:traders.length,verifiedTraderCount:verified.length,
+      sharedVerifiedPurchase:verified.length>=2,
+      totalObservedUsd:traders.reduce((s,t)=>s+t.usd,0),
+      lastObservedAt:Math.max(...a.events.map(x=>num(x.ts))),
+      traders,events:a.events.sort((x,y)=>num(y.ts)-num(x.ts)).slice(0,30)};
+  }).filter(x=>x.traderCount>=2).sort((a,b)=>
+    (Number(b.sharedVerifiedPurchase)-Number(a.sharedVerifiedPurchase))||
+    (b.verifiedTraderCount-a.verifiedTraderCount)||
+    (b.traderCount-a.traderCount)||(b.lastObservedAt-a.lastObservedAt)).slice(0,30);
   const data={
     ok:true,generatedAt:new Date().toISOString(),refreshSeconds:12,
     walletCount:USER_TOP_TRADERS.length,scannedWalletCount:scans.filter(x=>x.rpcOk).length,
     failedWalletCount:scans.filter(x=>!x.rpcOk).length,partialData:scans.some(x=>!x.rpcOk),
     wallets:walletRows,
     sharedHoldings:sharedHoldings.slice(0,30),
-    recommendations,best,
+    sharedBuys,recommendations,best,
     recentBuys:topTraderBuyEvents.slice(0,80),
     source:'User supplied wallets + Solana RPC balances/transactions + DEXScreener valuation',
     disclaimer:'پوزیشن‌های موجود قبل از شروع مانیتور، زمان خرید تاریخی قطعی ندارند و بازده آن‌ها از شروع ردیابی محاسبه می‌شود. فقط افزایش موجودی بعد از شروع مانیتور می‌تواند زمان خرید/انباشت مشاهده‌شده داشته باشد.'
@@ -3430,7 +3461,10 @@ html,body,.shell,.panel,.list{overflow-anchor:none}
     <div class="accordion-body">
       <p class="muted" id="topTraderStatus" style="font-size:11px">در حال اسکن آدرس‌های ارسالی…</p>
       <div id="topTraderBest"></div>
-      <h3 style="font-size:13px">🤝 ارزهای مشترک بین چند تریدر</h3>
+      <h3 style="font-size:13px">⚡ خریدهای مشترک مشاهده‌شده در ۲۴ ساعت اخیر</h3>
+      <p class="muted" style="font-size:11px">✅ خرید تأییدشده = تراکنش Swap تأییدشده در RPC. 👁 افزایش موجودی = لزوماً خرید نیست. خریدهای مشترک فقط از زمان آغاز مانیتور قابل تشخیص‌اند.</p>
+      <div class="list" id="topTraderSharedBuys"></div>
+      <h3 style="font-size:13px">🤝 ارزهای مشترک در پرتفوی تریدرها (صرفاً نگهداری)</h3>
       <div class="list" id="topTraderShared"></div>
       <h3 style="font-size:13px">⚡ شروع خرید/انباشت مشاهده‌شده</h3>
       <div class="list" id="topTraderRecentBuys"></div>
@@ -4883,7 +4917,7 @@ function topTraderBadge(t){
 }
 function renderTopTraders(){
   var d=topTraders||{},wallets=Array.isArray(d.wallets)?d.wallets:[],shared=Array.isArray(d.sharedHoldings)?d.sharedHoldings:[],
-      buys=Array.isArray(d.recentBuys)?d.recentBuys:[],best=d.best||null;
+      buys=Array.isArray(d.recentBuys)?d.recentBuys:[],sharedBuys=Array.isArray(d.sharedBuys)?d.sharedBuys:[],best=d.best||null;
   var st=document.getElementById('topTraderStatus');
   if(st)st.textContent=Number(d.walletCount||wallets.length)+' کیف‌پول · اسکن '+(d.generatedAt?new Date(d.generatedAt).toLocaleTimeString('fa-IR'):'—')+
     ' · اسکن موفق '+Number(d.scannedWalletCount||0)+' · خطای RPC '+Number(d.failedWalletCount||0)+
@@ -4897,11 +4931,30 @@ function renderTopTraders(){
       :'<div class="note">فعلاً اجماع چندتریدر که همزمان فیلتر امنیتی HIGH/MAX را پاس کند پیدا نشده؛ موارد مشترک پایین به‌صورت Watch نمایش داده می‌شوند.</div>';
   }
 
+  var sb=document.getElementById('topTraderSharedBuys');
+  if(sb)sb.innerHTML=sharedBuys.slice(0,25).map(function(x,i){
+    var verified=Number(x.verifiedTraderCount||0)>=2;
+    var traders=(x.traders||[]).map(function(t){
+      return '<div class="cell"><small>'+(t.verifiedSwap?'✅ خرید تأییدشده':'👁 افزایش موجودی')+' · '+esc(t.name||short(t.address))+
+        '</small><b>'+money(t.usd)+'</b><small>'+new Date(t.lastBuyAt).toLocaleString('fa-IR')+'</small>'+
+        '<a class="action" target="_blank" rel="noopener" href="https://solscan.io/account/'+esc(t.address)+'">کیف‌پول</a></div>';
+    }).join('');
+    var txs=(x.events||[]).filter(function(e){return e.verifiedSwap&&e.signature}).slice(0,5).map(function(e){
+      return '<a class="action" target="_blank" rel="noopener" href="https://solscan.io/tx/'+esc(e.signature)+'">تراکنش '+esc(e.trader)+'</a>';
+    }).join('');
+    return '<div class="row"><div class="asset"><b>#'+(i+1)+' '+(verified?'✅ خرید مشترک تأییدشده':'👁 انباشت مشترک مشاهده‌شده')+
+      ' · '+esc(x.symbol||'?')+' · '+esc(x.name||'')+'</b><small>کانترکت: '+esc(short(x.mint))+
+      ' · '+Number(x.traderCount||0)+' تریدر · '+Number(x.verifiedTraderCount||0)+' خریدار تأییدشده</small></div>'+
+      '<div class="cell"><small>مجموع تغییر ارزش مشاهده‌شده</small><b>'+money(x.totalObservedUsd)+'</b></div>'+
+      traders+'<div class="actions"><a class="action" target="_blank" rel="noopener" href="'+esc(dexUrl(x.mint,x.dexUrl))+'">DEX</a>'+txs+'</div></div>';
+  }).join('')||'<div class="empty">در ۲۴ ساعت اخیر هنوز تغییر موجودی مرتبط با یک توکن برای حداقل دو تریدر ثبت نشده است؛ این به معنی نبودن خرید در بازار نیست.</div>';
+
   var se=document.getElementById('topTraderShared');
   if(se)se.innerHTML=shared.filter(x=>Number(x.holderCount||0)>=2).slice(0,20).map(function(x,i){
     return '<div class="row"><div class="asset"><b>#'+(i+1)+' 🤝 '+esc(x.symbol||'?')+' · '+esc(x.name||'')+'</b>'+
       '<span class="badge '+(x.safe?'good':x.holderCount>=3?'mid':'blue')+'">'+Number(x.holderCount||0)+' تریدر مشترک</span>'+
-      '<small>'+esc((x.holders||[]).slice(0,5).map(h=>h.name+' '+money(h.valueUsd)).join(' · '))+'</small></div>'+
+      '<small>'+esc((x.holders||[]).slice(0,10).map(h=>h.name+' ('+short(h.address)+') '+money(h.valueUsd)).join(' · '))+'</small>'+
+      '<small>این ردیف فقط نگهداری مشترک را نشان می‌دهد؛ زمان خرید تاریخی تأیید نشده است.</small></div>'+
       '<div class="cell"><small>سرمایه فعلی</small><b>'+money(x.totalValueUsd)+'</b></div>'+
       '<div class="cell"><small>خرید تازه 6h</small><b>'+Number(x.recentBuyers||0)+' · '+money(x.recentBuyUsd)+'</b></div>'+
       '<div class="cell"><small>امتیاز</small><b>'+Number(x.score||0)+'/100</b></div>'+
