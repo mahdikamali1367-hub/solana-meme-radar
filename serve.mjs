@@ -212,16 +212,50 @@ async function kolTrendDiscovery(){
   kolTrendCache={at:Date.now(),data};return data;
 }
 
+function prelaunchState(v){
+  var s=String(v||'unknown').toLowerCase();
+  if(['pass','verified','yes','true'].includes(s))return 'pass';
+  if(['fail','no','false','rejected'].includes(s))return 'fail';
+  if(['planned','promised','future','post-launch'].includes(s))return 'planned';
+  return 'unknown';
+}
 function prelaunchScore(x){
-  const social=Math.max(0,Math.min(30,Number(x.socialScore||0)));
-  const team=Math.max(0,Math.min(20,Number(x.teamScore||0)));
-  const security=Math.max(0,Math.min(25,Number(x.securityScore||0)));
-  const backing=Math.max(0,Math.min(15,Number(x.backingScore||0)));
-  const launch=Math.max(0,Math.min(10,Number(x.launchScore||0)));
-  const score=Math.round(social+team+security+backing+launch);
-  const evidenceCount=[social>0,team>0,security>0,backing>0,launch>0].filter(Boolean).length;
-  const grade=score>=80&&evidenceCount>=4?'A':score>=65&&evidenceCount>=3?'B':score>=50?'C':'WATCH';
-  return {...x,score,grade,evidenceCount};
+  var kyc=prelaunchState(x.kycState),audit=prelaunchState(x.auditState),lp=prelaunchState(x.lpLockState);
+  var tokenomics=prelaunchState(x.tokenomicsState),teamVerified=prelaunchState(x.teamVerifiedState);
+
+  // PDF-derived model: evidence beats claims. Total = 100.
+  var social=Math.max(0,Math.min(20,Number(x.socialScore||0)));
+  var team=Math.max(0,Math.min(15,Number(x.teamScore||0)));
+  var backing=Math.max(0,Math.min(10,Number(x.backingScore||0)));
+  var launch=Math.max(0,Math.min(5,Number(x.launchScore||0)));
+
+  var kycScore=kyc==='pass'?10:kyc==='planned'?2:0;
+  var auditScore=audit==='pass'?15:audit==='planned'?3:0;
+  var lpScore=lp==='pass'?15:lp==='planned'?2:0;
+  var tokenomicsScore=tokenomics==='pass'?10:tokenomics==='planned'?3:0;
+  var teamVerifyScore=teamVerified==='pass'?5:0;
+
+  var score=Math.round(social+team+backing+launch+kycScore+auditScore+lpScore+tokenomicsScore+teamVerifyScore);
+  var corePassed=[kyc,audit,lp].filter(function(s){return s==='pass'}).length;
+  var fullVerified=corePassed===3&&teamVerified==='pass'&&tokenomics!=='fail';
+  var evidenceCount=[
+    social>0,team>0,backing>0,launch>0,
+    kyc==='pass',audit==='pass',lp==='pass',tokenomics==='pass',teamVerified==='pass'
+  ].filter(Boolean).length;
+
+  var risk=
+    kyc==='fail'||audit==='fail'||lp==='fail'||tokenomics==='fail'?'HIGH':
+    fullVerified?'VERIFIED':
+    corePassed>=2?'REVIEW':
+    'INSUFFICIENT';
+
+  var grade=fullVerified&&score>=80?'A':score>=65&&corePassed>=2?'B':score>=50?'C':'WATCH';
+
+  return {
+    ...x,score,grade,risk,evidenceCount,corePassed,fullVerified,
+    kycState:kyc,auditState:audit,lpLockState:lp,tokenomicsState:tokenomics,teamVerifiedState:teamVerified,
+    scoreBreakdown:{social,team,backing,launch,kyc:kycScore,audit:auditScore,lpLock:lpScore,tokenomics:tokenomicsScore,teamVerified:teamVerifyScore}
+  };
 }
 
 function parsePrelaunchEnv(){
@@ -232,13 +266,15 @@ function parsePrelaunchEnv(){
     if(!Array.isArray(arr))return [];
     return arr.map(x=>prelaunchScore({
       name:String(x.name||'Unknown'),symbol:String(x.symbol||''),ecosystem:String(x.ecosystem||'Solana'),
-      source:'Manual/verified feed',sourceUrl:String(x.sourceUrl||x.website||''),website:String(x.website||''),
-      socials:Array.isArray(x.socials)?x.socials:[],tge:String(x.tge||x.launchDate||''),
-      socialScore:Number(x.socialScore||0),teamScore:Number(x.teamScore||0),securityScore:Number(x.securityScore||0),
-      backingScore:Number(x.backingScore||0),launchScore:Number(x.launchScore||0),
+      source:String(x.source||'Manual/verified feed'),sourceUrl:String(x.sourceUrl||x.website||''),website:String(x.website||''),
+      launchpad:String(x.launchpad||''),socials:Array.isArray(x.socials)?x.socials:[],tge:String(x.tge||x.launchDate||''),
+      socialScore:Number(x.socialScore||0),teamScore:Number(x.teamScore||0),backingScore:Number(x.backingScore||0),launchScore:Number(x.launchScore||0),
+      kycState:x.kycState||'unknown',auditState:x.auditState||'unknown',lpLockState:x.lpLockState||'unknown',
+      tokenomicsState:x.tokenomicsState||'unknown',teamVerifiedState:x.teamVerifiedState||'unknown',
+      auditProvider:String(x.auditProvider||''),kycProvider:String(x.kycProvider||''),lpLockProofUrl:String(x.lpLockProofUrl||''),
       socialEvidence:Array.isArray(x.socialEvidence)?x.socialEvidence:[],teamEvidence:Array.isArray(x.teamEvidence)?x.teamEvidence:[],
       securityEvidence:Array.isArray(x.securityEvidence)?x.securityEvidence:[],backingEvidence:Array.isArray(x.backingEvidence)?x.backingEvidence:[],
-      notes:String(x.notes||'')
+      launchEvidence:Array.isArray(x.launchEvidence)?x.launchEvidence:[],notes:String(x.notes||'')
     }));
   }catch{return []}
 }
@@ -263,16 +299,32 @@ function parseRootDataPublicProjects(html){
     const hasInvestor=/investor|funding|raised|seed round|series [abc]/i.test(around);
     const hasAudit=/audit|audited|security firm|multisig|multi-sig/i.test(around);
     const hasTokenomics=/tokenomics|vesting|cliff|allocation/i.test(around);
+    const hasKyc=/\bKYC\b|identity verified|team verified/i.test(around);
+    const auditVerified=/audit(?:ed)?\s+(?:by|report)|security audit|audit report/i.test(around);
+    const lpVerified=/liquidity\s+(?:locked|burned)|LP\s+(?:locked|burned)|lock transaction|locker contract/i.test(around);
+    const lpPlanned=/will\s+lock|planned\s+lock|lock\s+after\s+launch|post[- ]launch\s+lock/i.test(around);
+    const teamVerified=/doxxed|verified team|named founder|linkedin/i.test(around);
+
     const socialScore=Math.min(30,Math.round((heat?Math.min(18,Math.log10(1+heat)*7):0)+(growth?Math.min(12,Math.log10(1+growth)*4):0)));
     out.push(prelaunchScore({
       name,symbol:'',ecosystem:'Solana',source:'RootData public',
       sourceUrl:href.startsWith('http')?href:'https://www.rootdata.com'+href,website:'',socials:[],tge:'',
       socialScore,teamScore:hasTeam?12:0,
-      securityScore:(hasAudit?12:0)+(hasTokenomics?8:0)+(transparencyA?5:transparencyB?3:0),
-      backingScore:hasInvestor?10:0,launchScore:/(TGE|Token Issuance|upcoming|launch)/i.test(around)?7:3,
+      backingScore:hasInvestor?10:0,launchScore:/(TGE|Token Issuance|upcoming|launch)/i.test(around)?5:2,
+      kycState:hasKyc?'planned':'unknown',
+      auditState:auditVerified?'planned':hasAudit?'planned':'unknown',
+      lpLockState:lpVerified?'planned':lpPlanned?'planned':'unknown',
+      tokenomicsState:hasTokenomics?'planned':'unknown',
+      teamVerifiedState:teamVerified?'planned':hasTeam?'planned':'unknown',
       socialEvidence:[heat?'RD Heat/Popularity '+heat:null,growth?'RD Growth '+growth:null].filter(Boolean),
       teamEvidence:hasTeam?['اطلاعات تیم در پروفایل عمومی دیده شد']:[],
-      securityEvidence:[hasAudit?'شواهد Audit/Multisig':null,hasTokenomics?'Tokenomics/Vesting قابل مشاهده':null,transparencyA?'Transparency A':transparencyB?'Transparency B':null].filter(Boolean),
+      securityEvidence:[
+        auditVerified?'Audit claim/report mention موجود':hasAudit?'Audit ادعا شده':null,
+        hasKyc?'KYC claim موجود':null,
+        lpVerified?'LP lock/burn claim موجود':lpPlanned?'LP lock فقط برای آینده وعده شده':null,
+        hasTokenomics?'Tokenomics/Vesting قابل مشاهده':null,
+        transparencyA?'Transparency A':transparencyB?'Transparency B':null
+      ].filter(Boolean),
       backingEvidence:hasInvestor?['Funding/Investor evidence موجود']:[],
       notes:'امتیاز فقط از شواهد قابل استخراج عمومی ساخته شده؛ نبود داده امتیاز نمی‌گیرد.'
     }));
@@ -300,7 +352,7 @@ async function buildPrelaunchRadar(){
   const byName=new Map();
   for(const x of [...manual,...publicRows]){const k=String(x.name||'').toLowerCase().trim();if(!k)continue;const old=byName.get(k);if(!old||Number(x.score||0)>Number(old.score||0))byName.set(k,x)}
   const projects=[...byName.values()].filter(x=>/solana/i.test(String(x.ecosystem||''))).sort((a,b)=>(Number(b.score||0)-Number(a.score||0))||(Number(b.securityScore||0)-Number(a.securityScore||0))||(Number(b.socialScore||0)-Number(a.socialScore||0))).slice(0,30);
-  const data={ok:true,generatedAt:new Date().toISOString(),projects,sourceError,scoring:{social:30,team:20,security:25,backing:15,launchTransparency:10},policy:{prelaunchOnly:true,noOnchainSecurityClaim:true,evidenceRequired:true,note:'قبل از TGE امنیت آن‌چین هولدر/Mint/Freeze قابل سنجش کامل نیست؛ امتیاز فقط از شواهد پروژه ساخته می‌شود.'}};
+  const data={ok:true,generatedAt:new Date().toISOString(),projects,sourceError,scoring:{social:20,team:15,teamVerified:5,kyc:10,audit:15,lpLock:15,tokenomics:10,backing:10,launchTransparency:5},policy:{prelaunchOnly:true,noOnchainSecurityClaim:true,evidenceRequired:true,note:'قبل از TGE امنیت آن‌چین هولدر/Mint/Freeze قابل سنجش کامل نیست. KYC، Audit مستقل و LP Lock قابل‌اثبات سه شرط اصلی‌اند؛ وعده قفل LP یا نشان KYC به‌تنهایی تضمین امنیت نیست.'}};
   prelaunchCache={at:Date.now(),data};return data;
 }
 async function discovery(){
@@ -2114,11 +2166,24 @@ html,body,.shell,.panel,.list{overflow-anchor:none}
       </div>
       <div class="note">قبل از لانچ، هولدر/Mint/Freeze قابل تأیید کامل نیست. امتیاز از ترند اجتماعی، تیم، Audit/Multisig، Vesting/Tokenomics، پشتیبان‌ها و شفافیت TGE ساخته می‌شود.</div>
       <div class="list" id="prelaunchList"></div>
+      <details class="accordion" open>
+        <summary>🧭 منابع کشف و بررسی از راهنمای فایل</summary>
+        <div class="accordion-body">
+          <div class="list" id="prelaunchSources">
+            <div class="row"><div class="asset"><b>PinkSale</b><small>کشف Presale/Upcoming؛ KYC/Audit/LP Lock را با مدرک اصلی تطبیق بده.</small></div><div class="actions"><a class="action" target="_blank" rel="noopener" href="https://www.pinksale.finance">باز کردن</a></div></div>
+            <div class="row"><div class="asset"><b>Pump.fun</b><small>ورود بسیار زودهنگام سولانا؛ ریسک بالا و معمولاً بدون غربال امنیتی تیم.</small></div><div class="actions"><a class="action" target="_blank" rel="noopener" href="https://pump.fun">باز کردن</a></div></div>
+            <div class="row"><div class="asset"><b>Polkastarter</b><small>پروژه‌های گزینش‌شده و عرضه اولیه ساختاریافته.</small></div><div class="actions"><a class="action" target="_blank" rel="noopener" href="https://polkastarter.com">باز کردن</a></div></div>
+            <div class="row"><div class="asset"><b>Four.meme</b><small>میم‌کوین‌های BNB Chain؛ فقط برای مقایسه/کشف خارج از سولانا.</small></div><div class="actions"><a class="action" target="_blank" rel="noopener" href="https://four.meme">باز کردن</a></div></div>
+            <div class="row"><div class="asset"><b>SolidProof / CertiK / RugCheck / TokenSniffer / GoPlus</b><small>بررسی Audit، KYC/تیم، قرارداد، مجوزها، Rug/Honeypot و ریسک‌های امنیتی.</small></div><div class="actions"><a class="action" target="_blank" rel="noopener" href="https://app.solidproof.io">SolidProof</a><a class="action" target="_blank" rel="noopener" href="https://skynet.certik.com">CertiK</a><a class="action" target="_blank" rel="noopener" href="https://rugcheck.xyz">RugCheck</a><a class="action" target="_blank" rel="noopener" href="https://tokensniffer.com">TokenSniffer</a><a class="action" target="_blank" rel="noopener" href="https://gopluslabs.io">GoPlus</a></div></div>
+            <div class="row"><div class="asset"><b>Bubblemaps + DEXScreener</b><small>ارتباط کیف‌پول‌ها/تمرکز مالکیت و سپس نقدینگی، حجم و شروع بازار.</small></div><div class="actions"><a class="action" target="_blank" rel="noopener" href="https://bubblemaps.io">Bubblemaps</a><a class="action" target="_blank" rel="noopener" href="https://dexscreener.com">DEXScreener</a></div></div>
+          </div>
+        </div>
+      </details>
     </div>
   </details>
   <details class="accordion">
     <summary>🧪 مدل امتیاز پیش‌لانچ</summary>
-    <div class="accordion-body"><div class="note">Social 30 · Team 20 · Security Evidence 25 · Backing 15 · Launch Transparency 10. هر مورد بدون مدرک = صفر امتیاز.</div></div>
+    <div class="accordion-body"><div class="note">Social 20 · Team 15 · Team Verified 5 · KYC 10 · Audit 15 · LP Lock 15 · Tokenomics/Vesting 10 · Backing 10 · Launch 5. ادعا یا وعده = امتیاز کامل نمی‌گیرد؛ مدرک مستقل لازم است.</div></div>
   </details>
 </section>
 <section class="panel" id="socialPanel">
@@ -2961,21 +3026,47 @@ function renderWhales(){
     '<div class="actions"><a class="action" target="_blank" rel="noopener" href="'+esc(dexUrl(e.tokenAddress,t&&t.dexUrl))+'">📈 چارت</a><button class="detail-btn" data-mint="'+esc(e.tokenAddress)+'">جزئیات</button></div></div>';
   }).join(''):'<div class="empty">با فیلتر فعلی خرید نهنگ تازه‌ای نمایش داده نمی‌شود.</div>';
 }
+function prelaunchStateLabel(v){
+  return v==='pass'?'تأیید':v==='fail'?'رد':v==='planned'?'ادعا/آینده':'نامشخص';
+}
+function prelaunchStateClass(v){
+  return v==='pass'?'good':v==='fail'?'bad':v==='planned'?'mid':'blue';
+}
 function renderPrelaunch(){
   var rows=prelaunch&&Array.isArray(prelaunch.projects)?prelaunch.projects:[];
   var status=document.getElementById('prelaunchStatus');
   var k=document.getElementById('kPrelaunch'),ks=document.getElementById('kPrelaunchStrong'),ksec=document.getElementById('kPrelaunchSecurity');
   if(k)k.textContent=rows.length;
-  if(ks)ks.textContent=rows.filter(function(x){return Number(x.score||0)>=80}).length;
-  if(ksec)ksec.textContent=rows.filter(function(x){return Number(x.securityScore||0)>=18}).length;
-  if(status)status.textContent=rows.length?'پروژه‌های قبل از TGE فقط بر اساس شواهد قابل‌تأیید رتبه‌بندی شده‌اند.':(prelaunch&&prelaunch.sourceError?'منبع عمومی موقتاً در دسترس نیست؛ feed تأییدشده قابل استفاده است.':'فعلاً کاندید قابل‌تأیید پیدا نشده.');
+  if(ks)ks.textContent=rows.filter(function(x){return x.fullVerified===true}).length;
+  if(ksec)ksec.textContent=rows.filter(function(x){return Number(x.corePassed||0)>=2}).length;
+
+  if(status)status.textContent=rows.length
+    ?'پروژه‌ها با مدل فایل غربال می‌شوند: KYC معتبر + Audit مستقل + LP Lock قابل‌اثبات سه شرط اصلی‌اند.'
+    :(prelaunch&&prelaunch.sourceError?'منبع عمومی موقتاً در دسترس نیست؛ feed تأییدشده قابل استفاده است.':'فعلاً کاندید قابل‌تأیید پیدا نشده.');
+
   var el=document.getElementById('prelaunchList');if(!el)return;
   el.innerHTML=rows.length?rows.map(function(x,i){
-    var grade=String(x.grade||'WATCH'),cls=grade==='A'?'good':grade==='B'?'mid':'blue';
-    var evidence=[...(x.socialEvidence||[]),...(x.teamEvidence||[]),...(x.securityEvidence||[]),...(x.backingEvidence||[]),...(x.launchEvidence||[])].slice(0,5);
-    return '<div class="row"><div class="asset"><b>#'+(i+1)+' 🚀 '+esc(x.name||'?')+(x.symbol?' · '+esc(x.symbol):'')+'</b><span class="badge '+cls+'">Pre-Launch '+grade+' · '+Number(x.score||0)+'/100</span><small>'+esc(x.ecosystem||'Solana')+' · '+esc(x.source||'')+(x.tge?' · TGE '+esc(x.tge):'')+'</small>'+(evidence.length?'<small>'+esc(evidence.join(' • '))+'</small>':'<small>شواهد کافی هنوز جمع نشده.</small>')+'</div><div class="cell"><small>Social</small><b>'+Number(x.socialScore||0)+'/30</b></div><div class="cell"><small>Team</small><b>'+Number(x.teamScore||0)+'/20</b></div><div class="cell"><small>Security</small><b>'+Number(x.securityScore||0)+'/25</b></div><div class="cell hide-sm"><small>Backing</small><b>'+Number(x.backingScore||0)+'/15</b></div><div class="cell hide-md"><small>Launch</small><b>'+Number(x.launchScore||0)+'/10</b></div><div class="actions">'+(x.sourceUrl?'<a class="action" target="_blank" rel="noopener" href="'+esc(x.sourceUrl)+'">منبع ↗</a>':'')+'</div></div>';
-  }).join(''):'<div class="empty">فعلاً پروژه پیش‌لانچ سولانا با شواهد کافی پیدا نشده.</div>';
+    var grade=String(x.grade||'WATCH'),cls=x.fullVerified?'good':x.risk==='HIGH'?'bad':grade==='B'?'mid':'blue';
+    var evidence=[...(x.socialEvidence||[]),...(x.teamEvidence||[]),...(x.securityEvidence||[]),...(x.backingEvidence||[]),...(x.launchEvidence||[])].slice(0,6);
+    var core=x.fullVerified?'✅ سه شرط اصلی تأیید':'⚠ '+Number(x.corePassed||0)+'/3 شرط اصلی تأیید';
+    return '<div class="row"><div class="asset"><b>#'+(i+1)+' 🚀 '+esc(x.name||'?')+(x.symbol?' · '+esc(x.symbol):'')+'</b>'+
+      '<span class="badge '+cls+'">Pre-Launch '+grade+' · '+Number(x.score||0)+'/100</span>'+
+      '<span class="badge '+(x.fullVerified?'good':'mid')+'">'+core+'</span>'+
+      '<small>'+esc(x.ecosystem||'Solana')+' · '+esc(x.source||'')+(x.launchpad?' · '+esc(x.launchpad):'')+(x.tge?' · TGE '+esc(x.tge):'')+'</small>'+
+      (evidence.length?'<small>'+esc(evidence.join(' • '))+'</small>':'<small>شواهد کافی هنوز جمع نشده.</small>')+
+      '</div>'+
+      '<div class="cell"><small>KYC</small><b><span class="badge '+prelaunchStateClass(x.kycState)+'">'+prelaunchStateLabel(x.kycState)+'</span></b></div>'+
+      '<div class="cell"><small>Audit</small><b><span class="badge '+prelaunchStateClass(x.auditState)+'">'+prelaunchStateLabel(x.auditState)+'</span></b></div>'+
+      '<div class="cell"><small>LP Lock</small><b><span class="badge '+prelaunchStateClass(x.lpLockState)+'">'+prelaunchStateLabel(x.lpLockState)+'</span></b></div>'+
+      '<div class="cell hide-sm"><small>Tokenomics</small><b><span class="badge '+prelaunchStateClass(x.tokenomicsState)+'">'+prelaunchStateLabel(x.tokenomicsState)+'</span></b></div>'+
+      '<div class="cell hide-md"><small>Social / Team</small><b>'+Number(x.scoreBreakdown?.social||0)+' / '+Number(x.scoreBreakdown?.team||0)+'</b></div>'+
+      '<div class="actions">'+
+        (x.sourceUrl?'<a class="action" target="_blank" rel="noopener" href="'+esc(x.sourceUrl)+'">منبع ↗</a>':'')+
+        (x.lpLockProofUrl?'<a class="action" target="_blank" rel="noopener" href="'+esc(x.lpLockProofUrl)+'">اثبات LP</a>':'')+
+      '</div></div>';
+  }).join(''):'<div class="empty">فعلاً پروژه پیش‌لانچ با شواهد کافی پیدا نشده؛ وجود در فهرست Presale به‌تنهایی امنیت را ثابت نمی‌کند.</div>';
 }
+
 function renderSmart(){
   var r=smart&&smart.tokens?smart.tokens:[];
   r=r.filter(function(x){
@@ -3196,7 +3287,7 @@ function openDetail(m){
       '<div class="note">این چک‌لیست برای تأیید چندمنبعی است و به‌تنهایی تضمین سود نیست.</div></div></details>';
     h+=socialButtons(t);
   }
-  h+='<div class="links"><a target="_blank" rel="noopener" href="'+esc(dexUrl(m,t&&t.dexUrl))+'">📈 DexScreener</a><a target="_blank" rel="noopener" href="https://solscan.io/token/'+encodeURIComponent(m)+'">Solscan</a><a target="_blank" rel="noopener" href="https://gmgn.ai/sol/token/'+encodeURIComponent(m)+'">GMGN</a><a target="_blank" rel="noopener" href="https://v2.bubblemaps.io/map?address='+encodeURIComponent(m)+'&chain=solana&partnerId=regular">Bubblemaps</a><a target="_blank" rel="noopener" href="https://rugcheck.xyz/tokens/'+encodeURIComponent(m)+'">Rugcheck</a><a target="_blank" rel="noopener" href="https://www.solanatracker.io/tokens/'+encodeURIComponent(m)+'">Solana Tracker</a></div><div class="note">این رادار ابزار تحقیق است؛ هیچ امتیازی تضمین سود یا نبود کلاهبرداری نیست.</div>';
+  h+='<div class="links"><a target="_blank" rel="noopener" href="'+esc(dexUrl(m,t&&t.dexUrl))+'">📈 DexScreener</a><a target="_blank" rel="noopener" href="https://solscan.io/token/'+encodeURIComponent(m)+'">Solscan</a><a target="_blank" rel="noopener" href="https://gmgn.ai/sol/token/'+encodeURIComponent(m)+'">GMGN</a><a target="_blank" rel="noopener" href="https://v2.bubblemaps.io/map?address='+encodeURIComponent(m)+'&chain=solana&partnerId=regular">Bubblemaps</a><a target="_blank" rel="noopener" href="https://rugcheck.xyz/tokens/'+encodeURIComponent(m)+'">Rugcheck</a><a target="_blank" rel="noopener" href="https://skynet.certik.com">CertiK↗</a><a target="_blank" rel="noopener" href="https://tokensniffer.com">TokenSniffer↗</a><a target="_blank" rel="noopener" href="https://gopluslabs.io">GoPlus↗</a><a target="_blank" rel="noopener" href="https://www.solanatracker.io/tokens/'+encodeURIComponent(m)+'">Solana Tracker</a></div><div class="note">این رادار ابزار تحقیق است؛ هیچ امتیازی تضمین سود یا نبود کلاهبرداری نیست.</div>';
   document.getElementById('detailBody').innerHTML=h;document.getElementById('detailDialog').showModal();
 }
 var loadAllBusy=false,marketLiveBusy=false,marketLiveTimer=null;
