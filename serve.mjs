@@ -12,6 +12,9 @@ let buildInFlight=null;
 let marketLiveCache={at:0,data:null};
 const exactDexPriceCache=new Map();
 const EXACT_DEX_PRICE_CACHE_MS=650;
+const contractPriceCache=new Map();
+const CONTRACT_PRICE_CACHE_MS=700;
+
 
 let prelaunchCache={at:0,data:null};
 const prelaunchWatchState=new Map();
@@ -765,8 +768,40 @@ async function pairFor(mint){
 async function exactDexPrice(mint){
   const hit=exactDexPriceCache.get(mint);
   if(hit&&Date.now()-hit.at<EXACT_DEX_PRICE_CACHE_MS)return hit.data;
-  const p=await pairFor(mint);
-  if(!p||!(num(p.priceUsd)>0))return null;
+
+  let rows=[];
+  // Use DEXScreener's token-by-contract endpoint first. This is the closest
+  // server-side equivalent to the pairs shown for that exact contract on DEXScreener.
+  try{
+    const d=await jfetch('https://api.dexscreener.com/latest/dex/tokens/'+encodeURIComponent(mint),{},10000);
+    rows=Array.isArray(d?.pairs)?d.pairs:[];
+  }catch{}
+
+  // Fallback to Solana token-pairs if the first endpoint is temporarily unavailable.
+  if(!rows.length){
+    try{
+      const d=await jfetch('https://api.dexscreener.com/token-pairs/v1/solana/'+encodeURIComponent(mint),{},10000);
+      rows=Array.isArray(d)?d:[];
+    }catch{}
+  }
+
+  rows=rows.filter(function(p){
+    return String(p?.chainId||'').toLowerCase()==='solana' &&
+      String(p?.baseToken?.address||'')===String(mint) &&
+      num(p?.priceUsd)>0;
+  });
+  if(!rows.length)return null;
+
+  // DEXScreener can expose several pools for one mint. Prefer the most liquid
+  // real market, then 24h volume, so thin/manipulated pools cannot produce absurd prices.
+  rows.sort(function(a,b){
+    const al=num(a?.liquidity?.usd),bl=num(b?.liquidity?.usd);
+    if(bl!==al)return bl-al;
+    const av=num(a?.volume?.h24),bv=num(b?.volume?.h24);
+    if(bv!==av)return bv-av;
+    return num(b?.volume?.h1)-num(a?.volume?.h1);
+  });
+  const p=rows[0];
   const data={
     mint,
     priceUsd:num(p.priceUsd),
@@ -776,10 +811,161 @@ async function exactDexPrice(mint){
     quoteTokenAddress:String(p?.quoteToken?.address||''),
     quoteTokenSymbol:String(p?.quoteToken?.symbol||''),
     liquidity:num(p?.liquidity?.usd),
+    volume24h:num(p?.volume?.h24),
     observedAt:Date.now(),
-    source:'DEXScreener token-pairs exact mint'
+    source:'DEXScreener exact contract'
   };
   exactDexPriceCache.set(mint,{at:Date.now(),data});
+  return data;
+}
+
+async function pumpFunCoin(mint){
+  // Official keyed API, when configured.
+  const key=process.env.PUMP_FUN_API_KEY;
+  if(key){
+    try{
+      const d=await jfetch(
+        'https://api.pump.fun/v1/search/resolve?identifiers='+encodeURIComponent(mint),
+        {headers:{authorization:'Bearer '+key}},
+        8000
+      );
+      const row=(d?.results||[]).find(function(x){
+        return x?.kind==='coin'&&String(x?.coin?.mint||'')===String(mint);
+      });
+      if(row?.coin)return {...row.coin,_pumpSource:'pump.fun official'};
+    }catch{}
+  }
+
+  // Server-side coin endpoint used by pump.fun itself. Never call this from browser.
+  for(const path of [
+    'https://frontend-api-v3.pump.fun/coins-v2/',
+    'https://frontend-api-v3.pump.fun/coins/'
+  ]){
+    try{
+      const d=await jfetch(path+encodeURIComponent(mint),{},8000);
+      const coin=d?.coin||d?.data||d;
+      if(coin&&String(coin.mint||'')===String(mint)){
+        return {...coin,_pumpSource:'pump.fun coin endpoint'};
+      }
+    }catch{}
+  }
+  return null;
+}
+
+async function pumpFunPrice(mint){
+  const coin=await pumpFunCoin(mint);
+  if(!coin)return null;
+
+  const complete=coin.complete===true || !!coin.pump_swap_pool || !!coin.raydium_pool;
+  let price=num(coin.price_usd);
+  let method='price_usd';
+
+  // Some Pump responses expose USD market cap rather than an explicit token price.
+  // Derive price using on-chain UI supply, not an assumed 1B supply.
+  if(!(price>0)&&num(coin.usd_market_cap)>0){
+    try{
+      const sp=await rpc('getTokenSupply',[mint,{commitment:'confirmed'}]);
+      const supply=num(sp?.result?.value?.uiAmount);
+      if(supply>0){
+        price=num(coin.usd_market_cap)/supply;
+        method='usd_market_cap / on-chain supply';
+      }
+    }catch{}
+  }
+
+  // For a live Pump bonding curve, reserve ratio is the most direct Pump-native price.
+  if(!complete&&num(coin.virtual_sol_reserves)>0&&num(coin.virtual_token_reserves)>0){
+    try{
+      const sp=await rpc('getTokenSupply',[mint,{commitment:'confirmed'}]);
+      const decimals=Number(sp?.result?.value?.decimals);
+      const solUsd=await (async()=>{
+        try{
+          const d=await jfetch('https://api.dexscreener.com/latest/dex/tokens/'+WSOL_MINT,{},8000);
+          const rows=(d?.pairs||[]).filter(p=>String(p?.chainId||'').toLowerCase()==='solana'&&num(p?.priceUsd)>0);
+          rows.sort((a,b)=>num(b?.liquidity?.usd)-num(a?.liquidity?.usd));
+          return num(rows[0]?.priceUsd);
+        }catch{return 0}
+      })();
+      if(Number.isFinite(decimals)&&solUsd>0){
+        const solUnits=num(coin.virtual_sol_reserves)/1e9;
+        const tokenUnits=num(coin.virtual_token_reserves)/(10**decimals);
+        const curveUsd=tokenUnits>0?(solUnits/tokenUnits)*solUsd:0;
+        if(curveUsd>0){
+          price=curveUsd;
+          method='pump.fun bonding curve reserves';
+        }
+      }
+    }catch{}
+  }
+
+  if(!(price>0))return {
+    mint,isPump:true,complete,priceUsd:null,
+    source:coin._pumpSource||'pump.fun',
+    method:'metadata only',
+    pumpUrl:'https://pump.fun/coin/'+mint
+  };
+
+  return {
+    mint,isPump:true,complete,priceUsd:price,
+    source:coin._pumpSource||'pump.fun',
+    method,
+    pumpUrl:'https://pump.fun/coin/'+mint,
+    marketCapUsd:num(coin.usd_market_cap||coin.market_cap),
+    observedAt:Date.now()
+  };
+}
+
+async function contractPrice(mint){
+  const hit=contractPriceCache.get(mint);
+  if(hit&&Date.now()-hit.at<CONTRACT_PRICE_CACHE_MS)return hit.data;
+
+  const [dex,pump]=await Promise.all([
+    exactDexPrice(mint).catch(()=>null),
+    pumpFunPrice(mint).catch(()=>null)
+  ]);
+
+  const dp=num(dex?.priceUsd),pp=num(pump?.priceUsd);
+  let priceUsd=0,source='',status='single-source',deviationPct=null;
+
+  if(dp>0&&pp>0){
+    deviationPct=Math.abs(dp-pp)/Math.min(dp,pp)*100;
+
+    // Before graduation the Pump bonding curve is authoritative.
+    // After graduation DEXScreener is authoritative.
+    if(pump?.complete===false){
+      priceUsd=pp;
+      source='Pump.fun bonding curve';
+    }else{
+      priceUsd=dp;
+      source='DEXScreener exact contract';
+    }
+
+    status=deviationPct<=20?'confirmed':'source-disagreement';
+  }else if(pp>0&&pump?.complete===false){
+    priceUsd=pp;source='Pump.fun bonding curve';status='pump-only';
+  }else if(dp>0){
+    priceUsd=dp;source='DEXScreener exact contract';status=pump?'dex-after-pump':'dex-only';
+  }else if(pp>0){
+    priceUsd=pp;source='Pump.fun';status='pump-only';
+  }
+
+  if(!(priceUsd>0))return null;
+
+  const data={
+    ok:true,mint,priceUsd,
+    source,status,deviationPct,
+    observedAt:Date.now(),
+    pairAddress:String(dex?.pairAddress||''),
+    dexUrl:String(dex?.dexUrl||''),
+    pumpUrl:String(pump?.pumpUrl||''),
+    dexPriceUsd:dp||null,
+    pumpPriceUsd:pp||null,
+    pumpComplete:pump?.complete??null,
+    pumpMethod:pump?.method||null,
+    liquidity:num(dex?.liquidity),
+    quoteTokenSymbol:dex?.quoteTokenSymbol||''
+  };
+  contractPriceCache.set(mint,{at:Date.now(),data});
   return data;
 }
 
@@ -1647,7 +1833,7 @@ async function buildFresh(){
   const strong=out.filter(x=>x.verdict==='STRONG WATCH').length;
   const trending=out.filter(x=>x.trend.score>=50).length;
   const data={ok:true,generatedAt:new Date().toISOString(),refreshSeconds:20,marketLiveRefreshSeconds:1,count:out.length,strong,trending,discovered:seeds.length,resolvedPairs:exactPairs.size,tokens:out,
-    sourceStatus:{dexscreener:'live',solanaRpc:'live',kolExplorer:'live-public profiles + on-chain holdings/trades',kolX:process.env.X_BEARER_TOKEN?'live-api':'on-chain fallback; X API key not configured',bluesky:'live-public',x:process.env.X_BEARER_TOKEN?'live-api':'needs API key',youtube:process.env.YOUTUBE_API_KEY?'live-api':'needs API key',reddit:process.env.REDDIT_CLIENT_ID?'configured':'presence-only',instagram:'presence-only',facebook:'presence-only',tiktok:'presence-only',telegram:'presence-only'},
+    sourceStatus:{dexscreener:'live',solanaRpc:'live',kolExplorer:'live-public profiles + on-chain holdings/trades',kolX:process.env.X_BEARER_TOKEN?'live-api':'on-chain fallback; X API key not configured',bluesky:'live-public',x:process.env.X_BEARER_TOKEN?'live-api':'needs API key',youtube:process.env.YOUTUBE_API_KEY?'live-api':'needs API key',pumpFun:process.env.PUMP_FUN_API_KEY?'official-api + frontend fallback':'frontend/server-side + on-chain curve fallback',reddit:process.env.REDDIT_CLIENT_ID?'configured':'presence-only',instagram:'presence-only',facebook:'presence-only',tiktok:'presence-only',telegram:'presence-only'},
     holderPolicy:{hardRules:{holder1MustBeBelowPct:10,holders2to10EachMustBeBelowPct:5,exclusive:true},gradeA:{holder1MaxPct:5,holders2to10EachMaxPct:2.5},gradeB:{holder1MaxPct:7.5,holders2to10EachMaxPct:4},gradeC:{holder1MaxPct:10,holders2to10EachMaxPct:5},unknownFailsStrong:true},
     activityPolicy:{probableOrganicMin:72,highSecurityMin:58,method:'aggregate heuristics; not proof of human identity'},
     orderFlowPolicy:{buyerPower:'buy transaction count / total buy+sell transactions; not dollar buy volume',strongBuyer:'5m >=55% and 1h >=51% when available',volumeQuality:'absolute volume + tx count + volume/liquidity sanity check'},
@@ -2665,9 +2851,9 @@ html,body,.shell,.panel,.list{overflow-anchor:none}
 <script>
 var tokens=[],smart=null,live=null,tracked=null,conviction=null,prelaunch=null,prelaunchLive=null,activeTab='featured',signalFilters={short:'',medium:'',long:'',security:'',holders:'',bigbuyers:''};
 try{
-  if(localStorage.getItem('priceCacheSchemaV5')!=='dexscreener-visible-exact-v5'){
+  if(localStorage.getItem('priceCacheSchemaV6')!=='contract-consensus-v6'){
     localStorage.removeItem('livePriceCache');
-    localStorage.setItem('priceCacheSchemaV5','dexscreener-visible-exact-v5');
+    localStorage.setItem('priceCacheSchemaV6','contract-consensus-v6');
   }
 }catch(e){}
 var livePriceCache=new Map();
@@ -2717,7 +2903,7 @@ function currentPriceForMint(mint){
   var tokenPair=String(t&&t.pairAddress||'');
 
   // Exact DEXScreener lookup is authoritative even for historical rows that are no longer in the current token scan.
-  if(cached&&hit&&hit.source==='dexscreener-exact'&&Date.now()-cachedAt<=15000)return cached;
+  if(cached&&hit&&['dexscreener-exact','pumpfun-exact'].includes(hit.source)&&Date.now()-cachedAt<=15000)return cached;
   // Market-live cache is authoritative only for the same pinned pair.
   if(cached&&Date.now()-cachedAt<=15000&&(!tokenPair||!cachedPair||tokenPair===cachedPair))return cached;
 
@@ -3507,7 +3693,7 @@ function tokenRow(t,bucket){
   '<div class="cell hide-sm"><small>امنیت</small><b><span class="badge '+secClass(s.tier)+'">'+esc(faSec(s.tier))+'</span></b></div>'+
   '<div class="cell hide-md"><small>خریدار $500+ / فروشنده</small><b><span class="badge '+(largeBuyerFlow(t).dominant?'good':'mid')+'">'+largeBuyerFlow(t).buyers+' / '+largeBuyerFlow(t).sellers+'</span></b></div>'+
   '<div class="cell"><small>Trust Guard</small><b><span class="badge '+trustClass(t)+'">'+esc(trustLabel(t))+'</span></b></div><div class="cell"><small>'+esc(return24Period(t))+'</small><b class="'+return24Class(t)+'">'+esc(return24Text(t))+'</b></div>'+
-  '<div class="actions"><a class="action" target="_blank" rel="noopener" href="'+esc(dexUrl(t.mint,t.dexUrl))+'">📈 چارت</a><button class="detail-btn" data-mint="'+esc(t.mint)+'">جزئیات</button></div></div>';
+  '<div class="actions"><a class="action" target="_blank" rel="noopener" href="'+esc(dexUrl(t.mint,t.dexUrl))+'">📈 DEX</a><a class="action" target="_blank" rel="noopener" href="https://pump.fun/coin/'+esc(t.mint)+'">🟢 Pump</a><button class="detail-btn" data-mint="'+esc(t.mint)+'">جزئیات</button></div></div>';
 }
 
 function beginnerDecision(t,overallScore){
@@ -3580,7 +3766,7 @@ function renderChampion(){
     '<div class="cell"><small>کوتاه</small><b>'+Number(sg.short?.score||0)+'</b></div>'+
     '<div class="cell"><small>میان</small><b>'+Number(sg.medium?.score||0)+'</b></div>'+
     '<div class="cell"><small>بلند</small><b>'+Number(sg.long?.score||0)+'</b></div><div class="cell"><small>قدرت خریدار</small><b><span class="badge '+pressureClass(t)+'">'+Number(t.flow?.buyerPower||0)+'%</span></b></div><div class="cell"><small>حجم</small><b><span class="badge '+volumeClass(t.flow?.volumeLabel)+'">'+esc(faVolume(t.flow?.volumeLabel))+'</span></b></div><div class="cell"><small>Social Heat</small><b><span class="badge '+socialHeatClass(t.socialHeat?.label)+'">'+esc(faSocialHeat(t.socialHeat?.label))+' '+Number(t.socialHeat?.score||0)+'</span></b></div>'+
-    '<div class="actions"><a class="action" target="_blank" rel="noopener" href="'+esc(dexUrl(t.mint,t.dexUrl))+'">📈 چارت</a><button class="detail-btn" data-mint="'+esc(t.mint)+'">جزئیات</button></div>'+
+    '<div class="actions"><a class="action" target="_blank" rel="noopener" href="'+esc(dexUrl(t.mint,t.dexUrl))+'">📈 DEX</a><a class="action" target="_blank" rel="noopener" href="https://pump.fun/coin/'+esc(t.mint)+'">🟢 Pump</a><button class="detail-btn" data-mint="'+esc(t.mint)+'">جزئیات</button></div>'+
   '</div></div>';
 }
 
@@ -3596,7 +3782,7 @@ function renderTopQuick(){
       '<div class="cell"><small>خریدار</small><b>'+Number(t.flow?.buyerPower||0)+'%</b></div>'+
       '<div class="cell hide-sm"><small>حجم</small><b>'+esc(faVolume(t.flow?.volumeLabel))+'</b></div>'+
       '<div class="cell hide-md"><small>ورود</small><b>'+(tp.status==='ENTRY'?(tp.confidence==='HIGH'?'قوی':'قابل‌بررسی'):'صبر')+'</b></div>'+
-      '<div class="actions"><a class="action" target="_blank" rel="noopener" href="'+esc(dexUrl(t.mint,t.dexUrl))+'">📈 چارت</a><button class="detail-btn" data-mint="'+esc(t.mint)+'">جزئیات</button></div></div>';
+      '<div class="actions"><a class="action" target="_blank" rel="noopener" href="'+esc(dexUrl(t.mint,t.dexUrl))+'">📈 DEX</a><a class="action" target="_blank" rel="noopener" href="https://pump.fun/coin/'+esc(t.mint)+'">🟢 Pump</a><button class="detail-btn" data-mint="'+esc(t.mint)+'">جزئیات</button></div></div>';
     }).join(''):'<div class="empty">فعلاً نقطه ورود تأییدشده‌ای پیدا نشده؛ توکن‌های پرریسک عمداً بالا نمی‌آیند.</div>';
   }
 
@@ -3615,7 +3801,7 @@ function renderTopQuick(){
       '<div class="cell"><small>خریدار</small><b>'+Number(t.flow?.buyerPower||0)+'%</b></div>'+
       '<div class="cell hide-sm"><small>حجم</small><b>'+esc(faVolume(t.flow?.volumeLabel))+'</b></div>'+
       '<div class="cell hide-md"><small>نهنگ</small><b>'+whaleFor(t.mint).count+'</b></div>'+
-      '<div class="actions"><a class="action" target="_blank" rel="noopener" href="'+esc(dexUrl(t.mint,t.dexUrl))+'">📈 چارت</a><button class="detail-btn" data-mint="'+esc(t.mint)+'">جزئیات</button></div></div>';
+      '<div class="actions"><a class="action" target="_blank" rel="noopener" href="'+esc(dexUrl(t.mint,t.dexUrl))+'">📈 DEX</a><a class="action" target="_blank" rel="noopener" href="https://pump.fun/coin/'+esc(t.mint)+'">🟢 Pump</a><button class="detail-btn" data-mint="'+esc(t.mint)+'">جزئیات</button></div></div>';
     }).join(''):'<div class="empty">هنوز توکنی دریافت نشده.</div>';
   }
 }
@@ -3633,7 +3819,7 @@ function renderFeatured(){
     '<div class="cell"><small>اسمارت</small><b>'+(x.smart?Number(x.smart.smartMoneyCount||0):0)+'</b></div>'+
     '<div class="cell hide-sm"><small>کیف‌پول برتر</small><b>'+(x.tracked?Number(x.tracked.uniqueBuyers||0):0)+'</b></div>'+
     '<div class="cell hide-md"><small>خریدار / حجم</small><b>'+Number(t.flow?.buyerPower||0)+'% · '+esc(faVolume(t.flow?.volumeLabel))+'</b></div>'+
-    '<div class="actions"><a class="action" target="_blank" rel="noopener" href="'+esc(dexUrl(t.mint,t.dexUrl))+'">📈 چارت</a><button class="detail-btn" data-mint="'+esc(t.mint)+'">جزئیات</button></div></div>';
+    '<div class="actions"><a class="action" target="_blank" rel="noopener" href="'+esc(dexUrl(t.mint,t.dexUrl))+'">📈 DEX</a><a class="action" target="_blank" rel="noopener" href="https://pump.fun/coin/'+esc(t.mint)+'">🟢 Pump</a><button class="detail-btn" data-mint="'+esc(t.mint)+'">جزئیات</button></div></div>';
   }).join(''):'<div class="empty">فعلاً پیشنهاد فعالی ثبت نشده؛ پیشنهادهای ثبت‌شده در بروزرسانی‌های بعدی حفظ می‌شوند تا زمانی که خروج/ریسک جدی تأیید شود.</div>';
 }
 function whaleVerification(t){
@@ -3879,7 +4065,7 @@ function renderSocialTrends(){
         '<div class="cell"><small>X / 2h</small><b>'+Number(h.xPosts2h||0)+'</b></div>'+
         '<div class="cell hide-sm"><small>YouTube / 24h</small><b>'+Number(h.youtubeVideos24h||0)+'</b></div>'+
         '<div class="cell hide-md"><small>امنیت</small><b><span class="badge '+secClass(s.tier)+'">'+esc(faSec(s.tier))+'</span></b></div>'+
-        '<div class="actions"><a class="action" target="_blank" rel="noopener" href="'+esc(dexUrl(t.mint,t.dexUrl))+'">📈 چارت</a><button class="detail-btn" data-mint="'+esc(t.mint)+'">جزئیات</button></div></div>';
+        '<div class="actions"><a class="action" target="_blank" rel="noopener" href="'+esc(dexUrl(t.mint,t.dexUrl))+'">📈 DEX</a><a class="action" target="_blank" rel="noopener" href="https://pump.fun/coin/'+esc(t.mint)+'">🟢 Pump</a><button class="detail-btn" data-mint="'+esc(t.mint)+'">جزئیات</button></div></div>';
     }).join(''):'<div class="empty">فعلاً داده Social Heat برای توکن‌های رادار کافی نیست.</div>';
   }
 
@@ -3968,7 +4154,7 @@ function renderBucketBest(id,rows,bucket,title){
     '<div class="cell"><small>قدرت خریدار</small><b>'+Number(fl.buyerPower||0)+'%</b></div>'+
     '<div class="cell"><small>حجم</small><b>'+esc(faVolume(fl.volumeLabel))+'</b></div>'+
     '<div class="cell"><small>امنیت</small><b>'+esc(faSec(t.security?.tier))+'</b></div><div class="cell"><small>Trust Guard</small><b><span class="badge '+trustClass(t)+'">'+esc(trustLabel(t))+'</span></b></div><div class="cell"><small>هولدر $1k+</small><b>'+qualifyingTrackedHolders(t).length+'</b></div>'+
-    '<div class="actions"><a class="action" target="_blank" rel="noopener" href="'+esc(dexUrl(t.mint,t.dexUrl))+'">📈 چارت</a><button class="detail-btn" data-mint="'+esc(t.mint)+'">جزئیات</button></div>'+
+    '<div class="actions"><a class="action" target="_blank" rel="noopener" href="'+esc(dexUrl(t.mint,t.dexUrl))+'">📈 DEX</a><a class="action" target="_blank" rel="noopener" href="https://pump.fun/coin/'+esc(t.mint)+'">🟢 Pump</a><button class="detail-btn" data-mint="'+esc(t.mint)+'">جزئیات</button></div>'+
   '</div></div>';
 }
 function renderRecommendationPerformance(){
@@ -4029,7 +4215,7 @@ function renderPerformance24(){
       '<div class="cell"><small>کوتاه / میان / بلند</small><b>'+Number(sg.short?.score||0)+' / '+Number(sg.medium?.score||0)+' / '+Number(sg.long?.score||0)+'</b></div>'+
       '<div class="cell hide-sm"><small>امنیت</small><b><span class="badge '+secClass(sec.tier)+'">'+esc(faSec(sec.tier))+'</span></b></div>'+
       '<div class="cell hide-md"><small>خریدار</small><b>'+Number(t.flow?.buyerPower||0)+'%</b></div>'+
-      '<div class="actions"><a class="action" target="_blank" rel="noopener" href="'+esc(dexUrl(t.mint,t.dexUrl))+'">📈 چارت</a><button class="detail-btn" data-mint="'+esc(t.mint)+'">جزئیات</button></div></div>';
+      '<div class="actions"><a class="action" target="_blank" rel="noopener" href="'+esc(dexUrl(t.mint,t.dexUrl))+'">📈 DEX</a><a class="action" target="_blank" rel="noopener" href="https://pump.fun/coin/'+esc(t.mint)+'">🟢 Pump</a><button class="detail-btn" data-mint="'+esc(t.mint)+'">جزئیات</button></div></div>';
   }).join(''):'<div class="empty">هنوز داده توکنی دریافت نشده.</div>';
 }
 function renderKolTrends(){
@@ -4049,7 +4235,7 @@ function renderKolTrends(){
       '<div class="cell hide-sm"><small>قدرت خریدار</small><b>'+Number(t.flow?.buyerPower||0)+'%</b></div>'+
       '<div class="cell hide-md"><small>حجم</small><b>'+esc(faVolume(t.flow?.volumeLabel))+'</b></div>'+
       '<div class="cell"><small>'+esc(return24Period(t))+'</small><b class="'+return24Class(t)+'">'+esc(return24Text(t))+'</b></div>'+
-      '<div class="actions"><a class="action" target="_blank" rel="noopener" href="'+esc(dexUrl(t.mint,t.dexUrl))+'">📈 چارت</a><button class="detail-btn" data-mint="'+esc(t.mint)+'">جزئیات</button></div></div>';
+      '<div class="actions"><a class="action" target="_blank" rel="noopener" href="'+esc(dexUrl(t.mint,t.dexUrl))+'">📈 DEX</a><a class="action" target="_blank" rel="noopener" href="https://pump.fun/coin/'+esc(t.mint)+'">🟢 Pump</a><button class="detail-btn" data-mint="'+esc(t.mint)+'">جزئیات</button></div></div>';
   }).join(''):'<div class="empty">فعلاً توکن KOL که همزمان امنیت HIGH/MAX را پاس کند پیدا نشده.</div>';
 }
 
@@ -4090,7 +4276,7 @@ function renderTokens(){
         return '<div class="row"><div class="asset">'+badge+'<b>'+esc(t.symbol||'?')+' · '+esc(t.name||'')+'</b><small>'+esc(short(t.mint||''))+'</small></div>'+
           '<div class="cell"><small>قیمت</small><b data-live-price-mint="'+esc(t.mint||'')+'">'+fmtPrice(currentPriceForMint(t.mint)||t.priceUsd)+'</b></div>'+
           '<div class="cell"><small>امنیت</small><b>'+esc(faSec(t.security?.tier))+'</b></div>'+
-          '<div class="actions"><a class="action" target="_blank" rel="noopener" href="'+esc(dexUrl(t.mint,t.dexUrl))+'">📈 چارت</a></div></div>';
+          '<div class="actions"><a class="action" target="_blank" rel="noopener" href="'+esc(dexUrl(t.mint,t.dexUrl))+'">📈 DEX</a><a class="action" target="_blank" rel="noopener" href="https://pump.fun/coin/'+esc(t.mint)+'">🟢 Pump</a></div></div>';
       }
     }).join(''):'<div class="empty">موردی در این سطح امنیت پیدا نشده.</div>';
   }
@@ -4355,18 +4541,28 @@ async function pollVisibleDexPrices(){
     rows.forEach(function(p){
       if(!p||!p.ok||!(Number(p.priceUsd)>0))return;
       exactUpdated++;
-      // Exact DEXScreener token-pairs lookup overrides any stale historical/local price.
-      rememberLivePrice(p.mint,p.priceUsd,'dexscreener-exact',Number(p.observedAt||Date.now()),p.pairAddress||'');
+      rememberLivePrice(
+        p.mint,
+        p.priceUsd,
+        p.source==='Pump.fun bonding curve'?'pumpfun-exact':'dexscreener-exact',
+        Number(p.observedAt||Date.now()),
+        p.pairAddress||''
+      );
 
       var t=findToken(p.mint);
       if(t){
         t.priceUsd=Number(p.priceUsd);
+        t.livePriceSource=p.source||'';
+        t.livePriceStatus=p.status||'';
+        t.dexPriceUsd=p.dexPriceUsd;
+        t.pumpPriceUsd=p.pumpPriceUsd;
         t.pairAddress=p.pairAddress||t.pairAddress||'';
         t.dexUrl=p.dexUrl||t.dexUrl||'';
+        t.pumpUrl=p.pumpUrl||'';
       }
     });
     updateLiveProfitDom();
-    if(exactUpdated>0){var u=document.getElementById('updated');if(u)u.textContent='قیمت مستقیم DEXScreener: '+new Date().toLocaleTimeString('fa-IR')}
+    if(exactUpdated>0){var u=document.getElementById('updated');if(u)u.textContent='قیمت زنده بر اساس Contract · DEXScreener/Pump.fun: '+new Date().toLocaleTimeString('fa-IR')}
   }finally{
     visibleDexPriceBusy=false;
   }
@@ -4497,7 +4693,7 @@ createServer(async(req,res)=>{
   try{
     if(url.pathname==='/api/health'){res.writeHead(200,{'content-type':'application/json',...headers});return res.end(JSON.stringify({ok:true,time:new Date().toISOString()}))}
     if(url.pathname==='/api/v1/force-refresh'){
-      cache={at:0,data:null};marketLiveCache={at:0,data:null};exactDexPriceCache.clear();prelaunchCache={at:0,data:null};trackedWalletCache={at:0,data:null};smartMoneyCache={at:0,data:null};convictionCache={at:0,data:null};
+      cache={at:0,data:null};marketLiveCache={at:0,data:null};exactDexPriceCache.clear();contractPriceCache.clear();prelaunchCache={at:0,data:null};trackedWalletCache={at:0,data:null};smartMoneyCache={at:0,data:null};convictionCache={at:0,data:null};
       res.writeHead(200,{'content-type':'application/json; charset=utf-8','cache-control':'no-store',...headers});
       return res.end(JSON.stringify({ok:true,clearedAt:new Date().toISOString()}));
     }
@@ -4527,13 +4723,13 @@ createServer(async(req,res)=>{
         res.writeHead(400,{'content-type':'application/json; charset=utf-8','cache-control':'no-store',...headers});
         return res.end(JSON.stringify({ok:false,error:'invalid mint'}));
       }
-      const px=await exactDexPrice(mint);
+      const px=await contractPrice(mint);
       if(!px){
         res.writeHead(404,{'content-type':'application/json; charset=utf-8','cache-control':'no-store',...headers});
         return res.end(JSON.stringify({ok:false,error:'price not found'}));
       }
       res.writeHead(200,{'content-type':'application/json; charset=utf-8','cache-control':'no-store',...headers});
-      return res.end(JSON.stringify({ok:true,...px}));
+      return res.end(JSON.stringify(px));
     }
     if(url.pathname==='/api/v1/market-live'){const ml=await buildMarketLive();res.writeHead(200,{'content-type':'application/json; charset=utf-8','cache-control':'no-store',...headers});return res.end(JSON.stringify(ml))}
     if(url.pathname==='/api/v1/token-lookup'){
