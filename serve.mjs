@@ -2314,6 +2314,14 @@ html,body,.shell,.panel,.list{overflow-anchor:none}
   </details>
 </section>
 <section class="panel" id="socialPanel">
+  <details class="accordion highlight" open>
+    <summary>💰 عملکرد سیگنال‌های ترند اجتماعی از زمان معرفی</summary>
+    <div class="accordion-body">
+      <p class="muted" style="font-size:11px">مبنای هر توکن، اولین لحظه‌ای است که وارد Social Trend رادار شده؛ قیمت همان لحظه ثابت می‌ماند و سود/ضرر تا قیمت فعلی محاسبه می‌شود.</p>
+      <div id="socialPerformanceSummary"></div>
+      <div class="list" id="socialPerformanceList"></div>
+    </div>
+  </details>
   <details class="accordion" open>
     <summary>📣 داغ‌ترین توکن‌ها در شبکه‌های اجتماعی</summary>
     <div class="accordion-body"><p class="muted" style="font-size:11px">Social Heat از mentionهای قابل‌شمارش + حضور رسمی چندشبکه‌ای ساخته می‌شود. امنیت همچنان شرط مستقل است.</p><div class="list" id="socialList"></div></div>
@@ -2396,6 +2404,60 @@ html,body,.shell,.panel,.list{overflow-anchor:none}
 var tokens=[],smart=null,live=null,tracked=null,conviction=null,prelaunch=null,activeTab='featured',signalFilters={short:'',medium:'',long:'',security:'',holders:'',bigbuyers:''};
 var stickyFeatured=new Map();
 var recommendationHistory=new Map();
+var socialSignalHistory=new Map();
+try{
+  var savedSocialHistory=JSON.parse(localStorage.getItem('socialSignalHistory')||'[]');
+  if(Array.isArray(savedSocialHistory))savedSocialHistory.forEach(function(x){
+    if(x&&x.mint)socialSignalHistory.set(x.mint,x);
+  });
+}catch(e){}
+
+function saveSocialSignalHistory(){
+  try{
+    localStorage.setItem('socialSignalHistory',JSON.stringify([...socialSignalHistory.values()].slice(-300)));
+  }catch(e){}
+}
+function rememberSocialSignal(t){
+  if(!t||!t.mint)return;
+  var heat=Number(t.socialHeat?.score||0);
+  if(heat<=0)return;
+  var old=socialSignalHistory.get(t.mint);
+  if(!old){
+    socialSignalHistory.set(t.mint,{
+      mint:t.mint,
+      name:t.name||'',
+      symbol:t.symbol||'',
+      introducedAt:new Date().toISOString(),
+      introducedPrice:Number(t.priceUsd||0)||null,
+      introducedSocialHeat:heat,
+      introducedSocialLabel:t.socialHeat?.label||'',
+      introducedSecurity:t.security?.tier||'',
+      xPosts2h:Number(t.socialHeat?.xPosts2h||0),
+      youtubeVideos24h:Number(t.socialHeat?.youtubeVideos24h||0),
+      blueskyMentions2h:Number(t.socialHeat?.blueskyMentions2h||0),
+      dexUrl:t.dexUrl||''
+    });
+    saveSocialSignalHistory();
+  }else{
+    old.name=t.name||old.name;
+    old.symbol=t.symbol||old.symbol;
+    old.dexUrl=t.dexUrl||old.dexUrl;
+    socialSignalHistory.set(t.mint,old);
+  }
+}
+function socialSignalPerformanceRows(){
+  return [...socialSignalHistory.values()].map(function(h){
+    var t=findToken(h.mint);
+    var current=t?Number(t.priceUsd||0):null;
+    var base=Number(h.introducedPrice||0);
+    var pnl=(current!=null&&current>0&&base>0)?((current/base)-1)*100:null;
+    return {history:h,token:t,currentPrice:current,pnlPct:pnl};
+  }).sort(function(a,b){
+    var av=a.pnlPct==null?-1e9:a.pnlPct,bv=b.pnlPct==null?-1e9:b.pnlPct;
+    return bv-av;
+  });
+}
+
 try{
   var savedHistory=JSON.parse(localStorage.getItem('recommendationHistory')||'[]');
   if(Array.isArray(savedHistory))savedHistory.forEach(function(x){
@@ -3323,18 +3385,66 @@ function renderConviction(){
 
 
 function renderSocialTrends(){
-  var el=document.getElementById('socialList');if(!el)return;
-  var r=tokens.slice().filter(function(t){return Number(t.socialHeat?.score||0)>0}).sort(function(a,b){return Number(b.socialHeat?.score||0)-Number(a.socialHeat?.score||0)||tokenStrength(b)-tokenStrength(a)}).slice(0,20);
-  el.innerHTML=r.length?r.map(function(t,i){
-    var h=t.socialHeat||{},s=t.security||{};
-    return '<div class="row"><div class="asset"><b>#'+(i+1)+' 📣 '+esc(t.symbol||'?')+' · '+esc(t.name||'')+'</b>'+whaleTrendBadge(t)+socialTrendBadges(t)+tradePlanChips(t)+'<small>'+esc((h.reasons||[]).slice(0,3).join(' • '))+'</small>'+socialButtons(t)+'</div>'+
-      '<div class="cell"><small>Social Heat</small><b><span class="badge '+socialHeatClass(h.label)+'">'+esc(faSocialHeat(h.label))+' '+Number(h.score||0)+'</span></b></div>'+
-      '<div class="cell"><small>X / 2h</small><b>'+Number(h.xPosts2h||0)+'</b></div>'+
-      '<div class="cell"><small>YouTube / 24h</small><b>'+Number(h.youtubeVideos24h||0)+'</b></div>'+
-      '<div class="cell hide-sm"><small>Bluesky / 2h</small><b>'+Number(h.blueskyMentions2h||0)+'</b></div>'+
-      '<div class="cell hide-md"><small>امنیت</small><b><span class="badge '+secClass(s.tier)+'">'+esc(faSec(s.tier))+'</span></b></div>'+
-      '<div class="actions"><a class="action" target="_blank" rel="noopener" href="'+esc(dexUrl(t.mint,t.dexUrl))+'">📈 چارت</a><button class="detail-btn" data-mint="'+esc(t.mint)+'">جزئیات</button></div></div>';
-  }).join(''):'<div class="empty">فعلاً داده Social Heat برای توکن‌های رادار کافی نیست.</div>';
+  var el=document.getElementById('socialList');
+  var r=tokens.slice()
+    .filter(function(t){return Number(t.socialHeat?.score||0)>0})
+    .sort(function(a,b){return Number(b.socialHeat?.score||0)-Number(a.socialHeat?.score||0)||tokenStrength(b)-tokenStrength(a)})
+    .slice(0,20);
+
+  // First appearance in Social Trend becomes the fixed performance baseline.
+  r.forEach(rememberSocialSignal);
+
+  if(el){
+    el.innerHTML=r.length?r.map(function(t,i){
+      var h=t.socialHeat||{},s=t.security||{};
+      var hist=socialSignalHistory.get(t.mint);
+      var pnl=null;
+      if(hist&&Number(hist.introducedPrice||0)>0&&Number(t.priceUsd||0)>0){
+        pnl=(Number(t.priceUsd)/Number(hist.introducedPrice)-1)*100;
+      }
+      var pnlText=pnl==null?'—':(pnl>0?'+':'')+pnl.toFixed(1)+'%';
+      var pnlClass=pnl==null?'return-flat':pnl>=0?'return-pos':'return-neg';
+      return '<div class="row"><div class="asset"><b>#'+(i+1)+' 📣 '+esc(t.symbol||'?')+' · '+esc(t.name||'')+'</b>'+whaleTrendBadge(t)+socialTrendBadges(t)+tradePlanChips(t)+
+        '<small>'+esc((h.reasons||[]).slice(0,3).join(' • '))+'</small>'+
+        (hist?'<small>اولین سیگنال اجتماعی: '+new Date(hist.introducedAt).toLocaleString('fa-IR')+' · قیمت '+fmtPrice(hist.introducedPrice)+'</small>':'')+
+        socialButtons(t)+'</div>'+
+        '<div class="cell"><small>Social Heat</small><b><span class="badge '+socialHeatClass(h.label)+'">'+esc(faSocialHeat(h.label))+' '+Number(h.score||0)+'</span></b></div>'+
+        '<div class="cell"><small>سود از معرفی</small><b class="'+pnlClass+'">'+pnlText+'</b></div>'+
+        '<div class="cell"><small>X / 2h</small><b>'+Number(h.xPosts2h||0)+'</b></div>'+
+        '<div class="cell hide-sm"><small>YouTube / 24h</small><b>'+Number(h.youtubeVideos24h||0)+'</b></div>'+
+        '<div class="cell hide-md"><small>امنیت</small><b><span class="badge '+secClass(s.tier)+'">'+esc(faSec(s.tier))+'</span></b></div>'+
+        '<div class="actions"><a class="action" target="_blank" rel="noopener" href="'+esc(dexUrl(t.mint,t.dexUrl))+'">📈 چارت</a><button class="detail-btn" data-mint="'+esc(t.mint)+'">جزئیات</button></div></div>';
+    }).join(''):'<div class="empty">فعلاً داده Social Heat برای توکن‌های رادار کافی نیست.</div>';
+  }
+
+  var perfList=document.getElementById('socialPerformanceList');
+  var perfSum=document.getElementById('socialPerformanceSummary');
+  if(perfList&&perfSum){
+    var rows=socialSignalPerformanceRows();
+    var valid=rows.filter(function(x){return x.pnlPct!=null});
+    var wins=valid.filter(function(x){return x.pnlPct>0});
+    var avg=valid.length?valid.reduce(function(a,x){return a+Number(x.pnlPct||0)},0)/valid.length:null;
+    var best=valid.slice().sort(function(a,b){return b.pnlPct-a.pnlPct})[0]||null;
+    perfSum.innerHTML='<div class="perf-summary">'+
+      '<div class="perf-stat"><small>کل سیگنال اجتماعی</small><b>'+rows.length+'</b></div>'+
+      '<div class="perf-stat"><small>در سود</small><b class="return-pos">'+wins.length+'</b></div>'+
+      '<div class="perf-stat"><small>میانگین بازده</small><b class="'+(avg==null?'return-flat':avg>=0?'return-pos':'return-neg')+'">'+(avg==null?'—':(avg>0?'+':'')+avg.toFixed(1)+'%')+'</b></div>'+
+      '<div class="perf-stat"><small>بهترین سیگنال</small><b class="return-pos">'+(best?esc(best.history.symbol||best.history.name)+' '+(best.pnlPct>0?'+':'')+best.pnlPct.toFixed(1)+'%':'—')+'</b></div>'+
+    '</div>';
+
+    perfList.innerHTML=rows.length?rows.map(function(x,i){
+      var h=x.history,t=x.token,p=x.pnlPct;
+      var cls=p==null?'return-flat':p>=0?'return-pos':'return-neg';
+      var txt=p==null?'—':(p>0?'+':'')+p.toFixed(1)+'%';
+      return '<div class="row"><div class="asset"><b>#'+(i+1)+' 📣 '+esc(h.symbol||'?')+' · '+esc(h.name||'')+'</b>'+
+        '<small>معرفی '+new Date(h.introducedAt).toLocaleString('fa-IR')+' · Social Heat اولیه '+Number(h.introducedSocialHeat||0)+' · امنیت '+esc(faSec(h.introducedSecurity))+'</small></div>'+
+        '<div class="cell"><small>قیمت معرفی</small><b>'+fmtPrice(h.introducedPrice)+'</b></div>'+
+        '<div class="cell"><small>قیمت فعلی</small><b>'+(x.currentPrice?fmtPrice(x.currentPrice):'—')+'</b></div>'+
+        '<div class="cell"><small>سود/ضرر</small><b class="'+cls+'">'+txt+'</b></div>'+
+        '<div class="cell hide-sm"><small>Heat اولیه</small><b>'+Number(h.introducedSocialHeat||0)+'/100</b></div>'+
+        '<div class="actions"><a class="action" target="_blank" rel="noopener" href="'+esc(dexUrl(h.mint,h.dexUrl||t&&t.dexUrl))+'">📈 چارت</a></div></div>';
+    }).join(''):'<div class="empty">هنوز سیگنال اجتماعی ثبت‌شده‌ای برای محاسبه عملکرد وجود ندارد.</div>';
+  }
 }
 
 function renderWallets(){
