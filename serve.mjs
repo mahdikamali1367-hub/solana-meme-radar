@@ -17,6 +17,11 @@ const CONTRACT_PRICE_CACHE_MS=700;
 
 
 let prelaunchCache={at:0,data:null};
+let pumpTraderIntelCache={at:0,data:null};
+let solidProofIntelCache={at:0,data:null};
+const PUMP_TRADER_INTEL_CACHE_MS=60*1000;
+const SOLIDPROOF_INTEL_CACHE_MS=5*60*1000;
+
 const prelaunchWatchState=new Map();
 const launchPerfCache=new Map();
 
@@ -532,8 +537,243 @@ function parseRootDataCalendarWatch(html){
   return out;
 }
 
+
+function normalizePumpLeaderboardRows(d){
+  const arr=Array.isArray(d)?d:
+    Array.isArray(d?.data)?d.data:
+    Array.isArray(d?.results)?d.results:
+    Array.isArray(d?.leaderboard)?d.leaderboard:
+    Array.isArray(d?.entries)?d.entries:[];
+  return arr.map(function(x,i){
+    const u=x?.user||x?.profile||x?.trader||{};
+    const wallet=String(x?.wallet||x?.address||x?.solanaAddress||u?.address||u?.canonical_svm_wallet||'');
+    const userId=String(x?.userId||x?.user_id||u?.id||u?.userId||wallet||'');
+    const username=String(x?.username||u?.username||x?.displayName||u?.displayName||short(wallet)||'Trader');
+    const pnlUsd=num(x?.pnlUsd??x?.pnl_usd??x?.profitUsd??x?.profit_usd??x?.profit??x?.pnl);
+    const pnlSol=num(x?.pnlSol??x?.pnl_sol);
+    const rank=num(x?.rank,i+1);
+    const topPositions=Array.isArray(x?.topPositions)?x.topPositions:Array.isArray(x?.positions)?x.positions:[];
+    return {rank,userId,wallet,username,pnlUsd,pnlSol,topPositions,source:'Pump.fun official API'};
+  }).filter(x=>x.userId||x.wallet||x.username);
+}
+
+function parsePumpPublicLeaderboard(html){
+  const txt=stripHtml(html);
+  const out=[];
+  // Public fallback: only publish rows when a rank, name and profit can be tied together.
+  const re=/(?:^|\s)(\d{1,3})\s+(?:Image)?([A-Za-z0-9_.-]{2,32})\s+([1-9A-HJ-NP-Za-km-z]{4})…([1-9A-HJ-NP-Za-km-z]{4})\s+\+?\$([\d,.]+)/g;
+  let m;
+  while((m=re.exec(txt))&&out.length<50){
+    out.push({
+      rank:num(m[1]),username:m[2],walletShort:m[3]+'…'+m[4],
+      wallet:'',userId:'',pnlUsd:humanNum(m[5]),pnlSol:0,topPositions:[],
+      source:'Pump.fun public leaderboard'
+    });
+  }
+  return out;
+}
+
+function pumpPortfolioPositions(d){
+  const arr=Array.isArray(d)?d:
+    Array.isArray(d?.positions)?d.positions:
+    Array.isArray(d?.data?.positions)?d.data.positions:
+    Array.isArray(d?.data)?d.data:[];
+  return arr.map(function(x){
+    const coin=x?.coin||x?.token||{};
+    return {
+      mint:String(x?.mint||coin?.mint||coin?.address||''),
+      symbol:String(x?.symbol||coin?.symbol||'?'),
+      name:String(x?.name||coin?.name||''),
+      valueUsd:num(x?.valueUsd??x?.value_usd??x?.currentValueUsd??x?.current_value_usd),
+      pnlUsd:num(x?.pnlUsd??x?.pnl_usd??x?.profitUsd??x?.profit_usd),
+      unrealizedPnlUsd:num(x?.unrealizedPnlUsd??x?.unrealized_pnl_usd),
+      amount:num(x?.amount??x?.balance),
+      status:String(x?.status||'open')
+    };
+  }).filter(x=>x.mint&&((x.valueUsd>0)||x.amount>0||/open/i.test(x.status)));
+}
+
+function pumpRecentTrades(d){
+  const arr=Array.isArray(d)?d:
+    Array.isArray(d?.trades)?d.trades:
+    Array.isArray(d?.data?.trades)?d.data.trades:
+    Array.isArray(d?.data)?d.data:[];
+  return arr.map(function(x){
+    const coin=x?.coin||x?.token||{};
+    return {
+      mint:String(x?.mint||coin?.mint||coin?.address||''),
+      symbol:String(x?.symbol||coin?.symbol||'?'),
+      side:String(x?.side||x?.type||'').toUpperCase(),
+      usd:num(x?.usd??x?.usdValue??x?.valueUsd??x?.value_usd),
+      sol:num(x?.sol??x?.solAmount??x?.amountSol),
+      ts:normalizeTs(x?.timestamp||x?.createdAt||x?.created_at||x?.ts||0)
+    };
+  }).filter(x=>x.mint&&['BUY','SELL'].includes(x.side));
+}
+
+async function buildPumpTraderIntel(){
+  if(pumpTraderIntelCache.data&&Date.now()-pumpTraderIntelCache.at<PUMP_TRADER_INTEL_CACHE_MS)return pumpTraderIntelCache.data;
+  const key=process.env.PUMP_FUN_API_KEY;
+  let leaders=[],mode='public-leaderboard',apiError=null;
+
+  if(key){
+    try{
+      const board=await jfetch(
+        'https://api.pump.fun/v1/pnl-leaderboard?period=weekly&limit=25',
+        {headers:{authorization:'Bearer '+key}},
+        12000
+      );
+      leaders=normalizePumpLeaderboardRows(board).slice(0,15);
+      mode='official-api';
+
+      // Enrich only the top profitable traders to control rate limits.
+      for(const tr of leaders.slice(0,8)){
+        if(!tr.userId)continue;
+        const [portfolioR,tradesR]=await Promise.allSettled([
+          jfetch('https://api.pump.fun/v1/user-portfolio/'+encodeURIComponent(tr.userId),{headers:{authorization:'Bearer '+key}},10000),
+          jfetch('https://api.pump.fun/v1/user-trades/'+encodeURIComponent(tr.userId)+'?limit=30',{headers:{authorization:'Bearer '+key}},10000)
+        ]);
+        tr.positions=portfolioR.status==='fulfilled'?pumpPortfolioPositions(portfolioR.value).slice(0,20):[];
+        tr.recentTrades=tradesR.status==='fulfilled'?pumpRecentTrades(tradesR.value).slice(0,30):[];
+        tr.currentBuys=tr.recentTrades.filter(x=>x.side==='BUY').slice(0,10);
+      }
+    }catch(e){
+      apiError=String(e?.message||e);
+      leaders=[];
+    }
+  }
+
+  if(!leaders.length){
+    try{
+      leaders=parsePumpPublicLeaderboard(await tfetch('https://pump.fun/leaderboard',{},12000)).slice(0,25);
+    }catch(e){
+      if(!apiError)apiError=String(e?.message||e);
+    }
+  }
+
+  const mintHeat=new Map();
+  for(const tr of leaders){
+    for(const p of (tr.positions||[])){
+      if(!p.mint)continue;
+      const a=mintHeat.get(p.mint)||{mint:p.mint,symbol:p.symbol||'?',traders:0,totalValueUsd:0,totalPnlUsd:0,buyingTraders:0,names:[]};
+      a.traders++;a.totalValueUsd+=num(p.valueUsd);a.totalPnlUsd+=num(p.pnlUsd)+num(p.unrealizedPnlUsd);a.names.push(tr.username);
+      mintHeat.set(p.mint,a);
+    }
+    const recentBuyMints=new Set((tr.currentBuys||[]).filter(x=>Date.now()-x.ts<=6*60*60*1000).map(x=>x.mint));
+    for(const mint of recentBuyMints){
+      const a=mintHeat.get(mint)||{mint,symbol:'?',traders:0,totalValueUsd:0,totalPnlUsd:0,buyingTraders:0,names:[]};
+      a.buyingTraders++;a.names.push(tr.username);
+      mintHeat.set(mint,a);
+    }
+  }
+  const hotMints=[...mintHeat.values()].sort((a,b)=>(b.buyingTraders-a.buyingTraders)||(b.traders-a.traders)||(b.totalValueUsd-a.totalValueUsd)).slice(0,30);
+  const data={
+    ok:true,configured:!!key,mode,generatedAt:new Date().toISOString(),
+    leaders,hotMints,apiError,
+    disclaimer:'رتبه سود گذشته تضمین عملکرد آینده نیست. Portfolio/Trades رسمی فقط وقتی PUMP_FUN_API_KEY با scopeهای leaderboards.read و positions.read فعال باشد نمایش داده می‌شود.'
+  };
+  pumpTraderIntelCache={at:Date.now(),data};
+  return data;
+}
+
+// ---------- SolidProof public intelligence ----------
+function parseSolidProofSolana(html,sourceName){
+  const out=[],src=String(html||'');
+  const re=/<a\b[^>]*href=["']([^"']*\/projects\/[^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi;
+  let m;
+  while((m=re.exec(src))&&out.length<80){
+    const around=stripHtml(src.slice(Math.max(0,m.index-900),Math.min(src.length,m.index+2600)));
+    if(!/Solana\s*-\s*Mainnet/i.test(around))continue;
+    const name=stripHtml(m[2]).replace(/\s+/g,' ').trim();
+    if(!name||name.length>90)continue;
+    const scoreM=around.match(/(?:Security Score|TrustNet Score)?\s*(\d{1,3}(?:\.\d{1,2})?)/i);
+    const score=scoreM?num(scoreM[1]):null;
+    const audited=/Contract Audited|Audit Badge|Audited/i.test(around);
+    const kyc=/KYC Badge|KYC Verified|Only with KYC/i.test(around);
+    const prelaunch=/Pre-?launch|Launches|Upcoming/i.test(around);
+    out.push({
+      name,score,audited,kyc,prelaunch,ecosystem:'Solana',
+      source:sourceName||'SolidProof TrustNet',
+      url:m[1].startsWith('http')?m[1]:'https://app.solidproof.io'+m[1]
+    });
+  }
+  const seen=new Map();
+  for(const x of out){if(!seen.has(x.name.toLowerCase()))seen.set(x.name.toLowerCase(),x)}
+  return [...seen.values()];
+}
+
+async function buildSolidProofIntel(){
+  if(solidProofIntelCache.data&&Date.now()-solidProofIntelCache.at<SOLIDPROOF_INTEL_CACHE_MS)return solidProofIntelCache.data;
+  let rows=[],error=null;
+  try{
+    const rs=await Promise.allSettled([
+      tfetch('https://app.solidproof.io/board/trending',{},12000),
+      tfetch('https://app.solidproof.io/',{},12000)
+    ]);
+    if(rs[0].status==='fulfilled')rows.push(...parseSolidProofSolana(rs[0].value,'SolidProof Trending'));
+    if(rs[1].status==='fulfilled')rows.push(...parseSolidProofSolana(rs[1].value,'SolidProof Discovery'));
+  }catch(e){error=String(e?.message||e)}
+  const seen=new Map();
+  for(const x of rows){
+    const k=x.name.toLowerCase();
+    const old=seen.get(k);
+    if(!old||(num(x.score)>num(old.score)))seen.set(k,x);
+  }
+  rows=[...seen.values()].sort((a,b)=>num(b.score)-num(a.score));
+  const data={ok:true,generatedAt:new Date().toISOString(),rows:rows.slice(0,30),error};
+  solidProofIntelCache={at:Date.now(),data};return data;
+}
+
+function earlyLaunchScore(t,pumpIntel){
+  if(!t)return 0;
+  const sec=t.security||{},fl=t.flow||{},act=t.activity||{},sh=t.socialHeat||{};
+  const ph=(pumpIntel?.hotMints||[]).find(x=>x.mint===t.mint);
+  let s=0;
+  if(sec.tier==='MAX SECURITY')s+=32;
+  else if(sec.tier==='HIGH')s+=25;
+  else if(sec.tier==='REVIEW')s+=10;
+  if(sec.mintDisabled===true)s+=6;
+  if(sec.freezeDisabled===true)s+=6;
+  if(sec.holderPolicyPassed===true)s+=10;
+  if(act.label==='PROBABLE ORGANIC')s+=8;
+  if(Number(fl.buyerPower||0)>50)s+=Math.min(10,(Number(fl.buyerPower)-50)/2);
+  s+=Math.min(8,Number(sh.score||0)/12.5);
+  if(Number(t.liquidity||0)>=10000)s+=5;
+  if(ph){
+    s+=Math.min(8,Number(ph.buyingTraders||0)*3+Number(ph.traders||0));
+  }
+  return clamp(Math.round(s));
+}
+
+async function buildEarlyLaunchCandidates(pumpIntel){
+  let tokenRows=cache.data?.tokens||[];
+  if(!tokenRows.length){
+    try{tokenRows=(await build())?.tokens||[]}catch{}
+  }
+  const live=liveSmartMoneyPayload();
+  return tokenRows.filter(function(t){
+    return Number(t.ageMinutes||0)<=24*60 &&
+      (String(t.mint||'').toLowerCase().endsWith('pump')||String(t.dexId||'').toLowerCase().includes('pump')||siteTrendSources(t).length>0);
+  }).map(function(t){
+    const ph=(pumpIntel?.hotMints||[]).find(x=>x.mint===t.mint)||null;
+    const wh=(live.whaleByToken||[]).find(x=>x.tokenAddress===t.mint)||null;
+    const tr=(trackedWalletCache?.data?.tokens||[]).find(x=>x.mint===t.mint)||null;
+    return {
+      mint:t.mint,name:t.name,symbol:t.symbol,priceUsd:t.priceUsd,marketCap:t.marketCap,liquidity:t.liquidity,
+      ageMinutes:t.ageMinutes,dexUrl:t.dexUrl,security:t.security,activity:t.activity,flow:t.flow,socialHeat:t.socialHeat,
+      traderIntel:ph,whale:wh,tracked:tr,
+      score:earlyLaunchScore(t,pumpIntel),
+      label:(t.security?.tier==='MAX SECURITY'||t.security?.tier==='HIGH')&&t.security?.holderPolicyPassed===true?'قابل بررسی جدی':'Watch'
+    };
+  }).sort((a,b)=>b.score-a.score).slice(0,20);
+}
+
 async function buildPrelaunchRadar(){
   if(prelaunchCache.data&&Date.now()-prelaunchCache.at<PRELAUNCH_CACHE_MS)return prelaunchCache.data;
+  const [pumpIntel,solidProofIntel]=await Promise.all([
+    buildPumpTraderIntel().catch(()=>({ok:false,leaders:[],hotMints:[]})),
+    buildSolidProofIntel().catch(()=>({ok:false,rows:[]}))
+  ]);
   const manual=parsePrelaunchEnv(); let publicRows=[]; let sourceError=null;
   try{
     const results=await Promise.allSettled([
@@ -552,6 +792,24 @@ async function buildPrelaunchRadar(){
       ...parsePrelaunchWatchCandidates(polkaHtml,'Polkastarter','https://polkastarter.com',{allowUnconfirmed:true}),
       ...parsePrelaunchWatchCandidates(pinkHtml,'PinkSale Solana','https://www.pinksale.finance',{sourceSolana:true})
     ];
+    // SolidProof Solana entries add independent audit/KYC/security-score evidence.
+    for(const sp of (solidProofIntel.rows||[])){
+      publicRows.push(prelaunchScore({
+        name:sp.name,symbol:'',ecosystem:'Solana',solanaConfirmed:true,
+        source:sp.source,sourceUrl:sp.url,website:'',launchpad:'SolidProof TrustNet',socials:[],tge:'',
+        socialScore:0,teamScore:sp.kyc?10:4,backingScore:0,launchScore:sp.prelaunch?5:1,
+        kycState:sp.kyc?'pass':'unknown',auditState:sp.audited?'pass':'unknown',
+        lpLockState:'unknown',tokenomicsState:'unknown',teamVerifiedState:sp.kyc?'pass':'unknown',
+        socialEvidence:[],teamEvidence:sp.kyc?['SolidProof KYC badge']:[],
+        securityEvidence:[
+          sp.audited?'SolidProof Contract Audited':null,
+          sp.score!=null?'SolidProof Security Score '+sp.score:null
+        ].filter(Boolean),
+        backingEvidence:[],launchEvidence:sp.prelaunch?['SolidProof Pre-launch/Launch listing']:[],
+        notes:'شواهد مستقل SolidProof؛ Audit/KYC تضمین سود یا نبود ریسک نیست.',
+        externalSiteScore:sp.score
+      }));
+    }
     const cal=stripHtml(calendarHtml);
     for(const x of publicRows){
       const key=String(x.name||'').toLowerCase();
@@ -607,8 +865,9 @@ async function buildPrelaunchRadar(){
   const suggested=suggestedConfirmed.length
     ?suggestedConfirmed.slice(0,12)
     :watchUnconfirmed.filter(x=>x.risk!=='HIGH').slice(0,12).map(x=>({...x,ecosystem:'نیازمند تأیید Solana',solanaConfirmed:false}));
+  const earlyLaunch=await buildEarlyLaunchCandidates(pumpIntel).catch(()=>[]);
   const data={
-    ok:true,generatedAt:new Date().toISOString(),projects,suggested,watchUnconfirmed,launched,sourceError,
+    ok:true,generatedAt:new Date().toISOString(),projects,suggested,watchUnconfirmed,launched,earlyLaunch,pumpIntel,solidProofIntel,sourceError,
     sourceDiagnostics:{
       manual:manual.length,
       publicRows:publicRows.length,
@@ -1410,12 +1669,16 @@ async function externalSecurityAudit(t){
   const mint=t.mint,old=externalSecurityCache.get(mint);
   if(old&&Date.now()-old.at<EXTERNAL_SECURITY_CACHE_MS)return old.data;
 
-  const [fullR,summaryR]=await Promise.allSettled([
+  const goHeaders=process.env.GOPLUS_ACCESS_TOKEN?{authorization:'Bearer '+process.env.GOPLUS_ACCESS_TOKEN}:{};
+  const [fullR,summaryR,goR]=await Promise.allSettled([
     jfetch('https://api.rugcheck.xyz/v1/tokens/'+encodeURIComponent(mint)+'/report',{},12000),
-    jfetch('https://api.rugcheck.xyz/v1/tokens/'+encodeURIComponent(mint)+'/report/summary',{},12000)
+    jfetch('https://api.rugcheck.xyz/v1/tokens/'+encodeURIComponent(mint)+'/report/summary',{},12000),
+    jfetch('https://api.gopluslabs.io/api/v1/solana/token_security?contract_addresses='+encodeURIComponent(mint),{headers:goHeaders},12000)
   ]);
   const report=fullR.status==='fulfilled'?fullR.value:null;
   const summary=summaryR.status==='fulfilled'?summaryR.value:null;
+  const goRaw=goR.status==='fulfilled'?goR.value:null;
+  const goResult=goRaw?.result?.[mint]||goRaw?.result?.[String(mint).toLowerCase()]||goRaw?.result||null;
   const sourceObj=report||summary||{};
   const risks=Array.isArray(report?.risks)?report.risks:Array.isArray(summary?.risks)?summary.risks:[];
   const risky=(re)=>risks.filter(r=>re.test(textRisk(r)));
@@ -1559,8 +1822,20 @@ async function externalSecurityAudit(t){
   else if(te.transferHook||(te.transferFeeBps!=null&&te.transferFeeBps>200))extensions=auditState('warn',(te.warnings||[]).join('؛ ')||'Token-2022 نیازمند احتیاط','Solana RPC');
   else if(te.isToken2022)extensions=auditState('pass','Token-2022 بررسی شد؛ extension بحرانی شناسایی نشد','Solana RPC');
 
-  const available=!!(report||summary||t.security);
-  const data={available,lp,dev,insider,sell,overall,creatorHistory,metadata,extensions,rugcheckScore:Number.isFinite(rugScore)?rugScore:null,lpLockedPct:Number.isFinite(lpLockedPct)?lpLockedPct:null,creator,creatorPct,rawRiskCount:risks.length,tokenProgram:pick(summary,'tokenProgram')||pick(report,'tokenProgram')||t.security?.tokenProgram||null};
+  let goPlus=auditState('unknown','GoPlus Solana نتیجه‌ای برنگرداند','GoPlus');
+  if(goResult){
+    const high=Array.isArray(goResult?.risks?.high)?goResult.risks.high:[];
+    const medium=Array.isArray(goResult?.risks?.medium)?goResult.risks.medium:[];
+    const score=num(goResult?.security_score,NaN);
+    const text=JSON.stringify(goResult).toLowerCase();
+    const critical=high.length>0||/"is_honeypot"\s*:\s*"1"|"cannot_sell_all"\s*:\s*"1"|"non_transferable"\s*:\s*(true|"1")/.test(text);
+    if(critical)goPlus=auditState('fail','GoPlus ریسک بحرانی: '+high.slice(0,3).join(', '),'GoPlus Solana Token Security');
+    else if(medium.length)goPlus=auditState('warn','GoPlus هشدار: '+medium.slice(0,3).join(', ')+(Number.isFinite(score)?' · Score '+score:''),'GoPlus Solana Token Security');
+    else goPlus=auditState('pass','GoPlus Solana بدون ریسک بحرانی'+(Number.isFinite(score)?' · Score '+score:''),'GoPlus Solana Token Security');
+  }
+
+  const available=!!(report||summary||goResult||t.security);
+  const data={available,goPlus,lp,dev,insider,sell,overall,creatorHistory,metadata,extensions,rugcheckScore:Number.isFinite(rugScore)?rugScore:null,lpLockedPct:Number.isFinite(lpLockedPct)?lpLockedPct:null,creator,creatorPct,rawRiskCount:risks.length,tokenProgram:pick(summary,'tokenProgram')||pick(report,'tokenProgram')||t.security?.tokenProgram||null};
   externalSecurityCache.set(mint,{at:Date.now(),data});return data;
 }
 
@@ -1584,11 +1859,12 @@ function academyGuard(t){
   checks.push({name:'Bundle/Sniper/Insider خودکار',state:ext.insider?.state||'unknown',detail:ext.insider?.detail||'داده ناکافی'});
   checks.push({name:'Sellability / Honeypot خودکار',state:ext.sell?.state||'unknown',detail:ext.sell?.detail||'داده ناکافی'});
   checks.push({name:'RugCheck ریسک کلی',state:ext.overall?.state||'unknown',detail:ext.overall?.detail||'داده ناکافی'});
+  checks.push({name:'GoPlus Solana Security',state:ext.goPlus?.state||'unknown',detail:ext.goPlus?.detail||'داده ناکافی'});
   const pass=checks.filter(x=>x.state==='pass').length;
   const fail=checks.filter(x=>x.state==='fail').length;
   const warn=checks.filter(x=>x.state==='warn').length;
   const unknown=checks.filter(x=>x.state==='unknown').length;
-  const externalCritical=['lp','dev','insider','sell','overall','extensions','creatorHistory'].some(k=>ext[k]?.state==='fail');
+  const externalCritical=['lp','dev','insider','sell','overall','extensions','creatorHistory','goPlus'].some(k=>ext[k]?.state==='fail');
   const criticalFail=
     sec.mintDisabled===false||sec.freezeDisabled===false||sec.holderPolicyPassed===false||sec.tokenExtensions?.hardFail===true||
     t.activity?.label==='BOT RISK'||chart.pumpDumpRisk==='HIGH'||t.flow?.volumeLabel==='SUSPICIOUS'||
@@ -1596,7 +1872,7 @@ function academyGuard(t){
   const blocked=criticalFail||fail>=2;
   const score=Math.round((pass+warn*0.4)/checks.length*100);
   const label=blocked?'BLOCK':fail===0&&warn<=2&&unknown===0?'AUTO PASS':fail===0?'NEEDS REVIEW':'CAUTION';
-  return {score,label,pass,fail,warn,unknown,manual:0,blocked,checks,source:'fully automated evidence pipeline: Solana RPC + RugCheck full/summary + Jupiter quote + DexScreener; missing evidence stays UNKNOWN'};
+  return {score,label,pass,fail,warn,unknown,manual:0,blocked,checks,source:'fully automated evidence pipeline: Solana RPC + RugCheck + GoPlus Solana + Jupiter + DEXScreener; missing evidence stays UNKNOWN'};
 }
 
 function securityGate(t){
@@ -1843,7 +2119,7 @@ async function buildFresh(){
   const strong=out.filter(x=>x.verdict==='STRONG WATCH').length;
   const trending=out.filter(x=>x.trend.score>=50).length;
   const data={ok:true,generatedAt:new Date().toISOString(),refreshSeconds:20,marketLiveRefreshSeconds:1,count:out.length,strong,trending,discovered:seeds.length,resolvedPairs:exactPairs.size,tokens:out,
-    sourceStatus:{dexscreener:'live',solanaRpc:'live',kolExplorer:'live-public profiles + on-chain holdings/trades',kolX:process.env.X_BEARER_TOKEN?'live-api':'on-chain fallback; X API key not configured',bluesky:'live-public',x:process.env.X_BEARER_TOKEN?'live-api':'needs API key',youtube:process.env.YOUTUBE_API_KEY?'live-api':'needs API key',pumpFun:process.env.PUMP_FUN_API_KEY?'official-api + frontend fallback':'frontend/server-side + on-chain curve fallback',reddit:process.env.REDDIT_CLIENT_ID?'configured':'presence-only',instagram:'presence-only',facebook:'presence-only',tiktok:'presence-only',telegram:'presence-only'},
+    sourceStatus:{dexscreener:'live',solanaRpc:'live',kolExplorer:'live-public profiles + on-chain holdings/trades',kolX:process.env.X_BEARER_TOKEN?'live-api':'on-chain fallback; X API key not configured',bluesky:'live-public',x:process.env.X_BEARER_TOKEN?'live-api':'needs API key',youtube:process.env.YOUTUBE_API_KEY?'live-api':'needs API key',pumpFun:process.env.PUMP_FUN_API_KEY?'official API: leaderboard + positions + trades':'public leaderboard fallback; portfolio/trades require PUMP_FUN_API_KEY',reddit:process.env.REDDIT_CLIENT_ID?'configured':'presence-only',instagram:'presence-only',facebook:'presence-only',tiktok:'presence-only',telegram:'presence-only'},
     holderPolicy:{hardRules:{holder1MustBeBelowPct:10,holders2to10EachMustBeBelowPct:5,exclusive:true},gradeA:{holder1MaxPct:5,holders2to10EachMaxPct:2.5},gradeB:{holder1MaxPct:7.5,holders2to10EachMaxPct:4},gradeC:{holder1MaxPct:10,holders2to10EachMaxPct:5},unknownFailsStrong:true},
     activityPolicy:{probableOrganicMin:72,highSecurityMin:58,method:'aggregate heuristics; not proof of human identity'},
     orderFlowPolicy:{buyerPower:'buy transaction count / total buy+sell transactions; not dollar buy volume',strongBuyer:'5m >=55% and 1h >=51% when available',volumeQuality:'absolute volume + tx count + volume/liquidity sanity check'},
@@ -2827,6 +3103,27 @@ html,body,.shell,.panel,.list{overflow-anchor:none}
 <details class="accordion" open><summary>⚖️ پیش‌لانچ با امنیت متوسط</summary><div class="accordion-body"><div class="list" id="prelaunchMediumList"></div></div></details>
 <details class="accordion"><summary>⚠️ پیش‌لانچ با امنیت بسیار کم</summary><div class="accordion-body"><div class="list" id="prelaunchLowList"></div></div></details>
       <details class="accordion highlight" open>
+        <summary>⚡ رادار Early Launch — مناسب برای بررسی خرید</summary>
+        <div class="accordion-body">
+          <p class="muted" style="font-size:11px">توکن‌های تازه‌لانچ‌شده از Pump.fun/DEXScreener با امتیاز ترکیبی امنیت، جریان خریدار، Social Heat، نهنگ/اسمارت‌مانی و—در صورت دسترسی—تریدرهای سودده Pump.fun. این لیست تضمین خرید نیست.</p>
+          <div class="list" id="earlyLaunchList"></div>
+        </div>
+      </details>
+      <details class="accordion highlight" open>
+        <summary>🏆 هوش تریدرهای برتر Pump.fun</summary>
+        <div class="accordion-body">
+          <p class="muted" id="pumpTraderIntelStatus" style="font-size:11px">در حال دریافت Leaderboard و پوزیشن‌ها…</p>
+          <div class="list" id="pumpTraderIntelList"></div>
+        </div>
+      </details>
+      <details class="accordion" open>
+        <summary>🛡️ هوش امنیت چندمنبعی</summary>
+        <div class="accordion-body">
+          <p class="muted" style="font-size:11px">SolidProof برای Audit/KYC/TrustNet؛ RugCheck + GoPlus برای قرارداد/هولدر/Rug/Honeypot؛ CertiK/TokenSniffer/Bubblemaps به‌عنوان شواهد تکمیلی و لینک تحقیق.</p>
+          <div class="list" id="multiSourceSecurityList"></div>
+        </div>
+      </details>
+      <details class="accordion highlight" open>
         <summary>📈 عملکرد پیشنهادهای پیش‌لانچ بعد از لانچ</summary>
         <div class="accordion-body">
           <p class="muted" style="font-size:11px">رشد/افت از اولین قیمت تاریخی قابل‌دریافت نزدیک زمان ساخت Pair تا قیمت فعلی. اگر قیمت شروع قابل‌تأیید نباشد، درصد نمایش داده نمی‌شود.</p>
@@ -2850,7 +3147,7 @@ html,body,.shell,.panel,.list{overflow-anchor:none}
   </details>
   <details class="accordion">
     <summary>🧪 مدل امتیاز پیش‌لانچ</summary>
-    <div class="accordion-body"><div class="note">Social 20 · Team 15 · Team Verified 5 · KYC 10 · Audit 15 · LP Lock 15 · Tokenomics/Vesting 10 · Backing 10 · Launch 5. ادعا یا وعده = امتیاز کامل نمی‌گیرد؛ مدرک مستقل لازم است.</div></div>
+    <div class="accordion-body"><div class="note">Pre‑Launch Core: Social 20 · Team 15 · Team Verified 5 · KYC 10 · Audit 15 · LP Lock 15 · Tokenomics/Vesting 10 · Backing 10 · Launch 5. Early‑Launch رتبه جداگانه دارد: امنیت آن‌چین + Buyer Flow + Social + Liquidity + Whale/Smart Money + Pump Top Traders. ادعا یا وعده = امتیاز کامل نمی‌گیرد؛ مدرک مستقل لازم است.</div></div>
   </details>
 </section>
 <section class="panel" id="socialPanel">
@@ -4026,6 +4323,57 @@ function renderPrelaunch(){
   if(ks)ks.textContent=high.length;
   if(ksec)ksec.textContent=rows.filter(function(x){return Number(x.corePassed||0)>=2}).length;
   if(status)status.textContent=rows.length?'پروژه‌های پیش‌لانچ در سه سطح امنیتی دسته‌بندی شده‌اند.':'فعلاً کاندید قابل‌تأیید پیدا نشده.';
+  var earlyLaunch=prelaunch&&Array.isArray(prelaunch.earlyLaunch)?prelaunch.earlyLaunch:[];
+  var earlyLaunchEl=document.getElementById('earlyLaunchList');
+  if(earlyLaunchEl){
+    earlyLaunchEl.innerHTML=earlyLaunch.length?earlyLaunch.map(function(x,i){
+      var sec=x.security||{},fl=x.flow||{},ph=x.traderIntel,wh=x.whale,tr=x.tracked;
+      return '<div class="row"><div class="asset"><b>#'+(i+1)+' ⚡ '+esc(x.symbol||'?')+' · '+esc(x.name||'')+'</b>'+
+        '<span class="badge '+(x.score>=75?'good':x.score>=55?'mid':'blue')+'">'+Number(x.score||0)+'/100 · '+esc(x.label||'Watch')+'</span>'+
+        '<small>'+ageText({ageMinutes:x.ageMinutes})+' · Buyer '+Number(fl.buyerPower||0).toFixed(0)+'% · Social '+Number(x.socialHeat?.score||0)+'/100'+
+        (ph?' · Pump Top Traders '+Number(ph.traders||0)+' / خرید اخیر '+Number(ph.buyingTraders||0):'')+
+        (wh?' · 🐋 '+money(wh.totalBuyUsd):'')+
+        (tr&&Number(tr.netFlowUsd||0)>0?' · 🧠 '+money(tr.netFlowUsd):'')+'</small></div>'+
+        '<div class="cell"><small>قیمت</small><b data-live-price-mint="'+esc(x.mint)+'">'+fmtPrice(x.priceUsd)+'</b></div>'+
+        '<div class="cell"><small>نقدینگی</small><b>'+money(x.liquidity)+'</b></div>'+
+        '<div class="cell"><small>امنیت</small><b><span class="badge '+secClass(sec.tier)+'">'+esc(faSec(sec.tier))+'</span></b></div>'+
+        '<div class="cell"><small>هولدر</small><b>'+(sec.holderPolicyPassed===true?'PASS':'—')+'</b></div>'+
+        '<div class="actions"><a class="action" target="_blank" rel="noopener" href="'+esc(dexUrl(x.mint,x.dexUrl))+'">DEX</a><a class="action" target="_blank" rel="noopener" href="https://pump.fun/coin/'+esc(x.mint)+'">Pump</a></div></div>';
+    }).join(''):'<div class="empty">فعلاً Early Launch واجد داده کافی پیدا نشده.</div>';
+  }
+
+  var pumpIntel=prelaunch&&prelaunch.pumpIntel?prelaunch.pumpIntel:{leaders:[]};
+  var pumpStatus=document.getElementById('pumpTraderIntelStatus');
+  if(pumpStatus)pumpStatus.textContent=pumpIntel.mode==='official-api'
+    ?'Pump.fun API رسمی فعال: Leaderboard + Portfolio + Trades تریدرهای برتر.'
+    :pumpIntel.leaders?.length?'Leaderboard عمومی Pump.fun فعال؛ برای Portfolio/Trades کامل، PUMP_FUN_API_KEY لازم است.':'داده Leaderboard Pump.fun در این اسکن در دسترس نیست؛ API رسمی نیازمند PUMP_FUN_API_KEY است.';
+  var pumpEl=document.getElementById('pumpTraderIntelList');
+  if(pumpEl){
+    pumpEl.innerHTML=(pumpIntel.leaders||[]).length?(pumpIntel.leaders||[]).slice(0,12).map(function(t,i){
+      var positions=(t.positions||[]).slice().sort(function(a,b){return Number(b.valueUsd||0)-Number(a.valueUsd||0)}).slice(0,3);
+      var buys=(t.currentBuys||[]).slice(0,3);
+      return '<div class="row"><div class="asset"><b>#'+Number(t.rank||i+1)+' 🏆 '+esc(t.username||'Trader')+'</b>'+
+        '<small>Profit هفتگی: '+money(t.pnlUsd)+(t.wallet?' · '+esc(short(t.wallet)):(t.walletShort?' · '+esc(t.walletShort):''))+'</small>'+
+        (positions.length?'<small>پوزیشن فعلی: '+esc(positions.map(p=>(p.symbol||short(p.mint))+' '+money(p.valueUsd)).join(' · '))+'</small>':'')+
+        (buys.length?'<small>خریدهای اخیر: '+esc(buys.map(b=>(b.symbol||short(b.mint))+' '+money(b.usd)).join(' · '))+'</small>':'')+
+        '</div><div class="cell"><small>سود</small><b class="return-pos">'+money(t.pnlUsd)+'</b></div>'+
+        '<div class="cell"><small>پوزیشن باز</small><b>'+positions.length+'</b></div>'+
+        '<div class="cell"><small>خرید اخیر</small><b>'+buys.length+'</b></div></div>';
+    }).join(''):'<div class="empty">Leaderboard تریدرها فعلاً قابل‌دریافت نیست.</div>';
+  }
+
+  var secIntel=prelaunch&&prelaunch.solidProofIntel?prelaunch.solidProofIntel:{rows:[]};
+  var secEl=document.getElementById('multiSourceSecurityList');
+  if(secEl){
+    secEl.innerHTML=(secIntel.rows||[]).length?(secIntel.rows||[]).slice(0,12).map(function(x,i){
+      return '<div class="row"><div class="asset"><b>#'+(i+1)+' 🛡️ '+esc(x.name)+'</b><small>'+esc(x.source||'SolidProof')+' · Solana</small></div>'+
+        '<div class="cell"><small>Security Score</small><b>'+((x.score!=null)?Number(x.score).toFixed(2):'—')+'</b></div>'+
+        '<div class="cell"><small>Audit</small><b>'+(x.audited?'✅':'—')+'</b></div>'+
+        '<div class="cell"><small>KYC</small><b>'+(x.kyc?'✅':'—')+'</b></div>'+
+        '<div class="actions"><a class="action" target="_blank" rel="noopener" href="'+esc(x.url||'https://app.solidproof.io')+'">SolidProof</a></div></div>';
+    }).join(''):'<div class="empty">فعلاً پروژه Solana دارای داده عمومی SolidProof در این اسکن پیدا نشده.</div>';
+  }
+
   var suggested=prelaunch&&Array.isArray(prelaunch.suggested)?prelaunch.suggested:[];
   var sugEl=document.getElementById('prelaunchSuggestedList');
   if(sugEl){
@@ -4803,13 +5151,22 @@ createServer(async(req,res)=>{
   try{
     if(url.pathname==='/api/health'){res.writeHead(200,{'content-type':'application/json',...headers});return res.end(JSON.stringify({ok:true,time:new Date().toISOString()}))}
     if(url.pathname==='/api/v1/force-refresh'){
-      cache={at:0,data:null};marketLiveCache={at:0,data:null};exactDexPriceCache.clear();contractPriceCache.clear();prelaunchCache={at:0,data:null};trackedWalletCache={at:0,data:null};smartMoneyCache={at:0,data:null};convictionCache={at:0,data:null};
+      cache={at:0,data:null};marketLiveCache={at:0,data:null};exactDexPriceCache.clear();contractPriceCache.clear();prelaunchCache={at:0,data:null};pumpTraderIntelCache={at:0,data:null};solidProofIntelCache={at:0,data:null};trackedWalletCache={at:0,data:null};smartMoneyCache={at:0,data:null};convictionCache={at:0,data:null};
       res.writeHead(200,{'content-type':'application/json; charset=utf-8','cache-control':'no-store',...headers});
       return res.end(JSON.stringify({ok:true,clearedAt:new Date().toISOString()}));
     }
     if(url.pathname==='/api/v1/conviction-wallets'){const cw=await buildConvictionWallets();res.writeHead(200,{'content-type':'application/json; charset=utf-8','cache-control':'no-store',...headers});return res.end(JSON.stringify(cw))}
     if(url.pathname==='/api/v1/tracked-wallets'){const tw=await buildTrackedWallets();res.writeHead(200,{'content-type':'application/json; charset=utf-8','cache-control':'no-store',...headers});return res.end(JSON.stringify(tw))}
     if(url.pathname==='/api/v1/prelaunch-live'){const pl=await buildPrelaunchLive();res.writeHead(200,{'content-type':'application/json; charset=utf-8','cache-control':'no-store',...headers});return res.end(JSON.stringify(pl))}
+    if(url.pathname==='/api/v1/launch-intelligence'){
+      const [pumpIntel,solidProofIntel,pre]=await Promise.all([
+        buildPumpTraderIntel().catch(()=>({leaders:[],hotMints:[]})),
+        buildSolidProofIntel().catch(()=>({rows:[]})),
+        buildPrelaunchRadar()
+      ]);
+      res.writeHead(200,{'content-type':'application/json; charset=utf-8','cache-control':'no-store',...headers});
+      return res.end(JSON.stringify({ok:true,generatedAt:new Date().toISOString(),pumpIntel,solidProofIntel,earlyLaunch:pre.earlyLaunch||[]}))
+    }
     if(url.pathname==='/api/v1/prelaunch'){const pl=await buildPrelaunchRadar();res.writeHead(200,{'content-type':'application/json; charset=utf-8','cache-control':'no-store',...headers});return res.end(JSON.stringify(pl))}
     if(url.pathname==='/api/v1/smart-money'){const sm=await buildSmartMoney();res.writeHead(200,{'content-type':'application/json; charset=utf-8','cache-control':'no-store',...headers});return res.end(JSON.stringify(sm))}
     if(url.pathname==='/api/v1/live-stream'){
