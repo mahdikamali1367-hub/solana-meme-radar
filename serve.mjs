@@ -125,7 +125,7 @@ function chooseCanonicalPair(rows,mint){
   return valid[0]||null;
 }
 
-async function pairsForMany(mints){
+async function pairsForMany(mints,preferredPairs=null){
   const uniq=[...new Set((mints||[]).filter(Boolean))].slice(0,900);
   const requested=new Set(uniq);
   const batches=[];for(let i=0;i<uniq.length;i+=30)batches.push(uniq.slice(i,i+30));
@@ -145,7 +145,15 @@ async function pairsForMany(mints){
   }
   const out=new Map();
   for(const mint of uniq){
-    const p=chooseCanonicalPair(candidates.get(mint)||[],mint);
+    const rows=candidates.get(mint)||[];
+    const preferred=preferredPairs&&typeof preferredPairs.get==='function'?String(preferredPairs.get(mint)||''):'';
+    let p=null;
+    if(preferred){
+      p=rows.find(function(x){
+        return String(x?.pairAddress||'')===preferred&&canonicalPairScore(x,mint)>=0;
+      })||null;
+    }
+    if(!p)p=chooseCanonicalPair(rows,mint);
     if(p)out.set(mint,p);
   }
   return out;
@@ -1490,7 +1498,7 @@ async function buildFresh(){
     const buys5m=num(p.txns?.m5?.buys),sells5m=num(p.txns?.m5?.sells);
     const t={
       name:p.baseToken?.name||'Unknown',symbol:p.baseToken?.symbol||'?',mint:s.mint,
-      dexId:p.dexId||'',dexUrl:p.url||'',image:p.info?.imageUrl||s.image||'',description:s.description,
+      dexId:p.dexId||'',dexUrl:p.url||'',pairAddress:p.pairAddress||'',quoteTokenAddress:p.quoteToken?.address||'',image:p.info?.imageUrl||s.image||'',description:s.description,
       ageMinutes:+ageMinutes.toFixed(1),priceUsd:num(p.priceUsd),marketCap:num(p.marketCap||p.fdv),
       liquidity:num(p.liquidity?.usd),volume5m:num(p.volume?.m5),volume1h:num(p.volume?.h1),volume6h:num(p.volume?.h6),volume24h:num(p.volume?.h24),
       buys5m,sells5m,txns5m:buys5m+sells5m,
@@ -1567,7 +1575,8 @@ async function buildMarketLive(){
   marketLiveInFlight=(async()=>{
     const base=cache.data?.tokens||[];
     if(!base.length)return {ok:true,generatedAt:new Date().toISOString(),tokens:[]};
-    const pairs=await pairsForMany(base.map(t=>t.mint));
+    const preferredPairs=new Map(base.filter(t=>t.mint&&t.pairAddress).map(t=>[t.mint,t.pairAddress]));
+    const pairs=await pairsForMany(base.map(t=>t.mint),preferredPairs);
     const rows=[];
     for(const t of base){
       const p=pairs.get(t.mint);if(!p)continue;
@@ -1585,7 +1594,7 @@ async function buildMarketLive(){
         priceChange5m:num(p.priceChange?.m5),priceChange1h:num(p.priceChange?.h1),priceChange6h:num(p.priceChange?.h6),priceChange24h:num(p.priceChange?.h24),
         dexUrl:p.url||t.dexUrl||'',
         pairAddress:p.pairAddress||'',
-        priceSource:'DEXScreener canonical base pair',
+        priceSource:(t.pairAddress&&String(p.pairAddress||'')===String(t.pairAddress)?'DEXScreener pinned pair':'DEXScreener canonical fallback'),
         priceObservedAt:Date.now()
       };
       var merged={...t,...patch};
@@ -2566,15 +2575,16 @@ try{
   if(Array.isArray(savedLivePrices))savedLivePrices.forEach(function(x){
     if(!x||!x[0]||!x[1])return;
     var v=x[1];
-    if(Number(v.price||0)>0)livePriceCache.set(x[0],{price:Number(v.price),at:Number(v.at||0),source:v.source||'stored'});
+    if(Number(v.price||0)>0)livePriceCache.set(x[0],{price:Number(v.price),at:Number(v.at||0),source:v.source||'stored',pairAddress:String(v.pairAddress||'')});
   });
 }catch(e){}
 var livePriceSaveTimer=null;
-function rememberLivePrice(mint,price,source,observedAt){
+function rememberLivePrice(mint,price,source,observedAt,pairAddress){
   price=Number(price||0);
   if(!mint||!(price>0))return;
   source=source||'live';
   observedAt=Number(observedAt||Date.now());
+  pairAddress=String(pairAddress||'');
 
   var old=livePriceCache.get(mint);
   var oldAt=Number(old&&old.at||0);
@@ -2583,7 +2593,7 @@ function rememberLivePrice(mint,price,source,observedAt){
   if(old&&oldAt>observedAt)return;
   if(old&&source==='snapshot'&&old.source==='live'&&Date.now()-oldAt<15000)return;
 
-  livePriceCache.set(mint,{price:price,at:observedAt,source:source});
+  livePriceCache.set(mint,{price:price,at:observedAt,source:source,pairAddress:pairAddress||(old&&old.pairAddress)||''});
   if(!livePriceSaveTimer){
     livePriceSaveTimer=setTimeout(function(){
       livePriceSaveTimer=null;
@@ -2601,16 +2611,19 @@ function currentPriceForMint(mint){
 
   var t=findToken(mint);
   var tokenPrice=Number(t&&t.priceUsd||0);
+  var tokenPair=String(t&&t.pairAddress||'');
+  var cachedPair=String(hit&&hit.pairAddress||'');
 
-  // Live market cache is authoritative while fresh.
-  if(cached&&Date.now()-cachedAt<=15000)return cached;
+  // Live market cache is authoritative while fresh, but only for the same pinned pair.
+  var pairMatches=!tokenPair||!cachedPair||tokenPair===cachedPair;
+  if(cached&&pairMatches&&Date.now()-cachedAt<=15000)return cached;
 
   // If live data is stale/unavailable, fall back to the latest full-scan token price.
   if(tokenPrice>0){
-    rememberLivePrice(mint,tokenPrice,'snapshot',Date.now());
+    rememberLivePrice(mint,tokenPrice,'snapshot',Date.now(),tokenPair);
     return tokenPrice;
   }
-  return cached;
+  return pairMatches?cached:null;
 }
 function livePnlPct(mint,base){
   var cur=currentPriceForMint(mint),b=Number(base||0);
@@ -4055,7 +4068,7 @@ function renderActivePanel(){
 function mergeMarketLive(x){
   if(!x||!Array.isArray(x.tokens)||!x.tokens.length)return false;
   var byMint=new Map(x.tokens.map(function(p){
-    if(p&&p.mint&&Number(p.priceUsd||0)>0)rememberLivePrice(p.mint,p.priceUsd,'live',Number(p.priceObservedAt||Date.now()));
+    if(p&&p.mint&&Number(p.priceUsd||0)>0)rememberLivePrice(p.mint,p.priceUsd,'live',Number(p.priceObservedAt||Date.now()),p.pairAddress||'');
     return [p.mint,p];
   }));
   var changed=false;
@@ -4109,7 +4122,7 @@ async function loadAll(){
     var r=await Promise.all([safeJson('/api/v1/tokens'),safeJson('/api/v1/smart-money'),safeJson('/api/v1/smart-money-live'),safeJson('/api/v1/tracked-wallets'),safeJson('/api/v1/conviction-wallets'),safeJson('/api/v1/prelaunch')]);
     if(r[0]&&Array.isArray(r[0].tokens)&&r[0].tokens.length){
       tokens=r[0].tokens;
-      tokens.forEach(function(t){rememberLivePrice(t.mint,t.priceUsd,'snapshot',Date.now())});
+      tokens.forEach(function(t){rememberLivePrice(t.mint,t.priceUsd,'snapshot',Date.now(),t.pairAddress||'')});
       saveLivePrices();
     }
     if(r[1])smart=r[1];
@@ -4284,7 +4297,7 @@ createServer(async(req,res)=>{
       const buys5m=num(p.txns?.m5?.buys),sells5m=num(p.txns?.m5?.sells);
       const t={
         name:p.baseToken?.name||'Unknown',symbol:p.baseToken?.symbol||'?',mint,
-        dexId:p.dexId||'',dexUrl:p.url||'',image:p.info?.imageUrl||'',description:'',
+        dexId:p.dexId||'',dexUrl:p.url||'',pairAddress:p.pairAddress||'',quoteTokenAddress:p.quoteToken?.address||'',image:p.info?.imageUrl||'',description:'',
         ageMinutes:Math.max(0,(Date.now()-num(p.pairCreatedAt))/60000),
         priceUsd:num(p.priceUsd),marketCap:num(p.marketCap||p.fdv),liquidity:num(p.liquidity?.usd),
         volume5m:num(p.volume?.m5),volume1h:num(p.volume?.h1),volume6h:num(p.volume?.h6),volume24h:num(p.volume?.h24),
