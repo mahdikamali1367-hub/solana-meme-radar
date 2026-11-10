@@ -10,6 +10,9 @@ const EXTERNAL_SECURITY_CACHE_MS=10*60*1000;
 let cache={at:0,data:null};
 let buildInFlight=null;
 let marketLiveCache={at:0,data:null};
+let prelaunchCache={at:0,data:null};
+const PRELAUNCH_CACHE_MS=10*60*1000;
+
 let marketLiveInFlight=null;
 const MARKET_LIVE_CACHE_MS=1500;
 const securityCache=new Map();
@@ -56,7 +59,7 @@ const TRACKED_WALLETS=[
 ];
 let trackedWalletCache={at:0,data:null};
 const TRACKED_WALLET_CACHE_MS=60*1000;
-let convictionCache={at:0,data:null};
+let convictionCache={at:0,data:null};prelaunchCache={at:0,data:null};
 const CONVICTION_CACHE_MS=30*60*1000;
 
 
@@ -209,6 +212,97 @@ async function kolTrendDiscovery(){
   kolTrendCache={at:Date.now(),data};return data;
 }
 
+function prelaunchScore(x){
+  const social=Math.max(0,Math.min(30,Number(x.socialScore||0)));
+  const team=Math.max(0,Math.min(20,Number(x.teamScore||0)));
+  const security=Math.max(0,Math.min(25,Number(x.securityScore||0)));
+  const backing=Math.max(0,Math.min(15,Number(x.backingScore||0)));
+  const launch=Math.max(0,Math.min(10,Number(x.launchScore||0)));
+  const score=Math.round(social+team+security+backing+launch);
+  const evidenceCount=[social>0,team>0,security>0,backing>0,launch>0].filter(Boolean).length;
+  const grade=score>=80&&evidenceCount>=4?'A':score>=65&&evidenceCount>=3?'B':score>=50?'C':'WATCH';
+  return {...x,score,grade,evidenceCount};
+}
+
+function parsePrelaunchEnv(){
+  try{
+    const raw=process.env.PRELAUNCH_PROJECTS_JSON;
+    if(!raw)return [];
+    const arr=JSON.parse(raw);
+    if(!Array.isArray(arr))return [];
+    return arr.map(x=>prelaunchScore({
+      name:String(x.name||'Unknown'),symbol:String(x.symbol||''),ecosystem:String(x.ecosystem||'Solana'),
+      source:'Manual/verified feed',sourceUrl:String(x.sourceUrl||x.website||''),website:String(x.website||''),
+      socials:Array.isArray(x.socials)?x.socials:[],tge:String(x.tge||x.launchDate||''),
+      socialScore:Number(x.socialScore||0),teamScore:Number(x.teamScore||0),securityScore:Number(x.securityScore||0),
+      backingScore:Number(x.backingScore||0),launchScore:Number(x.launchScore||0),
+      socialEvidence:Array.isArray(x.socialEvidence)?x.socialEvidence:[],teamEvidence:Array.isArray(x.teamEvidence)?x.teamEvidence:[],
+      securityEvidence:Array.isArray(x.securityEvidence)?x.securityEvidence:[],backingEvidence:Array.isArray(x.backingEvidence)?x.backingEvidence:[],
+      notes:String(x.notes||'')
+    }));
+  }catch{return []}
+}
+
+function parseRootDataPublicProjects(html){
+  const out=[]; const source=String(html||'');
+  const re=/<a\b[^>]*href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi;
+  let m;
+  while((m=re.exec(source))){
+    const href=m[1],name=stripHtml(m[2]);
+    if(!name||name.length<2||name.length>70)continue;
+    if(!/\/projects|\/project|rootdata/i.test(href))continue;
+    const around=stripHtml(source.slice(Math.max(0,m.index-900),Math.min(source.length,m.index+1700)));
+    if(!/Solana/i.test(around))continue;
+    if(!/(TGE|Token Issuance|token issuance|pre[- ]?TGE|launch|upcoming|not issued|planned)/i.test(around))continue;
+    const hm=around.match(/(?:RD\s*(?:Popularity|Heat)\s*(?:Index)?|Popularity\s*Index)\s*[:：]?\s*([\d.]+)/i);
+    const gm=around.match(/RD\s*Growth\s*(?:Index)?\s*[:：]?\s*([\d.]+)/i);
+    const heat=hm?Number(hm[1]):0, growth=gm?Number(gm[1]):0;
+    const transparencyA=/Transparency[^A-C]{0,20}A\b/i.test(around);
+    const transparencyB=/Transparency[^A-C]{0,20}B\b/i.test(around);
+    const hasTeam=/team|founder|co-founder|core contributor/i.test(around);
+    const hasInvestor=/investor|funding|raised|seed round|series [abc]/i.test(around);
+    const hasAudit=/audit|audited|security firm|multisig|multi-sig/i.test(around);
+    const hasTokenomics=/tokenomics|vesting|cliff|allocation/i.test(around);
+    const socialScore=Math.min(30,Math.round((heat?Math.min(18,Math.log10(1+heat)*7):0)+(growth?Math.min(12,Math.log10(1+growth)*4):0)));
+    out.push(prelaunchScore({
+      name,symbol:'',ecosystem:'Solana',source:'RootData public',
+      sourceUrl:href.startsWith('http')?href:'https://www.rootdata.com'+href,website:'',socials:[],tge:'',
+      socialScore,teamScore:hasTeam?12:0,
+      securityScore:(hasAudit?12:0)+(hasTokenomics?8:0)+(transparencyA?5:transparencyB?3:0),
+      backingScore:hasInvestor?10:0,launchScore:/(TGE|Token Issuance|upcoming|launch)/i.test(around)?7:3,
+      socialEvidence:[heat?'RD Heat/Popularity '+heat:null,growth?'RD Growth '+growth:null].filter(Boolean),
+      teamEvidence:hasTeam?['اطلاعات تیم در پروفایل عمومی دیده شد']:[],
+      securityEvidence:[hasAudit?'شواهد Audit/Multisig':null,hasTokenomics?'Tokenomics/Vesting قابل مشاهده':null,transparencyA?'Transparency A':transparencyB?'Transparency B':null].filter(Boolean),
+      backingEvidence:hasInvestor?['Funding/Investor evidence موجود']:[],
+      notes:'امتیاز فقط از شواهد قابل استخراج عمومی ساخته شده؛ نبود داده امتیاز نمی‌گیرد.'
+    }));
+  }
+  const seen=new Map();
+  for(const x of out){const k=x.name.toLowerCase().replace(/\s+/g,' ').trim();const old=seen.get(k);if(!old||x.score>old.score)seen.set(k,x)}
+  return [...seen.values()];
+}
+
+async function buildPrelaunchRadar(){
+  if(prelaunchCache.data&&Date.now()-prelaunchCache.at<PRELAUNCH_CACHE_MS)return prelaunchCache.data;
+  const manual=parsePrelaunchEnv(); let publicRows=[]; let sourceError=null;
+  try{
+    const results=await Promise.all([tfetch('https://www.rootdata.com/projects',{},12000),tfetch('https://www.rootdata.com/calendar',{},12000)]);
+    publicRows=parseRootDataPublicProjects(results[0]);
+    const cal=stripHtml(results[1]);
+    for(const x of publicRows){
+      const key=String(x.name||'').toLowerCase();
+      if(key&&cal.toLowerCase().includes(key)&&/(TGE|Token Public Offering|Token Issuance|launch)/i.test(cal)){
+        x.launchScore=Math.min(10,Number(x.launchScore||0)+3);x.launchEvidence=['RootData Calendar launch/TGE evidence'];
+        Object.assign(x,prelaunchScore(x));
+      }
+    }
+  }catch(e){sourceError=String(e?.message||e)}
+  const byName=new Map();
+  for(const x of [...manual,...publicRows]){const k=String(x.name||'').toLowerCase().trim();if(!k)continue;const old=byName.get(k);if(!old||Number(x.score||0)>Number(old.score||0))byName.set(k,x)}
+  const projects=[...byName.values()].filter(x=>/solana/i.test(String(x.ecosystem||''))).sort((a,b)=>(Number(b.score||0)-Number(a.score||0))||(Number(b.securityScore||0)-Number(a.securityScore||0))||(Number(b.socialScore||0)-Number(a.socialScore||0))).slice(0,30);
+  const data={ok:true,generatedAt:new Date().toISOString(),projects,sourceError,scoring:{social:30,team:20,security:25,backing:15,launchTransparency:10},policy:{prelaunchOnly:true,noOnchainSecurityClaim:true,evidenceRequired:true,note:'قبل از TGE امنیت آن‌چین هولدر/Mint/Freeze قابل سنجش کامل نیست؛ امتیاز فقط از شواهد پروژه ساخته می‌شود.'}};
+  prelaunchCache={at:Date.now(),data};return data;
+}
 async function discovery(){
   const urls=[
     'https://api.dexscreener.com/token-profiles/latest/v1',
@@ -1905,6 +1999,7 @@ html,body,.shell,.panel,.list{overflow-anchor:none}
   <button class="tab" data-tab="whales">🐋 نهنگ‌ها</button>
   <button class="tab" data-tab="tokens">🪙 توکن‌ها</button>
   <button class="tab" data-tab="smart">🧠 اسمارت‌مانی</button>
+  <button class="tab" data-tab="prelaunch">🚀 پیش‌لانچ</button>
   <button class="tab" data-tab="social">📣 ترند اجتماعی</button>
   <button class="tab" data-tab="wallets">🏆 کیف‌پول‌ها</button>
 </nav>
@@ -2006,6 +2101,26 @@ html,body,.shell,.panel,.list{overflow-anchor:none}
   </details>
 </section>
 
+<section class="panel" id="prelaunchPanel">
+  <details class="accordion highlight" open>
+    <summary>🚀 رادار پیش‌لانچ سولانا</summary>
+    <div class="accordion-body">
+      <p class="muted" id="prelaunchStatus" style="font-size:11px">در حال بررسی پروژه‌های قبل از TGE…</p>
+      <div class="kpis">
+        <div class="kpi"><small>کاندیدها</small><b id="kPrelaunch">—</b></div>
+        <div class="kpi"><small>امتیاز 80+</small><b id="kPrelaunchStrong">—</b></div>
+        <div class="kpi"><small>شواهد امنیتی</small><b id="kPrelaunchSecurity">—</b></div>
+        <div class="kpi"><small>مدل</small><b style="font-size:12px">Evidence only</b></div>
+      </div>
+      <div class="note">قبل از لانچ، هولدر/Mint/Freeze قابل تأیید کامل نیست. امتیاز از ترند اجتماعی، تیم، Audit/Multisig، Vesting/Tokenomics، پشتیبان‌ها و شفافیت TGE ساخته می‌شود.</div>
+      <div class="list" id="prelaunchList"></div>
+    </div>
+  </details>
+  <details class="accordion">
+    <summary>🧪 مدل امتیاز پیش‌لانچ</summary>
+    <div class="accordion-body"><div class="note">Social 30 · Team 20 · Security Evidence 25 · Backing 15 · Launch Transparency 10. هر مورد بدون مدرک = صفر امتیاز.</div></div>
+  </details>
+</section>
 <section class="panel" id="socialPanel">
   <details class="accordion" open>
     <summary>📣 داغ‌ترین توکن‌ها در شبکه‌های اجتماعی</summary>
@@ -2086,7 +2201,7 @@ html,body,.shell,.panel,.list{overflow-anchor:none}
 </dialog>
 
 <script>
-var tokens=[],smart=null,live=null,tracked=null,conviction=null,activeTab='featured',signalFilters={short:'',medium:'',long:'',security:'',holders:'',bigbuyers:''};
+var tokens=[],smart=null,live=null,tracked=null,conviction=null,prelaunch=null,activeTab='featured',signalFilters={short:'',medium:'',long:'',security:'',holders:'',bigbuyers:''};
 var stickyFeatured=new Map();
 try{
   var savedFeatured=JSON.parse(sessionStorage.getItem('stickyFeatured')||'[]');
@@ -2846,6 +2961,21 @@ function renderWhales(){
     '<div class="actions"><a class="action" target="_blank" rel="noopener" href="'+esc(dexUrl(e.tokenAddress,t&&t.dexUrl))+'">📈 چارت</a><button class="detail-btn" data-mint="'+esc(e.tokenAddress)+'">جزئیات</button></div></div>';
   }).join(''):'<div class="empty">با فیلتر فعلی خرید نهنگ تازه‌ای نمایش داده نمی‌شود.</div>';
 }
+function renderPrelaunch(){
+  var rows=prelaunch&&Array.isArray(prelaunch.projects)?prelaunch.projects:[];
+  var status=document.getElementById('prelaunchStatus');
+  var k=document.getElementById('kPrelaunch'),ks=document.getElementById('kPrelaunchStrong'),ksec=document.getElementById('kPrelaunchSecurity');
+  if(k)k.textContent=rows.length;
+  if(ks)ks.textContent=rows.filter(function(x){return Number(x.score||0)>=80}).length;
+  if(ksec)ksec.textContent=rows.filter(function(x){return Number(x.securityScore||0)>=18}).length;
+  if(status)status.textContent=rows.length?'پروژه‌های قبل از TGE فقط بر اساس شواهد قابل‌تأیید رتبه‌بندی شده‌اند.':(prelaunch&&prelaunch.sourceError?'منبع عمومی موقتاً در دسترس نیست؛ feed تأییدشده قابل استفاده است.':'فعلاً کاندید قابل‌تأیید پیدا نشده.');
+  var el=document.getElementById('prelaunchList');if(!el)return;
+  el.innerHTML=rows.length?rows.map(function(x,i){
+    var grade=String(x.grade||'WATCH'),cls=grade==='A'?'good':grade==='B'?'mid':'blue';
+    var evidence=[...(x.socialEvidence||[]),...(x.teamEvidence||[]),...(x.securityEvidence||[]),...(x.backingEvidence||[]),...(x.launchEvidence||[])].slice(0,5);
+    return '<div class="row"><div class="asset"><b>#'+(i+1)+' 🚀 '+esc(x.name||'?')+(x.symbol?' · '+esc(x.symbol):'')+'</b><span class="badge '+cls+'">Pre-Launch '+grade+' · '+Number(x.score||0)+'/100</span><small>'+esc(x.ecosystem||'Solana')+' · '+esc(x.source||'')+(x.tge?' · TGE '+esc(x.tge):'')+'</small>'+(evidence.length?'<small>'+esc(evidence.join(' • '))+'</small>':'<small>شواهد کافی هنوز جمع نشده.</small>')+'</div><div class="cell"><small>Social</small><b>'+Number(x.socialScore||0)+'/30</b></div><div class="cell"><small>Team</small><b>'+Number(x.teamScore||0)+'/20</b></div><div class="cell"><small>Security</small><b>'+Number(x.securityScore||0)+'/25</b></div><div class="cell hide-sm"><small>Backing</small><b>'+Number(x.backingScore||0)+'/15</b></div><div class="cell hide-md"><small>Launch</small><b>'+Number(x.launchScore||0)+'/10</b></div><div class="actions">'+(x.sourceUrl?'<a class="action" target="_blank" rel="noopener" href="'+esc(x.sourceUrl)+'">منبع ↗</a>':'')+'</div></div>';
+  }).join(''):'<div class="empty">فعلاً پروژه پیش‌لانچ سولانا با شواهد کافی پیدا نشده.</div>';
+}
 function renderSmart(){
   var r=smart&&smart.tokens?smart.tokens:[];
   r=r.filter(function(x){
@@ -3034,7 +3164,7 @@ function renderAlerts(){
   var c=live&&live.exitClusters?live.exitClusters.filter(function(x){return x.severity==='MULTI-WALLET EXIT'}).slice(0,3):[];
   document.getElementById('kExits').textContent=c.length;document.getElementById('alerts').innerHTML=c.map(function(x){return '<div class="alert">🚨 خروج همزمان چند کیف‌پول از <b>'+esc(x.token||short(x.tokenAddress))+'</b> · '+Number(x.uniqueSellers||0)+' فروشنده</div>'}).join('');
 }
-function renderAll(){document.getElementById('kTokens').textContent=tokens.length;renderTopQuick();renderChampion();renderAlerts();renderFeatured();renderWhales();renderSmart();renderSocialTrends();renderWallets();renderConviction();renderPerformance24();renderKolTrends();renderTokens()}
+function renderAll(){document.getElementById('kTokens').textContent=tokens.length;renderTopQuick();renderChampion();renderAlerts();renderFeatured();renderWhales();renderSmart();renderPrelaunch();renderSocialTrends();renderWallets();renderConviction();renderPerformance24();renderKolTrends();renderTokens()}
 function stateLabel(v){return v==='pass'?'<span class="pass">✓ تأیید خودکار</span>':v==='fail'?'<span class="fail">✕ رد خودکار</span>':v==='warn'?'<span class="manual">△ هشدار خودکار</span>':'<span class="manual">? تأیید نشده — داده ناکافی</span>'}
 function openDetail(m){
   var t=findToken(m),tr=findTracked(m),sm=smartFor(m),wh=whaleFor(m),name=t?(t.symbol+' · '+t.name):(tr?(tr.symbol+' · '+tr.name):short(m)),h='';
@@ -3097,6 +3227,8 @@ function renderActivePanel(){
       renderTopQuick();renderKolTrends();renderTokens();
     }else if(activeTab==='smart'){
       renderSmart();
+    }else if(activeTab==='prelaunch'){
+      renderPrelaunch();
     }else if(activeTab==='social'){
       renderSocialTrends();
     }else if(activeTab==='wallets'){
@@ -3124,12 +3256,13 @@ async function loadAll(){
   if(b){b.disabled=true;b.textContent='در حال دریافت…'}
   var sx=window.scrollX,sy=window.scrollY;
   try{
-    var r=await Promise.all([safeJson('/api/v1/tokens'),safeJson('/api/v1/smart-money'),safeJson('/api/v1/smart-money-live'),safeJson('/api/v1/tracked-wallets'),safeJson('/api/v1/conviction-wallets')]);
+    var r=await Promise.all([safeJson('/api/v1/tokens'),safeJson('/api/v1/smart-money'),safeJson('/api/v1/smart-money-live'),safeJson('/api/v1/tracked-wallets'),safeJson('/api/v1/conviction-wallets'),safeJson('/api/v1/prelaunch')]);
     if(r[0]&&Array.isArray(r[0].tokens))tokens=r[0].tokens;
     if(r[1])smart=r[1];
     if(r[2])live=r[2];
     if(r[3])tracked=r[3];
     if(r[4])conviction=r[4];
+    if(r[5])prelaunch=r[5];
     document.getElementById('updated').textContent='آخرین اسکن کامل: '+new Date().toLocaleTimeString('fa-IR');
     preserveViewport(renderAll);
   }finally{
@@ -3269,6 +3402,7 @@ createServer(async(req,res)=>{
     }
     if(url.pathname==='/api/v1/conviction-wallets'){const cw=await buildConvictionWallets();res.writeHead(200,{'content-type':'application/json; charset=utf-8','cache-control':'no-store',...headers});return res.end(JSON.stringify(cw))}
     if(url.pathname==='/api/v1/tracked-wallets'){const tw=await buildTrackedWallets();res.writeHead(200,{'content-type':'application/json; charset=utf-8','cache-control':'no-store',...headers});return res.end(JSON.stringify(tw))}
+    if(url.pathname==='/api/v1/prelaunch'){const pl=await buildPrelaunchRadar();res.writeHead(200,{'content-type':'application/json; charset=utf-8','cache-control':'no-store',...headers});return res.end(JSON.stringify(pl))}
     if(url.pathname==='/api/v1/smart-money'){const sm=await buildSmartMoney();res.writeHead(200,{'content-type':'application/json; charset=utf-8','cache-control':'no-store',...headers});return res.end(JSON.stringify(sm))}
     if(url.pathname==='/api/v1/live-stream'){
       res.writeHead(200,{
