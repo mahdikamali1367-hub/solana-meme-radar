@@ -383,7 +383,7 @@ async function security(mint){
       try{
         const ma=await rpc('getMultipleAccounts',[rows.map(x=>x.address),{encoding:'jsonParsed',commitment:'confirmed'}]);
         parsed=ma?.result?.value||[];
-        ownerAggregationComplete=parsed.length>=Math.min(rows.length,10)&&parsed.slice(0,Math.min(rows.length,10)).every(Boolean);
+        ownerAggregationComplete=rows.length>=10&&parsed.length>=10&&parsed.slice(0,10).every(Boolean);
       }catch{}
       const owners=new Map();
       rows.forEach((x,i)=>{
@@ -410,8 +410,8 @@ async function security(mint){
   }catch{}
 
   let holderPolicyPassed=null,holderStrong=null;
-  if(top10==null){
-    holderGrade='UNKNOWN';flags.push('داده هولدرها نامشخص');
+  if(top10==null||topHolders.length<10){
+    holderGrade='UNKNOWN';flags.push('داده 10 هولدر بزرگ کامل نیست');
   }else if(!ownerAggregationComplete){
     holderGrade='UNKNOWN';flags.push('تجمیع مالک هولدرها ناقص؛ نتیجه قطعی نیست');
   }else{
@@ -954,7 +954,8 @@ function securityGate(t){
   else if(sec.mintDisabled!==true)cautions.push('Mint authority نامشخص');
   if(sec.freezeDisabled===false)hard.push('Freeze authority فعال');
   else if(sec.freezeDisabled!==true)cautions.push('Freeze authority نامشخص');
-  if(sec.holderPolicyPassed!==true)hard.push('قانون هولدر تأیید نشده/رد: هولدر #1 باید کمتر از 10% و هرکدام از #2 تا #10 کمتر از 5% باشند');
+  if(!Array.isArray(sec.topHolders)||sec.topHolders.length<10||sec.ownerAggregationComplete!==true)hard.push('داده 10 هولدر بزرگ کامل نیست');
+  else if(sec.holderPolicyPassed!==true||Number(sec.largestHolder||0)>=10||Number(sec.maxOtherHolder||0)>=5)hard.push('قانون هولدر رد: #1 <10% و هرکدام از #2 تا #10 <5%');
   if(sec.tokenExtensions?.hardFail)hard.push('Token-2022 extension پرریسک شناسایی شد');
   else if(sec.tokenExtensions?.warnings?.length)cautions.push(...sec.tokenExtensions.warnings);
   if(act.label==='BOT RISK')hard.push('ریسک ربات/Wash');
@@ -2060,7 +2061,7 @@ html,body,.shell,.panel,.list{overflow-anchor:none}
 <label>امنیت<select class="signal-filter" data-filter="security"><option value="">همه</option><option value="MAX SECURITY">خیلی بالا</option><option value="HIGH">بالا</option><option value="REVIEW">نیاز به بررسی</option><option value="REJECT">رد</option></select></label>
 <label>هولدر ردیابی‌شده ۱۰۰۰$+<select class="signal-filter" data-filter="holders"><option value="">همه</option><option value="1">حداقل ۱ هولدر</option><option value="2">حداقل ۲ هولدر</option><option value="3">حداقل ۳ هولدر</option></select></label>
 <label>خریدار ۵۰۰$+ بیشتر از فروشنده (فقط فیلتر نمایش)<select class="signal-filter" data-filter="bigbuyers"><option value="">همه</option><option value="yes">فقط خریدار غالب</option></select></label>
-</div><p class="muted" style="font-size:11px">قانون اجباری هولدر برای همه توکن‌ها: هولدر #1 باید کمتر از 10% باشد و هرکدام از هولدرهای #2 تا #10 باید کمتر از 5% باشند. اگر داده هولدر کامل نباشد یا این شرط رد شود، توکن سیگنال ورود نمی‌گیرد. رتبه هر گروه با مدل امتیاز مخصوص همان سن محاسبه می‌شود. فیلترها فقط کیف‌پول‌های تحت ردیابی و تراکنش‌های قابل‌تشخیص ۴۸ ساعت اخیر را بررسی می‌کنند. هولدر ۱۰۰۰$+: خرید حداقل ۱۰۰۰ دلار، فروش کمتر از خرید و موجودی فعلی مثبت. خریدار ۵۰۰$+: خرید تجمعی حداقل ۵۰۰ دلار و خرید بیشتر از فروش همان کیف‌پول؛ تعدادشان باید از کیف‌پول‌های فروشنده خالص بیشتر باشد.</p></div>
+</div><p class="muted" style="font-size:11px">قانون اجباری هولدر: هولدر #1 باید کمتر از 10% باشد و تک‌تک هولدرهای #2 تا #10 کمتر از 5%. برای سیگنال ورود امن، هر 10 هولدر باید با مالک تجمیع‌شده قابل بررسی باشند؛ Mint/Freeze، Sellability، RugCheck، LP Lock/Burn، Dev/Insider و Token-2022 نیز باید بدون رد یا داده نامشخص بحرانی باشند.</p></div>
   </details>
   <details class="accordion" open>
     <summary>⚡ توکن‌های تازه و ترند — کمتر از ۲۴ ساعت</summary>
@@ -2366,56 +2367,102 @@ function entryQualityGate(t){
   };
 }
 
+function antiRugGate(t){
+  if(!t)return {ok:false,reasons:['توکن نامشخص']};
+  var sec=t.security||{},ac=t.academy||{},reasons=[];
+
+  var holdersComplete=Array.isArray(sec.topHolders)&&sec.topHolders.length>=10&&sec.ownerAggregationComplete===true;
+  var holderOk=holdersComplete&&sec.holderPolicyPassed===true&&
+    Number(sec.largestHolder||0)<10&&Number(sec.maxOtherHolder||0)<5;
+  if(!holdersComplete)reasons.push('داده 10 هولدر بزرگ کامل نیست');
+  else if(!holderOk)reasons.push('قانون هولدر رد شده');
+
+  if(sec.mintDisabled!==true)reasons.push('Mint authority باید لغو شده باشد');
+  if(sec.freezeDisabled!==true)reasons.push('Freeze authority باید غیرفعال باشد');
+  if(sec.tokenExtensions?.hardFail===true)reasons.push('Token-2022 پرریسک');
+  if(Number(t.liquidity||0)<10000)reasons.push('نقدینگی کمتر از 10k');
+
+  var criticalNames=[
+    'Liquidity Lock/Burn خودکار',
+    'Dev holding خودکار',
+    'Bundle/Sniper/Insider خودکار',
+    'Sellability / Honeypot خودکار',
+    'RugCheck ریسک کلی',
+    'Token-2022 extensionهای پرریسک',
+    'سابقه سازنده / Rug history'
+  ];
+  var checks=Array.isArray(ac.checks)?ac.checks:[];
+  var critical=criticalNames.map(function(name){
+    return checks.find(function(x){return x.name===name})||{name:name,state:'unknown'};
+  });
+
+  var criticalFail=critical.filter(function(x){return x.state==='fail'}).map(function(x){return x.name});
+  var criticalUnknown=critical.filter(function(x){return x.state==='unknown'}).map(function(x){return x.name});
+  if(criticalFail.length)reasons.push('رد امنیتی: '+criticalFail.slice(0,2).join('، '));
+  if(criticalUnknown.length)reasons.push('امنیت کامل نشده: '+criticalUnknown.slice(0,2).join('، '));
+
+  if(t.activity?.label==='BOT RISK')reasons.push('ریسک Bot/Wash');
+  if(t.chart?.pumpDumpRisk==='HIGH')reasons.push('ریسک Pump/Dump بالا');
+
+  var ok=
+    holderOk&&
+    sec.mintDisabled===true&&
+    sec.freezeDisabled===true&&
+    sec.tokenExtensions?.hardFail!==true&&
+    Number(t.liquidity||0)>=10000&&
+    criticalFail.length===0&&
+    criticalUnknown.length===0&&
+    t.activity?.label!=='BOT RISK'&&
+    t.chart?.pumpDumpRisk!=='HIGH'&&
+    ac.blocked!==true;
+
+  return {ok,reasons,holderOk,holdersComplete,criticalFail,criticalUnknown};
+}
+
 function tradePlan(t){
-  if(!t)return {status:'WAIT',entry:null,entryLow:null,entryHigh:null,exit:null,reason:'داده کافی نیست'};
-  var sec=t.security||{},fl=t.flow||{},q=entryQualityGate(t);
+  if(!t)return {status:'WAIT',entry:null,entryLow:null,entryHigh:null,stopLoss:null,takeProfit1:null,takeProfit2:null,takeProfit3:null,reason:'داده کافی نیست'};
+
+  var sec=t.security||{},fl=t.flow||{},q=entryQualityGate(t),safe=antiRugGate(t);
   var ws=whaleSellsFor(t.mint),ex=exitFor(t.mint);
   var p=Number(t.priceUsd||0);
   var buyerPower=Number(fl.buyerPower||0);
   var sellerPower=Math.max(0,100-buyerPower);
+
+  // Dynamic risk: tighter for MAX SECURITY + deeper liquidity.
   var riskPct=(sec.tier==='MAX SECURITY'&&Number(t.liquidity||0)>=25000)?0.055:0.07;
-  var invalidation=p>0?p*(1-riskPct):null;
+  var stopLoss=p>0?p*(1-riskPct):null;
+  var takeProfit1=p>0?p*(1+riskPct):null;      // 1R
+  var takeProfit2=p>0?p*(1+riskPct*2):null;    // 2R
+  var takeProfit3=p>0?p*(1+riskPct*3):null;    // 3R
   var entryLow=p>0?p*0.99:null,entryHigh=p>0?p*1.01:null;
 
-  // Block only on explicit, confirmed critical risks.
-  var holderKnown=Array.isArray(sec.topHolders)&&sec.topHolders.length>=5;
-  var holderViolation=holderKnown&&(
-    sec.holderPolicyPassed===false||
-    Number(sec.largestHolder||0)>=10||
-    Number(sec.maxOtherHolder||0)>=5
-  );
-  var criticalSecurity=
-    sec.mintDisabled===false||
-    sec.freezeDisabled===false||
-    holderViolation||
-    sec.tokenExtensions?.hardFail===true||
-    t.chart?.pumpDumpRisk==='HIGH'||
-    (Number(t.liquidity||0)>0&&Number(t.liquidity||0)<3000);
-
-  // A single sell event should not kill all entries. Only heavy/multiple live exits block.
   var heavyLiveExit=(ws.count>=2||Number(ws.usd||0)>=10000||ex.length>=2);
 
-  if(criticalSecurity||heavyLiveExit){
+  if(!safe.ok||heavyLiveExit){
     return {
-      status:'EXIT',entry:null,entryLow:null,entryHigh:null,exit:invalidation,
-      reason:criticalSecurity?'ریسک امنیتی/هولدر قطعی فعال است':'فشار خروج زنده سنگین ثبت شده',
-      riskPct:riskPct*100,buyerPower,sellerPower,quality:q
+      status:'EXIT',entry:null,entryLow:null,entryHigh:null,
+      stopLoss,takeProfit1,takeProfit2,takeProfit3,
+      reason:!safe.ok?'رد امنیتی/ضد Rug: '+safe.reasons.slice(0,3).join(' • '):'فشار خروج زنده سنگین ثبت شده',
+      riskPct:riskPct*100,buyerPower,sellerPower,quality:q,safety:safe
     };
   }
 
   if(!p){
     return {
-      status:'WAIT',entry:null,entryLow:null,entryHigh:null,exit:null,
-      reason:'قیمت معتبر هنوز دریافت نشده',riskPct:riskPct*100,buyerPower,sellerPower,quality:q
+      status:'WAIT',entry:null,entryLow:null,entryHigh:null,
+      stopLoss:null,takeProfit1:null,takeProfit2:null,takeProfit3:null,
+      reason:'قیمت معتبر هنوز دریافت نشده',
+      riskPct:riskPct*100,buyerPower,sellerPower,quality:q,safety:safe
     };
   }
 
   if(!q.ok){
     return {
       status:buyerPower<sellerPower?'EXIT':'WAIT',
-      entry:null,entryLow:null,entryHigh:null,exit:invalidation,
+      entry:null,entryLow:null,entryHigh:null,
+      stopLoss,takeProfit1,takeProfit2,takeProfit3,
       reason:q.reasons.slice(0,3).join(' • ')||'در انتظار برتری خریدار',
-      riskPct:riskPct*100,buyerPower,sellerPower,quality:q
+      riskPct:riskPct*100,buyerPower,sellerPower,quality:q,safety:safe
     };
   }
 
@@ -2425,26 +2472,26 @@ function tradePlan(t){
   else if(buyerPower>=55&&(q.buyer100Ok||momScore>=55))confidence='MEDIUM';
 
   return {
-    status:'ENTRY',
-    confidence,
-    entry:p,entryLow,entryHigh,exit:invalidation,
-    reason:'قدرت خریدار '+buyerPower+'% در برابر فروشنده '+sellerPower+'%'+
-      (q.buyer100Ok?' · '+q.buyers100Count+' خریدار 100$+':' · داده خریدار 100$+ کامل نیست')+
-      ' · مومنتوم '+Number(q.momentum?.passed||0)+'/'+Number(q.momentum?.total||0),
-    riskPct:riskPct*100,buyerPower,sellerPower,edge:buyerPower-sellerPower,quality:q
+    status:'ENTRY',confidence,
+    entry:p,entryLow,entryHigh,
+    stopLoss,takeProfit1,takeProfit2,takeProfit3,
+    reason:'امنیت ضد Rug پاس · هولدر #1 زیر 10% · هولدرهای #2 تا #10 هرکدام زیر 5% · قدرت خریدار '+buyerPower+'% در برابر فروشنده '+sellerPower+'%',
+    riskPct:riskPct*100,buyerPower,sellerPower,edge:buyerPower-sellerPower,quality:q,safety:safe
   };
 }
 function tradePlanChips(t){
   var p=tradePlan(t);
   if(p.status==='ENTRY'){
     var zone=(p.entryLow&&p.entryHigh)?fmtPrice(p.entryLow)+' تا '+fmtPrice(p.entryHigh):fmtPrice(p.entry);
-    var label=p.confidence==='HIGH'?'🟢 نقطه ورود قوی':p.confidence==='MEDIUM'?'🟢 نقطه ورود فعال':'🟡 ورود زودهنگام';
+    var label=p.confidence==='HIGH'?'🟢 ورود قوی':p.confidence==='MEDIUM'?'🟢 ورود فعال':'🟡 ورود زودهنگام';
     return '<span class="entry-chip entry-ready">'+label+' · '+zone+'</span>'+
-      (p.quality&&p.quality.momentum?'<span class="entry-chip entry-ready">📊 مومنتوم '+Number(p.quality.momentum.passed||0)+'/'+Number(p.quality.momentum.total||0)+'</span>':'')+
-      '<span class="entry-chip entry-exit">🛑 خروج/ابطال · '+fmtPrice(p.exit)+'</span>';
+      '<span class="entry-chip entry-exit">🛑 حد ضرر · '+fmtPrice(p.stopLoss)+'</span>'+
+      '<span class="entry-chip entry-ready">🎯 سود 1 · '+fmtPrice(p.takeProfit1)+'</span>'+
+      '<span class="entry-chip entry-ready">🎯 سود 2 · '+fmtPrice(p.takeProfit2)+'</span>'+
+      '<span class="entry-chip entry-ready">🚀 سود 3 · '+fmtPrice(p.takeProfit3)+'</span>';
   }
-  if(p.status==='EXIT')return '<span class="entry-chip entry-exit">🔴 خروج / ورود نکن'+(p.exit?' · '+fmtPrice(p.exit):'')+'</span>';
-  return '<span class="entry-chip entry-wait">⏳ '+esc(p.reason||'در انتظار تأیید')+'</span>'+(p.exit?'<span class="entry-chip entry-exit">حد ابطال مرجع · '+fmtPrice(p.exit)+'</span>':'');
+  if(p.status==='EXIT')return '<span class="entry-chip entry-exit">🔴 ورود نکن / خروج'+(p.stopLoss?' · مرجع '+fmtPrice(p.stopLoss):'')+'</span>';
+  return '<span class="entry-chip entry-wait">⏳ '+esc(p.reason||'در انتظار تأیید')+'</span>';
 }
 
 
@@ -2507,6 +2554,7 @@ function highestSecurityTrendOk(t){
     t.security?.mintDisabled===true&&t.security?.freezeDisabled===true&&
     t.security?.holderPolicyPassed===true&&
     t.security?.tokenExtensions?.hardFail!==true&&
+    antiRugGate(t).ok===true&&
     siteTrendSources(t).length>=1;
 }
 
@@ -3000,7 +3048,7 @@ function openDetail(m){
   if(tr)h+='<div class="note"><b>کیف‌پول‌های برتر:</b> '+Number(tr.uniqueBuyers||0)+' خریدار، '+Number(tr.uniqueSellers||0)+' فروشنده، جریان خالص '+money(tr.netFlowUsd)+'، هولدینگ '+money(tr.currentHoldingUsd)+'</div>';
   if(t&&isTrendingToken(t)&&wh.count)h+='<div class="note"><span class="pass"><b>🐋 ترند + خرید نهنگ:</b></span> '+wh.count+' خرید نهنگ با مجموع '+money(wh.usd)+'</div>';
   if(t&&socialTrendBadges(t))h+='<div class="note"><b>📣 شبکه‌های ترند تأییدشده:</b><div>'+socialTrendBadges(t)+'</div></div>';
-  if(t){var tp=tradePlan(t);h+='<div class="note"><b>🎯 برنامه ورود/خروج:</b> '+tradePlanChips(t)+'<div style="margin-top:5px">'+esc(tp.reason||'')+(tp.riskPct?' · فاصله ابطال تقریبی '+Number(tp.riskPct).toFixed(1)+'%':'')+'</div><div class="muted" style="margin-top:4px">قیمت‌ها مرجع مدیریت ریسک‌اند، نه تضمین اجرا یا سود.</div></div>';}
+  if(t){var tp=tradePlan(t);h+='<div class="note"><b>🎯 برنامه ورود/خروج:</b> '+tradePlanChips(t)+'<div style="margin-top:5px">'+esc(tp.reason||'')+(tp.riskPct?' · فاصله ابطال تقریبی '+Number(tp.riskPct).toFixed(1)+'%':'')+'</div><div class="muted" style="margin-top:4px">Entry / Stop Loss / Take Profit سطوح مدیریت ریسک‌اند و تضمین اجرا، سود یا نبود کلاهبرداری نیستند.</div></div>';}
   if(t){var tg=trustGuard(t),hb=t.holderBehavior||{};h+='<div class="note"><b>🛡 Trust Guard:</b> <span class="'+trustClass(t)+'">'+esc(trustLabel(t))+'</span> · snapshot هولدر '+Number(hb.snapshots||0)+' · خروج هولدر '+Number(hb.outflowPct||0).toFixed(2)+'% · نسبت Sell/Buy '+Number(hb.sellBuyRatio||0).toFixed(2)+(tg.reasons&&tg.reasons.length?' · '+esc(tg.reasons.join(' • ')):'')+'</div>';}
   if(t&&t.kolTrend){var k=t.kolTrend;h+='<details class="accordion" open><summary>👑 شواهد KOL</summary><div class="accordion-body"><div class="note"><b>KOLها:</b> '+esc((k.kolNames||[]).join('، ')||'—')+' · معامله اخیر '+Number(k.recentCount||0)+' · هولد '+Number(k.holdingCount||0)+' · اشاره X '+Number(k.xMentionCount||0)+'</div>'+(k.evidence||[]).slice(0,8).map(function(e){return '<div class="check"><span>'+esc(e.kol||'KOL')+' · '+esc(e.type||'')+'</span><span class="manual">'+esc(e.label||'')+'</span></div>'}).join('')+'</div></details>';}
   if(tr){var bf=largeBuyerFlow(t);h+='<div class="note"><b>خریدارهای ردیابی‌شده ۵۰۰$+:</b> '+bf.buyers+' کیف‌پول ('+money(bf.buyerUsd)+') · <b>فروشنده خالص:</b> '+bf.sellers+' کیف‌پول ('+money(bf.sellerUsd)+') · '+(bf.dominant?'<span class="pass">✓ خریدارها بیشترند</span>':'<span class="manual">خریدارها بیشتر نیستند</span>')+'</div>';}
