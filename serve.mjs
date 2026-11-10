@@ -2165,7 +2165,9 @@ html,body,.shell,.panel,.list{overflow-anchor:none}
         <div class="kpi"><small>مدل</small><b style="font-size:12px">Evidence only</b></div>
       </div>
       <div class="note">قبل از لانچ، هولدر/Mint/Freeze قابل تأیید کامل نیست. امتیاز از ترند اجتماعی، تیم، Audit/Multisig، Vesting/Tokenomics، پشتیبان‌ها و شفافیت TGE ساخته می‌شود.</div>
-      <div class="list" id="prelaunchList"></div>
+      <details class="accordion highlight" open><summary>🛡️ پیش‌لانچ با امنیت بالا</summary><div class="accordion-body"><div class="list" id="prelaunchHighList"></div></div></details>
+<details class="accordion" open><summary>⚖️ پیش‌لانچ با امنیت متوسط</summary><div class="accordion-body"><div class="list" id="prelaunchMediumList"></div></div></details>
+<details class="accordion"><summary>⚠️ پیش‌لانچ با امنیت بسیار کم</summary><div class="accordion-body"><div class="list" id="prelaunchLowList"></div></div></details>
       <details class="accordion" open>
         <summary>🧭 منابع کشف و بررسی از راهنمای فایل</summary>
         <div class="accordion-body">
@@ -2243,17 +2245,17 @@ html,body,.shell,.panel,.list{overflow-anchor:none}
 <label>خریدار ۵۰۰$+ بیشتر از فروشنده (فقط فیلتر نمایش)<select class="signal-filter" data-filter="bigbuyers"><option value="">همه</option><option value="yes">فقط خریدار غالب</option></select></label>
 </div><p class="muted" style="font-size:11px">قانون اجباری هولدر: هولدر #1 باید کمتر از 10% باشد و تک‌تک هولدرهای #2 تا #10 کمتر از 5%. برای سیگنال ورود امن، هر 10 هولدر باید با مالک تجمیع‌شده قابل بررسی باشند؛ Mint/Freeze، Sellability، RugCheck، LP Lock/Burn، Dev/Insider و Token-2022 نیز باید بدون رد یا داده نامشخص بحرانی باشند.</p></div>
   </details>
-  <details class="accordion" open>
-    <summary>⚡ توکن‌های تازه و ترند — کمتر از ۲۴ ساعت</summary>
-    <div class="accordion-body"><div id="freshBest"></div><div class="list" id="freshTokenList"></div></div>
+  <details class="accordion highlight" open>
+    <summary>🛡️ توکن‌های با امنیت بالا</summary>
+    <div class="accordion-body"><p class="muted" style="font-size:11px">MAX SECURITY + عبور کامل از Anti-Rug و بدون بلاک امنیتی.</p><div class="list" id="highSecurityTokenList"></div></div>
   </details>
   <details class="accordion" open>
-    <summary>🌱 توکن‌های ۱ تا ۷ روزه</summary>
-    <div class="accordion-body"><div id="dayBest"></div><div class="list" id="dayTokenList"></div></div>
+    <summary>⚖️ توکن‌های با امنیت متوسط</summary>
+    <div class="accordion-body"><p class="muted" style="font-size:11px">توکن‌های HIGH/REVIEW بدون رد امنیتی قطعی؛ بعضی شواهد هنوز کامل نیست.</p><div class="list" id="mediumSecurityTokenList"></div></div>
   </details>
-  <details class="accordion" open>
-    <summary>🧱 توکن‌های ۷ روزه به بالا</summary>
-    <div class="accordion-body"><div id="weekBest"></div><div class="list" id="weekTokenList"></div><div class="note">دامنه کشف فعلی رادار تا حدود ۳۰ روز است؛ اگر منابع کشف، توکن قدیمی‌تر را برنگردانند در این بخش ظاهر نمی‌شود.</div></div>
+  <details class="accordion">
+    <summary>⚠️ توکن‌های با امنیت بسیار کم</summary>
+    <div class="accordion-body"><p class="muted" style="font-size:11px">توکن‌های دارای رد امنیتی، ریسک Rug/Bot/Wash، هولدر نامناسب یا شواهد بحرانی ناقص.</p><div class="list" id="lowSecurityTokenList"></div></div>
   </details>
 </section>
 
@@ -3032,26 +3034,33 @@ function prelaunchStateLabel(v){
 function prelaunchStateClass(v){
   return v==='pass'?'good':v==='fail'?'bad':v==='planned'?'mid':'blue';
 }
+function prelaunchSecurityBucket(x){
+  if(!x)return 'low';
+  if(x.fullVerified===true&&Number(x.score||0)>=80&&x.risk==='VERIFIED')return 'high';
+  if((Number(x.corePassed||0)>=2&&x.risk!=='HIGH')||Number(x.score||0)>=55)return 'medium';
+  return 'low';
+}
+function prelaunchSecurityBucketLabel(v){return v==='high'?'امنیت بالا':v==='medium'?'امنیت متوسط':'امنیت بسیار کم'}
+function prelaunchSecurityBucketClass(v){return v==='high'?'good':v==='medium'?'mid':'bad'}
+
 function renderPrelaunch(){
   var rows=prelaunch&&Array.isArray(prelaunch.projects)?prelaunch.projects:[];
   var status=document.getElementById('prelaunchStatus');
   var k=document.getElementById('kPrelaunch'),ks=document.getElementById('kPrelaunchStrong'),ksec=document.getElementById('kPrelaunchSecurity');
+  var high=rows.filter(function(x){return prelaunchSecurityBucket(x)==='high'});
+  var medium=rows.filter(function(x){return prelaunchSecurityBucket(x)==='medium'});
+  var low=rows.filter(function(x){return prelaunchSecurityBucket(x)==='low'});
   if(k)k.textContent=rows.length;
-  if(ks)ks.textContent=rows.filter(function(x){return x.fullVerified===true}).length;
+  if(ks)ks.textContent=high.length;
   if(ksec)ksec.textContent=rows.filter(function(x){return Number(x.corePassed||0)>=2}).length;
+  if(status)status.textContent=rows.length?'پروژه‌های پیش‌لانچ در سه سطح امنیتی دسته‌بندی شده‌اند.':'فعلاً کاندید قابل‌تأیید پیدا نشده.';
 
-  if(status)status.textContent=rows.length
-    ?'پروژه‌ها با مدل فایل غربال می‌شوند: KYC معتبر + Audit مستقل + LP Lock قابل‌اثبات سه شرط اصلی‌اند.'
-    :(prelaunch&&prelaunch.sourceError?'منبع عمومی موقتاً در دسترس نیست؛ feed تأییدشده قابل استفاده است.':'فعلاً کاندید قابل‌تأیید پیدا نشده.');
-
-  var el=document.getElementById('prelaunchList');if(!el)return;
-  el.innerHTML=rows.length?rows.map(function(x,i){
-    var grade=String(x.grade||'WATCH'),cls=x.fullVerified?'good':x.risk==='HIGH'?'bad':grade==='B'?'mid':'blue';
+  function rowHtml(x,i,bucket){
+    var cls=prelaunchSecurityBucketClass(bucket);
     var evidence=[...(x.socialEvidence||[]),...(x.teamEvidence||[]),...(x.securityEvidence||[]),...(x.backingEvidence||[]),...(x.launchEvidence||[])].slice(0,6);
     var core=x.fullVerified?'✅ سه شرط اصلی تأیید':'⚠ '+Number(x.corePassed||0)+'/3 شرط اصلی تأیید';
-    return '<div class="row"><div class="asset"><b>#'+(i+1)+' 🚀 '+esc(x.name||'?')+(x.symbol?' · '+esc(x.symbol):'')+'</b>'+
-      '<span class="badge '+cls+'">Pre-Launch '+grade+' · '+Number(x.score||0)+'/100</span>'+
-      '<span class="badge '+(x.fullVerified?'good':'mid')+'">'+core+'</span>'+
+    return '<div class="row"><div class="asset"><span class="badge '+cls+'">'+prelaunchSecurityBucketLabel(bucket)+'</span><b>#'+(i+1)+' 🚀 '+esc(x.name||'?')+(x.symbol?' · '+esc(x.symbol):'')+'</b>'+
+      '<span class="badge '+cls+'">'+Number(x.score||0)+'/100</span><span class="badge '+(x.fullVerified?'good':'mid')+'">'+core+'</span>'+
       '<small>'+esc(x.ecosystem||'Solana')+' · '+esc(x.source||'')+(x.launchpad?' · '+esc(x.launchpad):'')+(x.tge?' · TGE '+esc(x.tge):'')+'</small>'+
       (evidence.length?'<small>'+esc(evidence.join(' • '))+'</small>':'<small>شواهد کافی هنوز جمع نشده.</small>')+
       '</div>'+
@@ -3060,11 +3069,12 @@ function renderPrelaunch(){
       '<div class="cell"><small>LP Lock</small><b><span class="badge '+prelaunchStateClass(x.lpLockState)+'">'+prelaunchStateLabel(x.lpLockState)+'</span></b></div>'+
       '<div class="cell hide-sm"><small>Tokenomics</small><b><span class="badge '+prelaunchStateClass(x.tokenomicsState)+'">'+prelaunchStateLabel(x.tokenomicsState)+'</span></b></div>'+
       '<div class="cell hide-md"><small>Social / Team</small><b>'+Number(x.scoreBreakdown?.social||0)+' / '+Number(x.scoreBreakdown?.team||0)+'</b></div>'+
-      '<div class="actions">'+
-        (x.sourceUrl?'<a class="action" target="_blank" rel="noopener" href="'+esc(x.sourceUrl)+'">منبع ↗</a>':'')+
-        (x.lpLockProofUrl?'<a class="action" target="_blank" rel="noopener" href="'+esc(x.lpLockProofUrl)+'">اثبات LP</a>':'')+
-      '</div></div>';
-  }).join(''):'<div class="empty">فعلاً پروژه پیش‌لانچ با شواهد کافی پیدا نشده؛ وجود در فهرست Presale به‌تنهایی امنیت را ثابت نمی‌کند.</div>';
+      '<div class="actions">'+(x.sourceUrl?'<a class="action" target="_blank" rel="noopener" href="'+esc(x.sourceUrl)+'">منبع ↗</a>':'')+(x.lpLockProofUrl?'<a class="action" target="_blank" rel="noopener" href="'+esc(x.lpLockProofUrl)+'">اثبات LP</a>':'')+'</div></div>';
+  }
+
+  var h=document.getElementById('prelaunchHighList');if(h)h.innerHTML=high.length?high.map(function(x,i){return rowHtml(x,i,'high')}).join(''):'<div class="empty">فعلاً پروژه پیش‌لانچ با امنیت بالا پیدا نشده.</div>';
+  var m=document.getElementById('prelaunchMediumList');if(m)m.innerHTML=medium.length?medium.map(function(x,i){return rowHtml(x,i,'medium')}).join(''):'<div class="empty">فعلاً پروژه‌ای در امنیت متوسط نیست.</div>';
+  var l=document.getElementById('prelaunchLowList');if(l)l.innerHTML=low.length?low.map(function(x,i){return rowHtml(x,i,'low')}).join(''):'<div class="empty">فعلاً پروژه‌ای در امنیت بسیار کم نیست.</div>';
 }
 
 function renderSmart(){
@@ -3230,27 +3240,40 @@ function renderKolTrends(){
   }).join(''):'<div class="empty">فعلاً توکن KOL که همزمان امنیت HIGH/MAX را پاس کند پیدا نشده.</div>';
 }
 
+function tokenSecurityBucket(t){
+  if(!t)return 'low';
+  var sec=t.security||{},gate=t.securityGate||securityGate(t),rug=antiRugGate(t);
+  if(sec.tier==='MAX SECURITY'&&rug.ok===true&&!gate.blocked)return 'high';
+  if((sec.tier==='HIGH'||sec.tier==='REVIEW')&&!gate.blocked&&sec.holderPolicyPassed!==false&&sec.mintDisabled!==false&&sec.freezeDisabled!==false)return 'medium';
+  return 'low';
+}
+function tokenSecurityBucketLabel(v){return v==='high'?'امنیت بالا':v==='medium'?'امنیت متوسط':'امنیت بسیار کم'}
+function tokenSecurityBucketClass(v){return v==='high'?'good':v==='medium'?'mid':'bad'}
+
 function renderTokens(){
   var r=filteredTokens();
-  function tokenSort(bucket){
-    return function(a,b){
-      var sa=a.security?.tier==='MAX SECURITY'?3:a.security?.tier==='HIGH'?2:a.security?.tier==='REVIEW'?1:0;
-      var sb=b.security?.tier==='MAX SECURITY'?3:b.security?.tier==='HIGH'?2:b.security?.tier==='REVIEW'?1:0;
-      return (sb-sa)||
-        (siteTrendScore(b)-siteTrendScore(a))||
-        (bucketScore(b,bucket)-bucketScore(a,bucket));
-    };
+  function sortRows(a,b){
+    return (siteTrendScore(b)-siteTrendScore(a))||
+      (tokenStrength(b)-tokenStrength(a))||
+      (Number(b.flow?.buyerPower||0)-Number(a.flow?.buyerPower||0));
   }
-  var fresh=r.filter(function(t){return ageBucket(t)==='fresh'}).sort(tokenSort('fresh'));
-  var day=r.filter(function(t){return ageBucket(t)==='day'}).sort(tokenSort('day'));
-  var week=r.filter(function(t){return ageBucket(t)==='week'}).sort(tokenSort('week'));
-  renderBucketBest('freshBest',fresh,'fresh','تازه و ترند');
-  renderBucketBest('dayBest',day,'day','۱ تا ۷ روزه');
-  renderBucketBest('weekBest',week,'week','۷ روزه+');
-  document.getElementById('freshTokenList').innerHTML=fresh.length?fresh.map(function(t){return tokenRow(t,'fresh')}).join(''):'';
-  document.getElementById('dayTokenList').innerHTML=day.length?day.map(function(t){return tokenRow(t,'day')}).join(''):'';
-  document.getElementById('weekTokenList').innerHTML=week.length?week.map(function(t){return tokenRow(t,'week')}).join(''):'';
+  var high=r.filter(function(t){return tokenSecurityBucket(t)==='high'}).sort(sortRows);
+  var medium=r.filter(function(t){return tokenSecurityBucket(t)==='medium'}).sort(sortRows);
+  var low=r.filter(function(t){return tokenSecurityBucket(t)==='low'}).sort(sortRows);
+
+  function rowsHtml(rows,bucket){
+    return rows.length?rows.slice(0,30).map(function(t){
+      var row=tokenRow(t,ageBucket(t));
+      var badge='<span class="badge '+tokenSecurityBucketClass(bucket)+'">'+tokenSecurityBucketLabel(bucket)+'</span>';
+      return row.replace('<div class="asset"><b>','<div class="asset">'+badge+'<b>');
+    }).join(''):'<div class="empty">موردی در این سطح امنیت پیدا نشده.</div>';
+  }
+
+  var h=document.getElementById('highSecurityTokenList');if(h)h.innerHTML=rowsHtml(high,'high');
+  var m=document.getElementById('mediumSecurityTokenList');if(m)m.innerHTML=rowsHtml(medium,'medium');
+  var l=document.getElementById('lowSecurityTokenList');if(l)l.innerHTML=rowsHtml(low,'low');
 }
+
 function renderAlerts(){
   var c=live&&live.exitClusters?live.exitClusters.filter(function(x){return x.severity==='MULTI-WALLET EXIT'}).slice(0,3):[];
   document.getElementById('kExits').textContent=c.length;document.getElementById('alerts').innerHTML=c.map(function(x){return '<div class="alert">🚨 خروج همزمان چند کیف‌پول از <b>'+esc(x.token||short(x.tokenAddress))+'</b> · '+Number(x.uniqueSellers||0)+' فروشنده</div>'}).join('');
