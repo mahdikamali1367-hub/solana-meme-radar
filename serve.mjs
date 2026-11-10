@@ -2286,15 +2286,16 @@ function parseTrackedWalletTx(tx,wallet,solPrice){
 }
 async function walletTokenBalances(wallet){
   const out=new Map();
+  // Never turn an RPC error into an empty wallet. An incomplete scan could
+  // otherwise be mistaken for a sell-out, then for a new buy on recovery.
   for(const programId of [SPL_TOKEN_PROGRAM,TOKEN_2022_PROGRAM]){
-    try{
-      const d=await rpc('getTokenAccountsByOwner',[wallet,{programId},{encoding:'jsonParsed',commitment:'confirmed'}]);
-      for(const x of (d?.result?.value||[])){
-        const info=x?.account?.data?.parsed?.info;
-        const mint=info?.mint,amt=num(info?.tokenAmount?.uiAmountString??info?.tokenAmount?.uiAmount);
-        if(mint&&amt>0)out.set(mint,(out.get(mint)||0)+amt);
-      }
-    }catch{}
+    const d=await rpc('getTokenAccountsByOwner',[wallet,{programId},{encoding:'jsonParsed',commitment:'confirmed'}]);
+    if(d?.error||!Array.isArray(d?.result?.value))throw new Error('incomplete wallet balance RPC response');
+    for(const x of d.result.value){
+      const info=x?.account?.data?.parsed?.info;
+      const mint=info?.mint,amt=num(info?.tokenAmount?.uiAmountString??info?.tokenAmount?.uiAmount);
+      if(mint&&amt>0)out.set(mint,(out.get(mint)||0)+amt);
+    }
   }
   return out;
 }
@@ -2323,7 +2324,8 @@ async function buildUserTopTraderIntel(){
 
   const mintAgg=new Map();
   for(const row of scans){
-    for(const [mint,amount] of row.balances.entries()){
+    if(!row.rpcOk)continue;
+    for(const [mint,amount] of row.balances.entries(){
       if(!mint||amount<=0||STABLE_MINTS.has(mint)||mint===WSOL_MINT)continue;
       const a=mintAgg.get(mint)||{mint,holders:[],holderCount:0,totalAmount:0};
       a.holders.push({name:row.w.name,address:row.w.address,amount});
@@ -2355,6 +2357,7 @@ async function buildUserTopTraderIntel(){
   // first scan are not mislabeled as buys. Future increases are tracked as accumulation.
   const changedWallets=[];
   for(const row of scans){
+    if(!row.rpcOk)continue;
     const prev=topTraderPreviousBalances.get(row.w.address);
     const changes=[];
     for(const [mint,amount] of row.balances.entries()){
@@ -2483,7 +2486,9 @@ async function buildUserTopTraderIntel(){
   const best=recommendations.find(x=>x.safe)||null;
   const data={
     ok:true,generatedAt:new Date().toISOString(),refreshSeconds:12,
-    walletCount:USER_TOP_TRADERS.length,wallets:walletRows,
+    walletCount:USER_TOP_TRADERS.length,scannedWalletCount:scans.filter(x=>x.rpcOk).length,
+    failedWalletCount:scans.filter(x=>!x.rpcOk).length,partialData:scans.some(x=>!x.rpcOk),
+    wallets:walletRows,
     sharedHoldings:sharedHoldings.slice(0,30),
     recommendations,best,
     recentBuys:topTraderBuyEvents.slice(0,80),
@@ -5503,7 +5508,7 @@ loadAll();startLivePush();marketLiveTimer=setInterval(pollMarketLive,1000);setTi
 createServer(async(req,res)=>{
   const url=new URL(req.url,'http://localhost');
   try{
-    if(url.pathname==='/api/health'){res.writeHead(200,{'content-type':'application/json',...headers});return res.end(JSON.stringify({ok:true,time:new Date().toISOString()}))}
+    if(url.pathname==='/api/health'){res.writeHead(200,{'content-type':'application/json','cache-control':'no-store',...headers});return res.end(JSON.stringify({ok:true,time:new Date().toISOString(),version:'b41bd2e+rpc-safety',uptimeSeconds:Math.floor(process.uptime()),marketCacheAgeMs:marketLiveCache.at?Date.now()-marketLiveCache.at:null,radarCacheAgeMs:cache.at?Date.now()-cache.at:null}))}
     if(url.pathname==='/api/v1/force-refresh'){
       cache={at:0,data:null};marketLiveCache={at:0,data:null};exactDexPriceCache.clear();contractPriceCache.clear();prelaunchCache={at:0,data:null};pumpTraderIntelCache={at:0,data:null};solidProofIntelCache={at:0,data:null};trackedWalletCache={at:0,data:null};topTraderIntelCache={at:0,data:null};smartMoneyCache={at:0,data:null};convictionCache={at:0,data:null};
       res.writeHead(200,{'content-type':'application/json; charset=utf-8','cache-control':'no-store',...headers});
