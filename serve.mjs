@@ -2192,6 +2192,15 @@ html,body,.shell,.panel,.list{overflow-anchor:none}
 </details>
 
   <details class="accordion highlight" open>
+    <summary>💰 سود/ضرر از زمان معرفی رادار</summary>
+    <div class="accordion-body">
+      <p class="muted" style="font-size:11px">قیمت اولین لحظه‌ای که رادار توکن را به‌عنوان پیشنهاد ثبت کرده ثابت نگه داشته می‌شود؛ درصد زیر از همان قیمت تا قیمت فعلی محاسبه می‌شود.</p>
+      <div id="recommendationPerformanceSummary"></div>
+      <div class="list" id="recommendationPerformanceList"></div>
+    </div>
+  </details>
+
+  <details class="accordion highlight" open>
     <summary>📈 بازده واقعی ۲۴ساعته سیگنال‌های رادار</summary>
     <div class="accordion-body">
       <p class="muted" style="font-size:11px">بازدهی بازار در ۲۴ ساعت اخیر برای توکن‌های امن و امتیازبالای فعلی رادار. برای توکن جوان‌تر از ۲۴ ساعت، تغییر از زمان ساخت تا اکنون نمایش داده می‌شود.</p>
@@ -2386,6 +2395,54 @@ html,body,.shell,.panel,.list{overflow-anchor:none}
 <script>
 var tokens=[],smart=null,live=null,tracked=null,conviction=null,prelaunch=null,activeTab='featured',signalFilters={short:'',medium:'',long:'',security:'',holders:'',bigbuyers:''};
 var stickyFeatured=new Map();
+var recommendationHistory=new Map();
+try{
+  var savedHistory=JSON.parse(localStorage.getItem('recommendationHistory')||'[]');
+  if(Array.isArray(savedHistory))savedHistory.forEach(function(x){
+    if(x&&x.mint)recommendationHistory.set(x.mint,x);
+  });
+}catch(e){}
+
+function saveRecommendationHistory(){
+  try{
+    localStorage.setItem('recommendationHistory',JSON.stringify([...recommendationHistory.values()].slice(-200)));
+  }catch(e){}
+}
+function rememberRecommendation(t,score){
+  if(!t||!t.mint)return;
+  var old=recommendationHistory.get(t.mint);
+  if(!old){
+    recommendationHistory.set(t.mint,{
+      mint:t.mint,
+      name:t.name||'',
+      symbol:t.symbol||'',
+      introducedAt:new Date().toISOString(),
+      introducedPrice:Number(t.priceUsd||0)||null,
+      introducedScore:Number(score||0),
+      introducedSecurity:t.security?.tier||'',
+      dexUrl:t.dexUrl||''
+    });
+    saveRecommendationHistory();
+  }else{
+    old.name=t.name||old.name;
+    old.symbol=t.symbol||old.symbol;
+    old.dexUrl=t.dexUrl||old.dexUrl;
+    recommendationHistory.set(t.mint,old);
+  }
+}
+function recommendationPerformanceRows(){
+  return [...recommendationHistory.values()].map(function(h){
+    var t=findToken(h.mint);
+    var current=t?Number(t.priceUsd||0):null;
+    var base=Number(h.introducedPrice||0);
+    var pnl=(current!=null&&current>0&&base>0)?((current/base)-1)*100:null;
+    return {history:h,token:t,currentPrice:current,pnlPct:pnl};
+  }).sort(function(a,b){
+    var av=a.pnlPct==null?-1e9:a.pnlPct,bv=b.pnlPct==null?-1e9:b.pnlPct;
+    return bv-av;
+  });
+}
+
 try{
   var savedFeatured=JSON.parse(sessionStorage.getItem('stickyFeatured')||'[]');
   if(Array.isArray(savedFeatured))savedFeatured.forEach(function(x){
@@ -2895,6 +2952,7 @@ function featuredRows(){
   // Add/update every current valid recommendation in the sticky list.
   fresh.forEach(function(x){
     stickyFeatured.set(x.token.mint,x);
+    rememberRecommendation(x.token,x.score);
   });
 
   // Refresh sticky rows from current live token data when available.
@@ -3322,6 +3380,35 @@ function renderBucketBest(id,rows,bucket,title){
     '<div class="actions"><a class="action" target="_blank" rel="noopener" href="'+esc(dexUrl(t.mint,t.dexUrl))+'">📈 چارت</a><button class="detail-btn" data-mint="'+esc(t.mint)+'">جزئیات</button></div>'+
   '</div></div>';
 }
+function renderRecommendationPerformance(){
+  var list=document.getElementById('recommendationPerformanceList');
+  var sum=document.getElementById('recommendationPerformanceSummary');
+  if(!list||!sum)return;
+  var rows=recommendationPerformanceRows();
+  var valid=rows.filter(function(x){return x.pnlPct!=null});
+  var wins=valid.filter(function(x){return x.pnlPct>0});
+  var avg=valid.length?valid.reduce(function(a,x){return a+Number(x.pnlPct||0)},0)/valid.length:null;
+  var best=valid.slice().sort(function(a,b){return b.pnlPct-a.pnlPct})[0]||null;
+  sum.innerHTML='<div class="perf-summary">'+
+    '<div class="perf-stat"><small>کل معرفی‌ها</small><b>'+rows.length+'</b></div>'+
+    '<div class="perf-stat"><small>در سود</small><b class="return-pos">'+wins.length+'</b></div>'+
+    '<div class="perf-stat"><small>میانگین از معرفی</small><b class="'+(avg==null?'return-flat':avg>=0?'return-pos':'return-neg')+'">'+(avg==null?'—':(avg>0?'+':'')+avg.toFixed(1)+'%')+'</b></div>'+
+    '<div class="perf-stat"><small>بهترین عملکرد</small><b class="return-pos">'+(best?esc(best.history.symbol||best.history.name)+' '+(best.pnlPct>0?'+':'')+best.pnlPct.toFixed(1)+'%':'—')+'</b></div>'+
+  '</div>';
+  list.innerHTML=rows.length?rows.map(function(x,i){
+    var h=x.history,t=x.token,p=x.pnlPct;
+    var cls=p==null?'return-flat':p>=0?'return-pos':'return-neg';
+    var txt=p==null?'—':(p>0?'+':'')+p.toFixed(1)+'%';
+    var current=x.currentPrice||0;
+    return '<div class="row"><div class="asset"><b>#'+(i+1)+' '+esc(h.symbol||'?')+' · '+esc(h.name||'')+'</b>'+
+      '<small>زمان معرفی '+new Date(h.introducedAt).toLocaleString('fa-IR')+' · امنیت '+esc(faSec(h.introducedSecurity))+' · امتیاز '+Number(h.introducedScore||0)+'/100</small></div>'+
+      '<div class="cell"><small>قیمت معرفی</small><b>'+fmtPrice(h.introducedPrice)+'</b></div>'+
+      '<div class="cell"><small>قیمت فعلی</small><b>'+(current?fmtPrice(current):'—')+'</b></div>'+
+      '<div class="cell"><small>سود/ضرر از معرفی</small><b class="'+cls+'">'+txt+'</b></div>'+
+      '<div class="actions"><a class="action" target="_blank" rel="noopener" href="'+esc(dexUrl(h.mint,h.dexUrl||t&&t.dexUrl))+'">📈 چارت</a></div></div>';
+  }).join(''):'<div class="empty">هنوز هیچ پیشنهاد ثبت‌شده‌ای برای محاسبه عملکرد وجود ندارد.</div>';
+}
+
 function renderPerformance24(){
   var list=document.getElementById('performance24List'),sum=document.getElementById('performance24Summary');
   if(!list||!sum)return;
@@ -3413,7 +3500,7 @@ function renderAlerts(){
   var c=live&&live.exitClusters?live.exitClusters.filter(function(x){return x.severity==='MULTI-WALLET EXIT'}).slice(0,3):[];
   document.getElementById('kExits').textContent=c.length;document.getElementById('alerts').innerHTML=c.map(function(x){return '<div class="alert">🚨 خروج همزمان چند کیف‌پول از <b>'+esc(x.token||short(x.tokenAddress))+'</b> · '+Number(x.uniqueSellers||0)+' فروشنده</div>'}).join('');
 }
-function renderAll(){document.getElementById('kTokens').textContent=tokens.length;renderTopQuick();renderChampion();renderAlerts();renderFeatured();renderWhales();renderSmart();renderPrelaunch();renderSocialTrends();renderWallets();renderConviction();renderPerformance24();renderKolTrends();renderTokens()}
+function renderAll(){document.getElementById('kTokens').textContent=tokens.length;renderTopQuick();renderChampion();renderAlerts();renderFeatured();renderWhales();renderSmart();renderPrelaunch();renderSocialTrends();renderWallets();renderConviction();renderRecommendationPerformance();renderPerformance24();renderKolTrends();renderTokens()}
 function stateLabel(v){return v==='pass'?'<span class="pass">✓ تأیید خودکار</span>':v==='fail'?'<span class="fail">✕ رد خودکار</span>':v==='warn'?'<span class="manual">△ هشدار خودکار</span>':'<span class="manual">? تأیید نشده — داده ناکافی</span>'}
 function openDetail(m){
   var t=findToken(m),tr=findTracked(m),sm=smartFor(m),wh=whaleFor(m),name=t?(t.symbol+' · '+t.name):(tr?(tr.symbol+' · '+tr.name):short(m)),h='';
@@ -3469,7 +3556,7 @@ function preserveViewport(fn){
 function renderActivePanel(){
   preserveViewport(function(){
     if(activeTab==='featured'){
-      renderTopQuick();renderChampion();renderAlerts();renderFeatured();renderPerformance24();
+      renderTopQuick();renderChampion();renderAlerts();renderFeatured();renderRecommendationPerformance();renderPerformance24();
     }else if(activeTab==='whales'){
       renderWhales();
     }else if(activeTab==='tokens'){
