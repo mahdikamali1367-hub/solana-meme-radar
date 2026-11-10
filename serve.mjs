@@ -407,13 +407,80 @@ async function launchPerformanceForProject(x){
   };
 }
 
+
+function parsePrelaunchWatchCandidates(html,sourceName,baseUrl){
+  const out=[],src=String(html||'');
+  const re=/<a\b[^>]*href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi;
+  let m;
+  while((m=re.exec(src))){
+    const href=String(m[1]||''),name=stripHtml(m[2]).replace(/\s+/g,' ').trim();
+    if(!name||name.length<2||name.length>80)continue;
+    if(/^(home|login|sign in|learn more|read more|projects?|calendar|launchpad)$/i.test(name))continue;
+    const around=stripHtml(src.slice(Math.max(0,m.index-1100),Math.min(src.length,m.index+2200)));
+    const prelaunchHint=/(TGE|token generation|token sale|presale|pre-sale|upcoming|launch date|launching|not launched|IDO|IEO)/i.test(around);
+    const solanaHint=/\bSolana\b|\bSOL\b/i.test(around);
+    if(!prelaunchHint||!solanaHint)continue;
+    const hasTeam=/founder|co-founder|team|doxxed|linkedin/i.test(around);
+    const hasBacking=/investor|backed by|funding|raised|seed|venture/i.test(around);
+    const hasTokenomics=/tokenomics|vesting|allocation|cliff/i.test(around);
+    const hasAudit=/audit|audited|certik|solidproof|security audit/i.test(around);
+    const hasKyc=/\bKYC\b|identity verified|team verified/i.test(around);
+    const socialBuzz=/trending|popular|heat|community|followers|mentions/i.test(around);
+
+    out.push(prelaunchScore({
+      name,symbol:'',ecosystem:'Solana',source:sourceName,
+      sourceUrl:href.startsWith('http')?href:(baseUrl||'')+href,
+      website:'',launchpad:sourceName,socials:[],tge:'',
+      socialScore:socialBuzz?10:4,
+      teamScore:hasTeam?9:3,
+      backingScore:hasBacking?7:0,
+      launchScore:5,
+      kycState:hasKyc?'planned':'unknown',
+      auditState:hasAudit?'planned':'unknown',
+      lpLockState:'unknown',
+      tokenomicsState:hasTokenomics?'planned':'unknown',
+      teamVerifiedState:hasTeam?'planned':'unknown',
+      socialEvidence:socialBuzz?['نشانه ترند/جامعه در منبع عمومی']:[],
+      teamEvidence:hasTeam?['اطلاعات تیم در منبع عمومی دیده شد']:[],
+      securityEvidence:[
+        hasAudit?'Audit mention/claim — نیازمند تأیید مستقل':null,
+        hasKyc?'KYC mention/claim — نیازمند تأیید مستقل':null,
+        hasTokenomics?'Tokenomics/Vesting mention موجود':null
+      ].filter(Boolean),
+      backingEvidence:hasBacking?['Investor/Funding mention موجود']:[],
+      launchEvidence:['Upcoming/TGE/Presale evidence در '+sourceName],
+      notes:'Watch Candidate؛ ادعاها تا قبل از مدرک مستقل امتیاز تأیید کامل نمی‌گیرند.'
+    }));
+  }
+  const seen=new Map();
+  for(const x of out){
+    const k=String(x.name||'').toLowerCase().replace(/\s+/g,' ').trim();
+    const old=seen.get(k);if(!old||Number(x.score||0)>Number(old.score||0))seen.set(k,x);
+  }
+  return [...seen.values()].slice(0,40);
+}
+
 async function buildPrelaunchRadar(){
   if(prelaunchCache.data&&Date.now()-prelaunchCache.at<PRELAUNCH_CACHE_MS)return prelaunchCache.data;
   const manual=parsePrelaunchEnv(); let publicRows=[]; let sourceError=null;
   try{
-    const results=await Promise.all([tfetch('https://www.rootdata.com/projects',{},12000),tfetch('https://www.rootdata.com/calendar',{},12000)]);
-    publicRows=parseRootDataPublicProjects(results[0]);
-    const cal=stripHtml(results[1]);
+    const results=await Promise.allSettled([
+      tfetch('https://www.rootdata.com/projects',{},12000),
+      tfetch('https://www.rootdata.com/calendar',{},12000),
+      tfetch('https://polkastarter.com/projects',{},12000),
+      tfetch('https://www.pinksale.finance/launchpads?chain=SOL',{},12000)
+    ]);
+    const projectsHtml=results[0].status==='fulfilled'?results[0].value:'';
+    const calendarHtml=results[1].status==='fulfilled'?results[1].value:'';
+    const polkaHtml=results[2].status==='fulfilled'?results[2].value:'';
+    const pinkHtml=results[3].status==='fulfilled'?results[3].value:'';
+    publicRows=[
+      ...parseRootDataPublicProjects(projectsHtml),
+      ...parsePrelaunchWatchCandidates(calendarHtml,'RootData Calendar','https://www.rootdata.com'),
+      ...parsePrelaunchWatchCandidates(polkaHtml,'Polkastarter','https://polkastarter.com'),
+      ...parsePrelaunchWatchCandidates(pinkHtml,'PinkSale','https://www.pinksale.finance')
+    ];
+    const cal=stripHtml(calendarHtml);
     for(const x of publicRows){
       const key=String(x.name||'').toLowerCase();
       if(key&&cal.toLowerCase().includes(key)&&/(TGE|Token Public Offering|Token Issuance|launch)/i.test(cal)){
@@ -432,7 +499,7 @@ async function buildPrelaunchRadar(){
   const projects=[...byName.values()]
     .filter(x=>/solana/i.test(String(x.ecosystem||'')))
     .sort((a,b)=>(Number(b.score||0)-Number(a.score||0))||(Number(b.securityScore||0)-Number(a.securityScore||0))||(Number(b.socialScore||0)-Number(a.socialScore||0)))
-    .slice(0,30);
+    .slice(0,50);
 
   // Keep a watch record so a recommendation can still be evaluated after it leaves pre-launch lists.
   projects.forEach(rememberPrelaunchProject);
@@ -452,8 +519,13 @@ async function buildPrelaunchRadar(){
   }
   launched.sort((a,b)=>Number(b.growthPct??-1e9)-Number(a.growthPct??-1e9));
 
+  const suggested=projects.filter(x=>x.risk!=='HIGH').sort((a,b)=>{
+    const ar=a.fullVerified?3:a.corePassed>=2?2:Number(a.score||0)>=35?1:0;
+    const br=b.fullVerified?3:b.corePassed>=2?2:Number(b.score||0)>=35?1:0;
+    return (br-ar)||(Number(b.score||0)-Number(a.score||0));
+  }).slice(0,12);
   const data={
-    ok:true,generatedAt:new Date().toISOString(),projects,launched,sourceError,
+    ok:true,generatedAt:new Date().toISOString(),projects,suggested,launched,sourceError,
     scoring:{social:20,team:15,teamVerified:5,kyc:10,audit:15,lpLock:15,tokenomics:10,backing:10,launchTransparency:5},
     policy:{
       prelaunchOnly:true,noOnchainSecurityClaim:true,evidenceRequired:true,
@@ -462,6 +534,23 @@ async function buildPrelaunchRadar(){
     }
   };
   prelaunchCache={at:Date.now(),data};return data;
+}
+
+
+async function buildPrelaunchLive(){
+  const launched=Array.isArray(prelaunchCache.data?.launched)?prelaunchCache.data.launched:[];
+  const mints=[...new Set(launched.map(x=>x.mint).filter(Boolean))];
+  if(!mints.length)return {ok:true,generatedAt:new Date().toISOString(),tokens:[]};
+  let pairs=new Map();
+  try{pairs=await pairsForMany(mints)}catch{}
+  const tokens=launched.map(x=>{
+    const p=pairs.get(x.mint);
+    const current=p?num(p.priceUsd):num(x.currentPrice);
+    const base=num(x.launchPrice);
+    const growthPct=current>0&&base>0?+(((current/base)-1)*100).toFixed(4):null;
+    return {mint:x.mint,currentPrice:current,growthPct,dexUrl:p?.url||x.dexUrl||'',updatedAt:Date.now()};
+  });
+  return {ok:true,generatedAt:new Date().toISOString(),tokens};
 }
 
 async function discovery(){
@@ -2283,7 +2372,14 @@ html,body,.shell,.panel,.list{overflow-anchor:none}
         <div class="kpi"><small>مدل</small><b style="font-size:12px">Evidence only</b></div>
       </div>
       <div class="note">قبل از لانچ، هولدر/Mint/Freeze قابل تأیید کامل نیست. امتیاز از ترند اجتماعی، تیم، Audit/Multisig، Vesting/Tokenomics، پشتیبان‌ها و شفافیت TGE ساخته می‌شود.</div>
-      <details class="accordion highlight" open><summary>🛡️ پیش‌لانچ با امنیت بالا</summary><div class="accordion-body"><div class="list" id="prelaunchHighList"></div></div></details>
+      <details class="accordion highlight" open>
+  <summary>⭐ پیشنهادهای پیش‌لانچ برای بررسی</summary>
+  <div class="accordion-body">
+    <p class="muted" style="font-size:11px">این لیست Watch است: پروژه‌های ترند/تیم‌دار که ریسک قطعی ندارند. فقط پروژه‌های دارای KYC + Audit + LP Lock تأییدشده در «امنیت بالا» قرار می‌گیرند.</p>
+    <div class="list" id="prelaunchSuggestedList"></div>
+  </div>
+</details>
+<details class="accordion highlight" open><summary>🛡️ پیش‌لانچ با امنیت بالا</summary><div class="accordion-body"><div class="list" id="prelaunchHighList"></div></div></details>
 <details class="accordion" open><summary>⚖️ پیش‌لانچ با امنیت متوسط</summary><div class="accordion-body"><div class="list" id="prelaunchMediumList"></div></div></details>
 <details class="accordion"><summary>⚠️ پیش‌لانچ با امنیت بسیار کم</summary><div class="accordion-body"><div class="list" id="prelaunchLowList"></div></div></details>
       <details class="accordion highlight" open>
@@ -3982,6 +4078,7 @@ createServer(async(req,res)=>{
     }
     if(url.pathname==='/api/v1/conviction-wallets'){const cw=await buildConvictionWallets();res.writeHead(200,{'content-type':'application/json; charset=utf-8','cache-control':'no-store',...headers});return res.end(JSON.stringify(cw))}
     if(url.pathname==='/api/v1/tracked-wallets'){const tw=await buildTrackedWallets();res.writeHead(200,{'content-type':'application/json; charset=utf-8','cache-control':'no-store',...headers});return res.end(JSON.stringify(tw))}
+    if(url.pathname==='/api/v1/prelaunch-live'){const pl=await buildPrelaunchLive();res.writeHead(200,{'content-type':'application/json; charset=utf-8','cache-control':'no-store',...headers});return res.end(JSON.stringify(pl))}
     if(url.pathname==='/api/v1/prelaunch'){const pl=await buildPrelaunchRadar();res.writeHead(200,{'content-type':'application/json; charset=utf-8','cache-control':'no-store',...headers});return res.end(JSON.stringify(pl))}
     if(url.pathname==='/api/v1/smart-money'){const sm=await buildSmartMoney();res.writeHead(200,{'content-type':'application/json; charset=utf-8','cache-control':'no-store',...headers});return res.end(JSON.stringify(sm))}
     if(url.pathname==='/api/v1/live-stream'){
