@@ -3878,8 +3878,19 @@ function renderWallets(){
   }).join(''):'<div class="empty">کیف‌پولی برای نمایش نیست.</div>';
 }
 function filteredTokens(){
-  var q=document.getElementById('search').value.toLowerCase().trim(),sf=document.getElementById('securityFilter').value,af=document.getElementById('activityFilter').value;
-  return tokens.filter(function(t){return (!q||[t.name,t.symbol,t.mint].join(' ').toLowerCase().includes(q))&&(!sf||(t.security&&t.security.tier===sf))&&(!af||(t.activity&&t.activity.label===af))&&passesSignalFilters(t)}).sort(function(a,b){return tokenStrength(b)-tokenStrength(a)});
+  var se=document.getElementById('search'),sfe=document.getElementById('securityFilter'),afe=document.getElementById('activityFilter');
+  var q=se?String(se.value||'').toLowerCase().trim():'';
+  var sf=sfe?String(sfe.value||''):'',af=afe?String(afe.value||''):'';
+  return (Array.isArray(tokens)?tokens:[]).filter(function(t){
+    try{
+      return (!q||[t.name,t.symbol,t.mint].join(' ').toLowerCase().includes(q))&&
+        (!sf||(t.security&&t.security.tier===sf))&&
+        (!af||(t.activity&&t.activity.label===af))&&
+        passesSignalFilters(t);
+    }catch(e){return true}
+  }).sort(function(a,b){
+    try{return tokenStrength(b)-tokenStrength(a)}catch(e){return 0}
+  });
 }
 function renderBucketBest(id,rows,bucket,title){
   var el=document.getElementById(id);if(!el)return;
@@ -3978,9 +3989,10 @@ function renderKolTrends(){
 
 function tokenSecurityBucket(t){
   if(!t)return 'low';
-  var sec=t.security||{},gate=t.securityGate||securityGate(t),rug=antiRugGate(t);
+  var sec=t.security||{},gate=t.securityGate||{},rug;
+  try{rug=antiRugGate(t)}catch(e){rug={ok:false,reasons:['خطای ارزیابی امنیت']}}
   if((sec.tier==='MAX SECURITY'||sec.tier==='HIGH')&&rug.ok===true&&sec.mintDisabled===true&&sec.freezeDisabled===true&&sec.holderPolicyPassed===true)return 'high';
-  if(sec.tier==='REVIEW'&&!gate.blocked&&sec.holderPolicyPassed!==false&&sec.mintDisabled!==false&&sec.freezeDisabled!==false)return 'medium';
+  if(sec.tier==='REVIEW'&&gate.blocked!==true&&sec.holderPolicyPassed!==false&&sec.mintDisabled!==false&&sec.freezeDisabled!==false)return 'medium';
   return 'low';
 }
 function tokenSecurityBucketLabel(v){return v==='high'?'امنیت بالا':v==='medium'?'امنیت متوسط':'امنیت بسیار کم'}
@@ -4000,9 +4012,16 @@ function renderTokens(){
 
   function rowsHtml(rows,bucket){
     return rows.length?rows.slice(0,30).map(function(t){
-      var row=tokenRow(t,ageBucket(t));
       var badge='<span class="badge '+tokenSecurityBucketClass(bucket)+'">'+tokenSecurityBucketLabel(bucket)+'</span>';
-      return row.replace('<div class="asset"><b>','<div class="asset">'+badge+'<b>');
+      try{
+        var row=tokenRow(t,ageBucket(t));
+        return row.replace('<div class="asset"><b>','<div class="asset">'+badge+'<b>');
+      }catch(e){
+        return '<div class="row"><div class="asset">'+badge+'<b>'+esc(t.symbol||'?')+' · '+esc(t.name||'')+'</b><small>'+esc(short(t.mint||''))+'</small></div>'+
+          '<div class="cell"><small>قیمت</small><b data-live-price-mint="'+esc(t.mint||'')+'">'+fmtPrice(currentPriceForMint(t.mint)||t.priceUsd)+'</b></div>'+
+          '<div class="cell"><small>امنیت</small><b>'+esc(faSec(t.security?.tier))+'</b></div>'+
+          '<div class="actions"><a class="action" target="_blank" rel="noopener" href="'+esc(dexUrl(t.mint,t.dexUrl))+'">📈 چارت</a></div></div>';
+      }
     }).join(''):'<div class="empty">موردی در این سطح امنیت پیدا نشده.</div>';
   }
 
@@ -4042,7 +4061,24 @@ function renderAlerts(){
   var c=live&&live.exitClusters?live.exitClusters.filter(function(x){return x.severity==='MULTI-WALLET EXIT'}).slice(0,3):[];
   document.getElementById('kExits').textContent=c.length;document.getElementById('alerts').innerHTML=c.map(function(x){return '<div class="alert">🚨 خروج همزمان چند کیف‌پول از <b>'+esc(x.token||short(x.tokenAddress))+'</b> · '+Number(x.uniqueSellers||0)+' فروشنده</div>'}).join('');
 }
-function renderAll(){document.getElementById('kTokens').textContent=tokens.length;renderTopQuick();renderChampion();renderAlerts();renderFeatured();renderWhales();renderSmart();renderPrelaunch();renderSocialTrends();renderWallets();renderConviction();renderRecommendationPerformance();renderPerformance24();renderKolTrends();renderTokens();updateLiveProfitDom()}
+function renderAll(){
+  var kt=document.getElementById('kTokens');if(kt)kt.textContent=tokens.length;
+  safeUiRender('توکن‌های برتر',renderTopQuick);
+  safeUiRender('پیشنهاد ویژه',renderChampion);
+  safeUiRender('هشدارها',renderAlerts);
+  safeUiRender('پیشنهادها',renderFeatured);
+  safeUiRender('نهنگ‌ها',renderWhales);
+  safeUiRender('اسمارت‌مانی',renderSmart);
+  safeUiRender('پیش‌لانچ',renderPrelaunch);
+  safeUiRender('ترند اجتماعی',renderSocialTrends);
+  safeUiRender('کیف‌پول‌ها',renderWallets);
+  safeUiRender('Conviction',renderConviction);
+  safeUiRender('عملکرد پیشنهادها',renderRecommendationPerformance);
+  safeUiRender('عملکرد 24ساعته',renderPerformance24);
+  safeUiRender('KOL',renderKolTrends);
+  safeUiRender('لیست توکن‌ها',renderTokens);
+  safeUiRender('قیمت زنده',updateLiveProfitDom);
+}
 function stateLabel(v){return v==='pass'?'<span class="pass">✓ تأیید خودکار</span>':v==='fail'?'<span class="fail">✕ رد خودکار</span>':v==='warn'?'<span class="manual">△ هشدار خودکار</span>':'<span class="manual">? تأیید نشده — داده ناکافی</span>'}
 function openDetail(m){
   var t=findToken(m),tr=findTracked(m),sm=smartFor(m),wh=whaleFor(m),name=t?(t.symbol+' · '+t.name):(tr?(tr.symbol+' · '+tr.name):short(m)),h='';
@@ -4095,27 +4131,39 @@ function preserveViewport(fn){
   });
 }
 
+function safeUiRender(name,fn){
+  try{return fn()}catch(e){
+    var u=document.getElementById('updated');
+    if(u)u.textContent='خطای '+name+': '+String(e&&e.message||e);
+    return null;
+  }
+}
+
 function renderActivePanel(){
   preserveViewport(function(){
-    try{
-      if(activeTab==='featured'){
-        renderTopQuick();renderChampion();renderAlerts();renderFeatured();renderRecommendationPerformance();renderPerformance24();
-      }else if(activeTab==='whales'){
-        renderWhales();
-      }else if(activeTab==='tokens'){
-        renderTopQuick();renderKolTrends();renderTokens();
-      }else if(activeTab==='smart'){
-        renderSmart();
-      }else if(activeTab==='prelaunch'){
-        renderPrelaunch();
-      }else if(activeTab==='social'){
-        renderSocialTrends();
-      }else if(activeTab==='wallets'){
-        renderWallets();renderConviction();
-      }
-    }catch(e){
-      var u=document.getElementById('updated');
-      if(u)u.textContent='خطای بخش '+activeTab+': '+String(e&&e.message||e);
+    if(activeTab==='featured'){
+      safeUiRender('پیشنهاد سریع',renderTopQuick);
+      safeUiRender('پیشنهاد ویژه',renderChampion);
+      safeUiRender('هشدار خروج',renderAlerts);
+      safeUiRender('پیشنهادها',renderFeatured);
+      safeUiRender('عملکرد پیشنهادها',renderRecommendationPerformance);
+      safeUiRender('عملکرد 24ساعته',renderPerformance24);
+    }else if(activeTab==='whales'){
+      safeUiRender('نهنگ‌ها',renderWhales);
+    }else if(activeTab==='tokens'){
+      safeUiRender('توکن‌های برتر',renderTopQuick);
+      safeUiRender('KOL',renderKolTrends);
+      safeUiRender('لیست توکن‌ها',renderTokens);
+      safeUiRender('قیمت زنده توکن‌ها',updateLiveProfitDom);
+    }else if(activeTab==='smart'){
+      safeUiRender('اسمارت‌مانی',renderSmart);
+    }else if(activeTab==='prelaunch'){
+      safeUiRender('پیش‌لانچ',renderPrelaunch);
+    }else if(activeTab==='social'){
+      safeUiRender('ترند اجتماعی',renderSocialTrends);
+    }else if(activeTab==='wallets'){
+      safeUiRender('کیف‌پول‌ها',renderWallets);
+      safeUiRender('Conviction',renderConviction);
     }
   });
 }
