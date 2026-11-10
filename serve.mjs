@@ -2505,7 +2505,7 @@ html,body,.shell,.panel,.list{overflow-anchor:none}
 </dialog>
 
 <script>
-var tokens=[],smart=null,live=null,tracked=null,conviction=null,prelaunch=null,activeTab='featured',signalFilters={short:'',medium:'',long:'',security:'',holders:'',bigbuyers:''};
+var tokens=[],smart=null,live=null,tracked=null,conviction=null,prelaunch=null,prelaunchLive=null,activeTab='featured',signalFilters={short:'',medium:'',long:'',security:'',holders:'',bigbuyers:''};
 var livePriceCache=new Map();
 var lastMarketLiveAt=0;
 try{
@@ -3484,6 +3484,22 @@ function renderPrelaunch(){
   if(ks)ks.textContent=high.length;
   if(ksec)ksec.textContent=rows.filter(function(x){return Number(x.corePassed||0)>=2}).length;
   if(status)status.textContent=rows.length?'پروژه‌های پیش‌لانچ در سه سطح امنیتی دسته‌بندی شده‌اند.':'فعلاً کاندید قابل‌تأیید پیدا نشده.';
+  var suggested=prelaunch&&Array.isArray(prelaunch.suggested)?prelaunch.suggested:[];
+  var sugEl=document.getElementById('prelaunchSuggestedList');
+  if(sugEl){
+    sugEl.innerHTML=suggested.length?suggested.map(function(x,i){
+      var bucket=prelaunchSecurityBucket(x),cls=prelaunchSecurityBucketClass(bucket);
+      var trust=x.fullVerified?'تأیید قوی':Number(x.corePassed||0)>=2?'بررسی خوب':'Watch';
+      return '<div class="row"><div class="asset"><b>#'+(i+1)+' ⭐ '+esc(x.name||'?')+(x.symbol?' · '+esc(x.symbol):'')+'</b>'+
+        '<span class="badge '+cls+'">'+trust+' · '+Number(x.score||0)+'/100</span>'+
+        '<small>'+esc(x.source||'')+(x.launchpad?' · '+esc(x.launchpad):'')+(x.tge?' · TGE '+esc(x.tge):'')+'</small>'+
+        '<small>Social '+Number(x.scoreBreakdown?.social||0)+' · Team '+Number(x.scoreBreakdown?.team||0)+' · Core '+Number(x.corePassed||0)+'/3</small></div>'+
+        '<div class="cell"><small>KYC</small><b>'+esc(prelaunchStateLabel(x.kycState))+'</b></div>'+
+        '<div class="cell"><small>Audit</small><b>'+esc(prelaunchStateLabel(x.auditState))+'</b></div>'+
+        '<div class="cell"><small>LP Lock</small><b>'+esc(prelaunchStateLabel(x.lpLockState))+'</b></div>'+
+        '<div class="actions">'+(x.sourceUrl?'<a class="action" target="_blank" rel="noopener" href="'+esc(x.sourceUrl)+'">منبع ↗</a>':'')+'</div></div>';
+    }).join(''):'<div class="empty">فعلاً Watch Candidate قابل‌اتکایی پیدا نشده.</div>';
+  }
 
   function rowHtml(x,i,bucket){
     var cls=prelaunchSecurityBucketClass(bucket);
@@ -3518,11 +3534,11 @@ function renderPrelaunch(){
         '<small>پیشنهاد پیش‌لانچ: '+Number(x.prelaunchScore||0)+'/100 · '+esc(x.prelaunchGrade||'WATCH')+
         (x.firstRecommendedAt?' · ثبت پیشنهاد '+new Date(x.firstRecommendedAt).toLocaleDateString('fa-IR'):'')+'</small></div>'+
         '<div class="cell"><small>قیمت شروع</small><b>'+(x.launchPrice?fmtPrice(x.launchPrice):'—')+'</b></div>'+
-        '<div class="cell"><small>قیمت فعلی</small><b>'+fmtPrice(x.currentPrice)+'</b></div>'+
-        '<div class="cell"><small>رشد از لانچ</small><b><span class="badge '+gClass+'">'+esc(gText)+'</span></b></div>'+
+        '<div class="cell"><small>قیمت فعلی</small><b data-prelaunch-live-price="'+esc(x.mint)+'">'+fmtPrice(x.currentPrice)+'</b></div>'+
+        '<div class="cell"><small>رشد از لانچ</small><b data-prelaunch-live-profit="'+esc(x.mint)+'" data-prelaunch-live-base="'+Number(x.launchPrice||0)+'" class="'+(g==null?'return-flat':g>=0?'return-pos':'return-neg')+'">'+esc(gText)+'</b></div>'+
         '<div class="cell hide-sm"><small>زمان لانچ</small><b>'+new Date(Number(x.createdAt||Date.now())).toLocaleDateString('fa-IR')+'</b></div>'+
         '<div class="actions">'+(x.dexUrl?'<a class="action" target="_blank" rel="noopener" href="'+esc(x.dexUrl)+'">📈 چارت</a>':'')+'</div></div>';
-    }).join(''):'<div class="empty">هنوز هیچ پیشنهاد پیش‌لانچ رادار به Pair قابل‌ردیابی تبدیل نشده.</div>';
+    }).join(''):'<div class="empty">هنوز هیچ پیشنهاد پیش‌لانچ رادار به Pair قابل‌ردیابی تبدیل نشده؛ بعد از لانچ، قیمت و بازده زنده خودکار فعال می‌شود.</div>';
   }
 }
 
@@ -3920,6 +3936,38 @@ function mergeMarketLive(x){
   return changed;
 }
 
+function mergePrelaunchLive(x){
+  if(!x||!Array.isArray(x.tokens))return false;
+  prelaunchLive=x;
+  var by=new Map(x.tokens.map(function(v){return [v.mint,v]}));
+  if(prelaunch&&Array.isArray(prelaunch.launched)){
+    prelaunch.launched=prelaunch.launched.map(function(v){
+      var p=by.get(v.mint);
+      return p?Object.assign({},v,{currentPrice:p.currentPrice,growthPct:p.growthPct,dexUrl:p.dexUrl||v.dexUrl}):v;
+    });
+  }
+  x.tokens.forEach(function(v){
+    var pr=document.querySelector('[data-prelaunch-live-price="'+CSS.escape(v.mint)+'"]');
+    if(pr&&Number(v.currentPrice||0)>0)pr.textContent=fmtPrice(v.currentPrice);
+    var pnl=document.querySelector('[data-prelaunch-live-profit="'+CSS.escape(v.mint)+'"]');
+    if(pnl){
+      var base=Number(pnl.getAttribute('data-prelaunch-live-base')||0);
+      var cur=Number(v.currentPrice||0);
+      var g=cur>0&&base>0?((cur/base)-1)*100:null;
+      pnl.textContent=g==null?'—':(g>0?'+':'')+g.toFixed(2)+'%';
+      pnl.classList.remove('return-pos','return-neg','return-flat');
+      pnl.classList.add(g==null?'return-flat':g>=0?'return-pos':'return-neg');
+    }
+  });
+  return true;
+}
+async function pollPrelaunchLive(){
+  try{
+    var x=await safeJson('/api/v1/prelaunch-live');
+    if(x)mergePrelaunchLive(x);
+  }catch(e){}
+}
+
 async function loadAll(){
   if(loadAllBusy)return;
   loadAllBusy=true;
@@ -4062,7 +4110,7 @@ window.addEventListener('error',function(e){
   var u=document.getElementById('updated');
   if(u)u.textContent='خطای رابط: '+String(e.message||'JavaScript');
 });
-loadAll();startLivePush();marketLiveTimer=setInterval(pollMarketLive,1000);setTimeout(pollMarketLive,350);setInterval(loadAll,20000);
+loadAll();startLivePush();marketLiveTimer=setInterval(pollMarketLive,1000);setTimeout(pollMarketLive,350);setInterval(pollPrelaunchLive,1000);setTimeout(pollPrelaunchLive,500);setInterval(loadAll,20000);
 </script>
 </body>
 </html>`;
