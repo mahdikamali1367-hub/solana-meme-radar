@@ -11,6 +11,9 @@ let cache={at:0,data:null};
 let buildInFlight=null;
 let marketLiveCache={at:0,data:null};
 let prelaunchCache={at:0,data:null};
+const prelaunchWatchState=new Map();
+const launchPerfCache=new Map();
+
 const PRELAUNCH_CACHE_MS=10*60*1000;
 
 let marketLiveInFlight=null;
@@ -267,7 +270,7 @@ function parsePrelaunchEnv(){
     return arr.map(x=>prelaunchScore({
       name:String(x.name||'Unknown'),symbol:String(x.symbol||''),ecosystem:String(x.ecosystem||'Solana'),
       source:String(x.source||'Manual/verified feed'),sourceUrl:String(x.sourceUrl||x.website||''),website:String(x.website||''),
-      launchpad:String(x.launchpad||''),socials:Array.isArray(x.socials)?x.socials:[],tge:String(x.tge||x.launchDate||''),
+      launchpad:String(x.launchpad||''),socials:Array.isArray(x.socials)?x.socials:[],tge:String(x.tge||x.launchDate||''),mint:String(x.mint||x.tokenAddress||''),recommendedAt:String(x.recommendedAt||''),
       socialScore:Number(x.socialScore||0),teamScore:Number(x.teamScore||0),backingScore:Number(x.backingScore||0),launchScore:Number(x.launchScore||0),
       kycState:x.kycState||'unknown',auditState:x.auditState||'unknown',lpLockState:x.lpLockState||'unknown',
       tokenomicsState:x.tokenomicsState||'unknown',teamVerifiedState:x.teamVerifiedState||'unknown',
@@ -334,6 +337,76 @@ function parseRootDataPublicProjects(html){
   return [...seen.values()];
 }
 
+function normProjectText(v){
+  return String(v||'').toLowerCase().replace(/[^a-z0-9آ-ی]+/g,'').trim();
+}
+function rememberPrelaunchProject(x){
+  if(!x||!x.name)return;
+  var key=normProjectText(x.name)+'|'+normProjectText(x.symbol);
+  if(!key)return;
+  var old=prelaunchWatchState.get(key)||{};
+  prelaunchWatchState.set(key,{
+    ...old,...x,
+    firstRecommendedAt:old.firstRecommendedAt||x.recommendedAt||new Date().toISOString(),
+    lastSeenPrelaunchAt:new Date().toISOString()
+  });
+}
+function findLaunchedMintForProject(x){
+  var direct=String(x?.mint||'').trim();
+  if(/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(direct))return direct;
+
+  var nn=normProjectText(x?.name),ss=normProjectText(x?.symbol);
+  var candidates=(cache.data?.tokens||[]).filter(function(t){
+    var nameOk=nn&&normProjectText(t.name)===nn;
+    var symbolOk=ss&&normProjectText(t.symbol)===ss;
+    return ss?nameOk&&symbolOk:nameOk;
+  });
+  return candidates.length===1?candidates[0].mint:'';
+}
+async function firstPoolPrice(pair){
+  var pool=String(pair?.pairAddress||'').trim();
+  var createdMs=num(pair?.pairCreatedAt);
+  if(!pool||!createdMs)return null;
+  var createdSec=Math.floor(createdMs/1000);
+  var key=pool+'|'+createdSec;
+  var hit=launchPerfCache.get(key);
+  if(hit&&Date.now()-hit.at<30*60*1000)return hit.data;
+
+  var before=createdSec+6*3600;
+  var u='https://api.geckoterminal.com/api/v2/networks/solana/pools/'+encodeURIComponent(pool)+'/ohlcv/minute?aggregate=1&before_timestamp='+before+'&limit=1000';
+  try{
+    var d=await jfetch(u,{},12000);
+    var rows=d?.data?.attributes?.ohlcv_list||[];
+    rows=rows.map(function(r){return {ts:num(r?.[0]),open:num(r?.[1]),high:num(r?.[2]),low:num(r?.[3]),close:num(r?.[4]),volume:num(r?.[5])}})
+      .filter(function(r){return r.ts&&r.open>0})
+      .sort(function(a,b){return a.ts-b.ts});
+    var first=rows.find(function(r){return r.ts>=createdSec-120&&r.ts<=createdSec+6*3600})||rows[0]||null;
+    var data=first?{price:first.open,ts:first.ts*1000,source:'GeckoTerminal OHLCV'}:null;
+    launchPerfCache.set(key,{at:Date.now(),data});
+    return data;
+  }catch{
+    launchPerfCache.set(key,{at:Date.now(),data:null});
+    return null;
+  }
+}
+async function launchPerformanceForProject(x){
+  var mint=findLaunchedMintForProject(x);
+  if(!mint)return {launched:false,mint:''};
+  var p=await pairFor(mint);
+  if(!p||!num(p.priceUsd)||!num(p.pairCreatedAt))return {launched:false,mint};
+  var first=await firstPoolPrice(p);
+  var current=num(p.priceUsd),createdAt=num(p.pairCreatedAt);
+  if(!first||!first.price){
+    return {launched:true,mint,createdAt,currentPrice:current,launchPrice:null,growthPct:null,source:'DexScreener current; launch OHLCV unavailable',dexUrl:p.url||''};
+  }
+  var growth=(current/first.price-1)*100;
+  return {
+    launched:true,mint,createdAt,currentPrice:current,launchPrice:first.price,
+    launchPriceAt:first.ts,growthPct:+growth.toFixed(2),
+    source:first.source,dexUrl:p.url||''
+  };
+}
+
 async function buildPrelaunchRadar(){
   if(prelaunchCache.data&&Date.now()-prelaunchCache.at<PRELAUNCH_CACHE_MS)return prelaunchCache.data;
   const manual=parsePrelaunchEnv(); let publicRows=[]; let sourceError=null;
@@ -349,12 +422,48 @@ async function buildPrelaunchRadar(){
       }
     }
   }catch(e){sourceError=String(e?.message||e)}
+
   const byName=new Map();
-  for(const x of [...manual,...publicRows]){const k=String(x.name||'').toLowerCase().trim();if(!k)continue;const old=byName.get(k);if(!old||Number(x.score||0)>Number(old.score||0))byName.set(k,x)}
-  const projects=[...byName.values()].filter(x=>/solana/i.test(String(x.ecosystem||''))).sort((a,b)=>(Number(b.score||0)-Number(a.score||0))||(Number(b.securityScore||0)-Number(a.securityScore||0))||(Number(b.socialScore||0)-Number(a.socialScore||0))).slice(0,30);
-  const data={ok:true,generatedAt:new Date().toISOString(),projects,sourceError,scoring:{social:20,team:15,teamVerified:5,kyc:10,audit:15,lpLock:15,tokenomics:10,backing:10,launchTransparency:5},policy:{prelaunchOnly:true,noOnchainSecurityClaim:true,evidenceRequired:true,note:'قبل از TGE امنیت آن‌چین هولدر/Mint/Freeze قابل سنجش کامل نیست. KYC، Audit مستقل و LP Lock قابل‌اثبات سه شرط اصلی‌اند؛ وعده قفل LP یا نشان KYC به‌تنهایی تضمین امنیت نیست.'}};
+  for(const x of [...manual,...publicRows]){
+    const k=String(x.name||'').toLowerCase().trim();if(!k)continue;
+    const old=byName.get(k);if(!old||Number(x.score||0)>Number(old.score||0))byName.set(k,x);
+  }
+
+  const projects=[...byName.values()]
+    .filter(x=>/solana/i.test(String(x.ecosystem||'')))
+    .sort((a,b)=>(Number(b.score||0)-Number(a.score||0))||(Number(b.securityScore||0)-Number(a.securityScore||0))||(Number(b.socialScore||0)-Number(a.socialScore||0)))
+    .slice(0,30);
+
+  // Keep a watch record so a recommendation can still be evaluated after it leaves pre-launch lists.
+  projects.forEach(rememberPrelaunchProject);
+
+  const watched=[...prelaunchWatchState.values()];
+  const launched=[];
+  for(const x of watched.slice(0,30)){
+    const perf=await launchPerformanceForProject(x);
+    if(perf.launched){
+      launched.push({
+        name:x.name,symbol:x.symbol||'',firstRecommendedAt:x.firstRecommendedAt||x.recommendedAt||'',
+        prelaunchScore:Number(x.score||0),prelaunchGrade:x.grade||'WATCH',
+        prelaunchRisk:x.risk||'',...perf
+      });
+      await sleep(40);
+    }
+  }
+  launched.sort((a,b)=>Number(b.growthPct??-1e9)-Number(a.growthPct??-1e9));
+
+  const data={
+    ok:true,generatedAt:new Date().toISOString(),projects,launched,sourceError,
+    scoring:{social:20,team:15,teamVerified:5,kyc:10,audit:15,lpLock:15,tokenomics:10,backing:10,launchTransparency:5},
+    policy:{
+      prelaunchOnly:true,noOnchainSecurityClaim:true,evidenceRequired:true,
+      performance:'بعد از لانچ، رشد از اولین کندل OHLCV قابل‌دریافت نزدیک زمان ساخت Pair تا قیمت فعلی محاسبه می‌شود.',
+      note:'قبل از TGE امنیت آن‌چین هولدر/Mint/Freeze قابل سنجش کامل نیست. KYC، Audit مستقل و LP Lock قابل‌اثبات سه شرط اصلی‌اند؛ وعده قفل LP یا نشان KYC به‌تنهایی تضمین امنیت نیست.'
+    }
+  };
   prelaunchCache={at:Date.now(),data};return data;
 }
+
 async function discovery(){
   const urls=[
     'https://api.dexscreener.com/token-profiles/latest/v1',
@@ -2168,6 +2277,13 @@ html,body,.shell,.panel,.list{overflow-anchor:none}
       <details class="accordion highlight" open><summary>🛡️ پیش‌لانچ با امنیت بالا</summary><div class="accordion-body"><div class="list" id="prelaunchHighList"></div></div></details>
 <details class="accordion" open><summary>⚖️ پیش‌لانچ با امنیت متوسط</summary><div class="accordion-body"><div class="list" id="prelaunchMediumList"></div></div></details>
 <details class="accordion"><summary>⚠️ پیش‌لانچ با امنیت بسیار کم</summary><div class="accordion-body"><div class="list" id="prelaunchLowList"></div></div></details>
+      <details class="accordion highlight" open>
+        <summary>📈 عملکرد پیشنهادهای پیش‌لانچ بعد از لانچ</summary>
+        <div class="accordion-body">
+          <p class="muted" style="font-size:11px">رشد/افت از اولین قیمت تاریخی قابل‌دریافت نزدیک زمان ساخت Pair تا قیمت فعلی. اگر قیمت شروع قابل‌تأیید نباشد، درصد نمایش داده نمی‌شود.</p>
+          <div class="list" id="prelaunchPerformanceList"></div>
+        </div>
+      </details>
       <details class="accordion" open>
         <summary>🧭 منابع کشف و بررسی از راهنمای فایل</summary>
         <div class="accordion-body">
@@ -3075,6 +3191,25 @@ function renderPrelaunch(){
   var h=document.getElementById('prelaunchHighList');if(h)h.innerHTML=high.length?high.map(function(x,i){return rowHtml(x,i,'high')}).join(''):'<div class="empty">فعلاً پروژه پیش‌لانچ با امنیت بالا پیدا نشده.</div>';
   var m=document.getElementById('prelaunchMediumList');if(m)m.innerHTML=medium.length?medium.map(function(x,i){return rowHtml(x,i,'medium')}).join(''):'<div class="empty">فعلاً پروژه‌ای در امنیت متوسط نیست.</div>';
   var l=document.getElementById('prelaunchLowList');if(l)l.innerHTML=low.length?low.map(function(x,i){return rowHtml(x,i,'low')}).join(''):'<div class="empty">فعلاً پروژه‌ای در امنیت بسیار کم نیست.</div>';
+
+  var perfEl=document.getElementById('prelaunchPerformanceList');
+  if(perfEl){
+    var perf=prelaunch&&Array.isArray(prelaunch.launched)?prelaunch.launched:[];
+    perfEl.innerHTML=perf.length?perf.map(function(x,i){
+      var g=x.growthPct;
+      var gText=g==null?'قیمت شروع تأیید نشده':((g>0?'+':'')+Number(g).toFixed(1)+'%');
+      var gClass=g==null?'mid':g>=0?'good':'bad';
+      return '<div class="row"><div class="asset"><b>#'+(i+1)+' 📈 '+esc(x.symbol||'?')+' · '+esc(x.name||'')+'</b>'+
+        '<span class="badge '+gClass+'">از لانچ '+esc(gText)+'</span>'+
+        '<small>پیشنهاد پیش‌لانچ: '+Number(x.prelaunchScore||0)+'/100 · '+esc(x.prelaunchGrade||'WATCH')+
+        (x.firstRecommendedAt?' · ثبت پیشنهاد '+new Date(x.firstRecommendedAt).toLocaleDateString('fa-IR'):'')+'</small></div>'+
+        '<div class="cell"><small>قیمت شروع</small><b>'+(x.launchPrice?fmtPrice(x.launchPrice):'—')+'</b></div>'+
+        '<div class="cell"><small>قیمت فعلی</small><b>'+fmtPrice(x.currentPrice)+'</b></div>'+
+        '<div class="cell"><small>رشد از لانچ</small><b><span class="badge '+gClass+'">'+esc(gText)+'</span></b></div>'+
+        '<div class="cell hide-sm"><small>زمان لانچ</small><b>'+new Date(Number(x.createdAt||Date.now())).toLocaleDateString('fa-IR')+'</b></div>'+
+        '<div class="actions">'+(x.dexUrl?'<a class="action" target="_blank" rel="noopener" href="'+esc(x.dexUrl)+'">📈 چارت</a>':'')+'</div></div>';
+    }).join(''):'<div class="empty">هنوز هیچ پیشنهاد پیش‌لانچ رادار به Pair قابل‌ردیابی تبدیل نشده.</div>';
+  }
 }
 
 function renderSmart(){
