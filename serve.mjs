@@ -105,6 +105,10 @@ function humanNum(v){
   const n=num(m[2]),u=(m[3]||'').toUpperCase();
   return n*(u==='K'?1e3:u==='M'?1e6:u==='B'?1e9:1);
 }
+function isTrustedQuotePair(p){
+  const q=String(p?.quoteToken?.address||'');
+  return q===WSOL_MINT||STABLE_MINTS.has(q);
+}
 function canonicalPairScore(p,mint){
   if(!p||String(p.chainId||'').toLowerCase()!=='solana')return -1;
   if(String(p?.baseToken?.address||'')!==String(mint||''))return -1;
@@ -112,7 +116,9 @@ function canonicalPairScore(p,mint){
   if(!(price>0))return -1;
   const liq=num(p?.liquidity?.usd),v5=num(p?.volume?.m5),v1=num(p?.volume?.h1),v24=num(p?.volume?.h24);
   const tx5=num(p?.txns?.m5?.buys)+num(p?.txns?.m5?.sells);
-  return Math.log10(1+Math.max(0,liq))*100+
+  const trusted=isTrustedQuotePair(p);
+  return (trusted?10000:0)+
+    Math.log10(1+Math.max(0,liq))*100+
     Math.log10(1+Math.max(0,v24))*8+
     Math.log10(1+Math.max(0,v1))*5+
     Math.log10(1+Math.max(0,v5))*3+
@@ -120,9 +126,10 @@ function canonicalPairScore(p,mint){
 }
 function chooseCanonicalPair(rows,mint){
   const valid=(Array.isArray(rows)?rows:[])
-    .filter(p=>canonicalPairScore(p,mint)>=0)
-    .sort((a,b)=>canonicalPairScore(b,mint)-canonicalPairScore(a,mint));
-  return valid[0]||null;
+    .filter(p=>canonicalPairScore(p,mint)>=0);
+  const trusted=valid.filter(isTrustedQuotePair);
+  const pool=trusted.length?trusted:valid;
+  return pool.sort((a,b)=>canonicalPairScore(b,mint)-canonicalPairScore(a,mint))[0]||null;
 }
 
 async function pairsForMany(mints,preferredPairs=null){
@@ -147,11 +154,14 @@ async function pairsForMany(mints,preferredPairs=null){
   for(const mint of uniq){
     const rows=candidates.get(mint)||[];
     const preferred=preferredPairs&&typeof preferredPairs.get==='function'?String(preferredPairs.get(mint)||''):'';
+    const trustedRows=rows.filter(function(x){return canonicalPairScore(x,mint)>=0&&isTrustedQuotePair(x)});
     let p=null;
     if(preferred){
-      p=rows.find(function(x){
+      var pinned=rows.find(function(x){
         return String(x?.pairAddress||'')===preferred&&canonicalPairScore(x,mint)>=0;
       })||null;
+      // Keep a pin only if it is a trusted SOL/USDC/USDT market, or there is no trusted alternative.
+      if(pinned&&(isTrustedQuotePair(pinned)||trustedRows.length===0))p=pinned;
     }
     if(!p)p=chooseCanonicalPair(rows,mint);
     if(p)out.set(mint,p);
@@ -1498,7 +1508,7 @@ async function buildFresh(){
     const buys5m=num(p.txns?.m5?.buys),sells5m=num(p.txns?.m5?.sells);
     const t={
       name:p.baseToken?.name||'Unknown',symbol:p.baseToken?.symbol||'?',mint:s.mint,
-      dexId:p.dexId||'',dexUrl:p.url||'',pairAddress:p.pairAddress||'',quoteTokenAddress:p.quoteToken?.address||'',image:p.info?.imageUrl||s.image||'',description:s.description,
+      dexId:p.dexId||'',dexUrl:p.url||'',pairAddress:p.pairAddress||'',quoteTokenAddress:p.quoteToken?.address||'',priceQuoteTrusted:isTrustedQuotePair(p),image:p.info?.imageUrl||s.image||'',description:s.description,
       ageMinutes:+ageMinutes.toFixed(1),priceUsd:num(p.priceUsd),marketCap:num(p.marketCap||p.fdv),
       liquidity:num(p.liquidity?.usd),volume5m:num(p.volume?.m5),volume1h:num(p.volume?.h1),volume6h:num(p.volume?.h6),volume24h:num(p.volume?.h24),
       buys5m,sells5m,txns5m:buys5m+sells5m,
@@ -1594,7 +1604,9 @@ async function buildMarketLive(){
         priceChange5m:num(p.priceChange?.m5),priceChange1h:num(p.priceChange?.h1),priceChange6h:num(p.priceChange?.h6),priceChange24h:num(p.priceChange?.h24),
         dexUrl:p.url||t.dexUrl||'',
         pairAddress:p.pairAddress||'',
-        priceSource:(t.pairAddress&&String(p.pairAddress||'')===String(t.pairAddress)?'DEXScreener pinned pair':'DEXScreener canonical fallback'),
+        quoteTokenAddress:p.quoteToken?.address||'',
+        priceQuoteTrusted:isTrustedQuotePair(p),
+        priceSource:(isTrustedQuotePair(p)?'DEXScreener trusted '+String(p.quoteToken?.symbol||'quote'):'DEXScreener untrusted quote fallback'),
         priceObservedAt:Date.now()
       };
       var merged={...t,...patch};
@@ -2568,6 +2580,12 @@ html,body,.shell,.panel,.list{overflow-anchor:none}
 
 <script>
 var tokens=[],smart=null,live=null,tracked=null,conviction=null,prelaunch=null,prelaunchLive=null,activeTab='featured',signalFilters={short:'',medium:'',long:'',security:'',holders:'',bigbuyers:''};
+try{
+  if(localStorage.getItem('priceCacheSchemaV2')!=='trusted-quotes-v2'){
+    localStorage.removeItem('livePriceCache');
+    localStorage.setItem('priceCacheSchemaV2','trusted-quotes-v2');
+  }
+}catch(e){}
 var livePriceCache=new Map();
 var lastMarketLiveAt=0;
 try{
@@ -4068,8 +4086,17 @@ function renderActivePanel(){
 function mergeMarketLive(x){
   if(!x||!Array.isArray(x.tokens)||!x.tokens.length)return false;
   var byMint=new Map(x.tokens.map(function(p){
-    if(p&&p.mint&&Number(p.priceUsd||0)>0)rememberLivePrice(p.mint,p.priceUsd,'live',Number(p.priceObservedAt||Date.now()),p.pairAddress||'');
-    return [p.mint,p];
+    var t=findToken(p&&p.mint);
+    var acceptable=!!(p&&p.mint&&Number(p.priceUsd||0)>0);
+    // Never replace a trusted SOL/stable price with a quote-token market.
+    if(t&&t.priceQuoteTrusted===true&&p.priceQuoteTrusted!==true)acceptable=false;
+    // One-second live prices should not jump 20x away from the last trusted snapshot.
+    if(acceptable&&t&&Number(t.priceUsd||0)>0&&p.priceQuoteTrusted===true){
+      var ratio=Number(p.priceUsd)/Number(t.priceUsd);
+      if(ratio>20||ratio<0.05)acceptable=false;
+    }
+    if(acceptable)rememberLivePrice(p.mint,p.priceUsd,'live',Number(p.priceObservedAt||Date.now()),p.pairAddress||'');
+    return [p.mint,acceptable?p:null];
   }));
   var changed=false;
   tokens=tokens.map(function(t){
@@ -4297,7 +4324,7 @@ createServer(async(req,res)=>{
       const buys5m=num(p.txns?.m5?.buys),sells5m=num(p.txns?.m5?.sells);
       const t={
         name:p.baseToken?.name||'Unknown',symbol:p.baseToken?.symbol||'?',mint,
-        dexId:p.dexId||'',dexUrl:p.url||'',pairAddress:p.pairAddress||'',quoteTokenAddress:p.quoteToken?.address||'',image:p.info?.imageUrl||'',description:'',
+        dexId:p.dexId||'',dexUrl:p.url||'',pairAddress:p.pairAddress||'',quoteTokenAddress:p.quoteToken?.address||'',priceQuoteTrusted:isTrustedQuotePair(p),image:p.info?.imageUrl||'',description:'',
         ageMinutes:Math.max(0,(Date.now()-num(p.pairCreatedAt))/60000),
         priceUsd:num(p.priceUsd),marketCap:num(p.marketCap||p.fdv),liquidity:num(p.liquidity?.usd),
         volume5m:num(p.volume?.m5),volume1h:num(p.volume?.h1),volume6h:num(p.volume?.h6),volume24h:num(p.volume?.h24),
