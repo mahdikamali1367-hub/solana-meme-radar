@@ -699,14 +699,20 @@ async function discovery(){
     s.discoveryLiquidity=liq;
   }
 
-  return raw.filter(x=>pairs.has(x.mint)).sort((a,b)=>{
+  // IMPORTANT: never discard discovery candidates solely because the DEXScreener
+  // batch endpoint missed them. buildFresh() performs an exact token-pairs lookup
+  // for every seed. A temporary batch rate-limit/incomplete response must not make
+  // the whole radar return zero tokens.
+  return raw.sort((a,b)=>{
+    const ap=pairs.has(a.mint)?1:0,bp=pairs.has(b.mint)?1:0;
+    if(bp!==ap)return bp-ap;
     const ma=num(a.marketDiscoveryScore),mb=num(b.marketDiscoveryScore);
     if(mb!==ma)return mb-ma;
     const ka=num(a.kolTrend?.score),kb=num(b.kolTrend?.score);
     if(kb!==ka)return kb-ka;
     if(a.profileSeen&&!b.profileSeen)return -1;if(b.profileSeen&&!a.profileSeen)return 1;
     return num(b.boostTotal)-num(a.boostTotal);
-  }).slice(0,100);
+  }).slice(0,120);
 }
 async function pairFor(mint){
   try{
@@ -1518,8 +1524,20 @@ async function buildFresh(){
   if(cache.data&&Date.now()-cache.at<CACHE_MS)return cache.data;
   const seeds=await discovery();
   const out=[];
-  for(const s of seeds.slice(0,85)){
-    const p=await pairFor(s.mint); if(!p)continue;
+  const selectedSeeds=seeds.slice(0,100);
+  const exactPairs=new Map();
+  // Direct token-pairs lookup is the authoritative fallback. Run in small chunks
+  // to avoid a single DEXScreener batch failure emptying the entire radar.
+  for(let i=0;i<selectedSeeds.length;i+=10){
+    const group=selectedSeeds.slice(i,i+10);
+    const settled=await Promise.allSettled(group.map(async s=>[s.mint,await pairFor(s.mint)]));
+    for(const r of settled){
+      if(r.status==='fulfilled'&&r.value?.[1])exactPairs.set(r.value[0],r.value[1]);
+    }
+    await sleep(80);
+  }
+  for(const s of selectedSeeds){
+    const p=exactPairs.get(s.mint); if(!p)continue;
     const created=num(p.pairCreatedAt);
     if(!created)continue;
     const ageMinutes=Math.max(0,(Date.now()-created)/60000);
@@ -1586,7 +1604,7 @@ async function buildFresh(){
   out.sort((a,b)=>(rank[b.verdict]-rank[a.verdict])||(b.trend.score-a.trend.score)||(b.volume5m-a.volume5m));
   const strong=out.filter(x=>x.verdict==='STRONG WATCH').length;
   const trending=out.filter(x=>x.trend.score>=50).length;
-  const data={ok:true,generatedAt:new Date().toISOString(),refreshSeconds:20,marketLiveRefreshSeconds:1,count:out.length,strong,trending,discovered:seeds.length,tokens:out,
+  const data={ok:true,generatedAt:new Date().toISOString(),refreshSeconds:20,marketLiveRefreshSeconds:1,count:out.length,strong,trending,discovered:seeds.length,resolvedPairs:exactPairs.size,tokens:out,
     sourceStatus:{dexscreener:'live',solanaRpc:'live',kolExplorer:'live-public profiles + on-chain holdings/trades',kolX:process.env.X_BEARER_TOKEN?'live-api':'on-chain fallback; X API key not configured',bluesky:'live-public',x:process.env.X_BEARER_TOKEN?'live-api':'needs API key',youtube:process.env.YOUTUBE_API_KEY?'live-api':'needs API key',reddit:process.env.REDDIT_CLIENT_ID?'configured':'presence-only',instagram:'presence-only',facebook:'presence-only',tiktok:'presence-only',telegram:'presence-only'},
     holderPolicy:{hardRules:{holder1MustBeBelowPct:10,holders2to10EachMustBeBelowPct:5,exclusive:true},gradeA:{holder1MaxPct:5,holders2to10EachMaxPct:2.5},gradeB:{holder1MaxPct:7.5,holders2to10EachMaxPct:4},gradeC:{holder1MaxPct:10,holders2to10EachMaxPct:5},unknownFailsStrong:true},
     activityPolicy:{probableOrganicMin:72,highSecurityMin:58,method:'aggregate heuristics; not proof of human identity'},
@@ -1597,6 +1615,10 @@ async function buildFresh(){
     trustGuard:{strongSignalRequires:'2+ holder snapshots, 2 consecutive good scans, >=45 seconds stable confirmation, buyer strength, healthy volume, no holder-outflow risk',downgrade:'holder movement, seller dominance, whale/tracked exits or pump cooldown immediately remove strong status'},
     signalWindows:{short:'5m-1h',medium:'1h-6h',long:'6h-24h',securityGate:'HIGH/MAX requires zero manual, zero unknown and zero failed automated security checks; unknown evidence cannot receive strong approval'},
     disclaimer:'قانون هولدرها: هولدر شماره 1 باید کمتر از 10% و هرکدام از هولدرهای شماره 2 تا 10 باید کمتر از 5% داشته باشند. مجموع Top10 فقط جهت اطلاع نمایش داده می‌شود و شرط رد نیست. Organic Activity یک تخمین ضدربات/ضدواش است. هیچ فیلتر آن‌چین کلاهبرداری را 100% رد نمی‌کند.'};
+  if(out.length===0&&cache.data&&Array.isArray(cache.data.tokens)&&cache.data.tokens.length){
+    cache={at:Date.now(),data:{...cache.data,generatedAt:new Date().toISOString(),stale:true,scanWarning:'آخرین اسکن جدید صفر نتیجه داشت؛ آخرین لیست معتبر حفظ شد',discovered:seeds.length,resolvedPairs:exactPairs.size}};
+    return cache.data;
+  }
   cache={at:Date.now(),data};return data;
 }
 async function buildMarketLive(){
@@ -4001,6 +4023,10 @@ function tokenSecurityBucketClass(v){return v==='high'?'good':v==='medium'?'mid'
 function renderTokens(){
   var r=filteredTokens();
   tokens.forEach(rememberTokenRadar);
+  var top=document.getElementById('topTokenQuick');
+  if(!tokens.length&&top){
+    top.innerHTML='<div class="empty">در حال بازیابی توکن‌ها از DEXScreener/GeckoTerminal… اگر batch موقتاً ناقص باشد، lookup مستقیم Mint به‌صورت خودکار ادامه می‌یابد.</div>';
+  }
   function sortRows(a,b){
     return (siteTrendScore(b)-siteTrendScore(a))||
       (tokenStrength(b)-tokenStrength(a))||
@@ -4239,10 +4265,16 @@ async function loadAll(){
   var sx=window.scrollX,sy=window.scrollY;
   try{
     var r=await Promise.all([safeJson('/api/v1/tokens'),safeJson('/api/v1/smart-money'),safeJson('/api/v1/smart-money-live'),safeJson('/api/v1/tracked-wallets'),safeJson('/api/v1/conviction-wallets'),safeJson('/api/v1/prelaunch')]);
-    if(r[0]&&Array.isArray(r[0].tokens)&&r[0].tokens.length){
-      tokens=r[0].tokens;
-      tokens.forEach(function(t){rememberLivePrice(t.mint,t.priceUsd,'snapshot',Date.now(),t.pairAddress||'')});
-      saveLivePrices();
+    if(r[0]&&Array.isArray(r[0].tokens)){
+      if(r[0].tokens.length){
+        tokens=r[0].tokens;
+        tokens.forEach(function(t){rememberLivePrice(t.mint,t.priceUsd,'snapshot',Date.now(),t.pairAddress||'')});
+        saveLivePrices();
+      }else if(tokens.length===0){
+        // Keep UI explicit if the very first scan is empty, but never erase a valid list.
+        var u=document.getElementById('updated');
+        if(u)u.textContent='اسکن موقتاً توکن نداد؛ تلاش بعدی خودکار انجام می‌شود';
+      }
     }
     if(r[1])smart=r[1];
     if(r[2])live=r[2];
