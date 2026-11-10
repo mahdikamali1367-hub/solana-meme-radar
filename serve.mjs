@@ -2410,6 +2410,46 @@ html,body,.shell,.panel,.list{overflow-anchor:none}
 
 <script>
 var tokens=[],smart=null,live=null,tracked=null,conviction=null,prelaunch=null,activeTab='featured',signalFilters={short:'',medium:'',long:'',security:'',holders:'',bigbuyers:''};
+var livePriceCache=new Map();
+try{
+  var savedLivePrices=JSON.parse(localStorage.getItem('livePriceCache')||'[]');
+  if(Array.isArray(savedLivePrices))savedLivePrices.forEach(function(x){if(x&&x[0])livePriceCache.set(x[0],x[1])});
+}catch(e){}
+function rememberLivePrice(mint,price){
+  price=Number(price||0);
+  if(!mint||!(price>0))return;
+  livePriceCache.set(mint,{price:price,at:Date.now()});
+}
+function saveLivePrices(){
+  try{localStorage.setItem('livePriceCache',JSON.stringify([...livePriceCache.entries()].slice(-600)))}catch(e){}
+}
+function currentPriceForMint(mint){
+  var t=findToken(mint);
+  var p=Number(t&&t.priceUsd||0);
+  if(p>0){rememberLivePrice(mint,p);return p}
+  var hit=livePriceCache.get(mint);
+  return hit&&Number(hit.price||0)>0?Number(hit.price):null;
+}
+function livePnlPct(mint,base){
+  var cur=currentPriceForMint(mint),b=Number(base||0);
+  return cur&&b>0?((cur/b)-1)*100:null;
+}
+function updateLiveProfitDom(){
+  document.querySelectorAll('[data-live-profit-mint]').forEach(function(el){
+    var mint=el.getAttribute('data-live-profit-mint');
+    var base=Number(el.getAttribute('data-live-profit-base')||0);
+    var p=livePnlPct(mint,base);
+    el.textContent=p==null?'—':(p>0?'+':'')+p.toFixed(2)+'%';
+    el.classList.remove('return-pos','return-neg','return-flat');
+    el.classList.add(p==null?'return-flat':p>=0?'return-pos':'return-neg');
+  });
+  document.querySelectorAll('[data-live-price-mint]').forEach(function(el){
+    var cur=currentPriceForMint(el.getAttribute('data-live-price-mint'));
+    el.textContent=cur?fmtPrice(cur):'—';
+  });
+}
+setInterval(function(){updateLiveProfitDom()},500);
+
 var stickyFeatured=new Map();
 var recommendationHistory=new Map();
 var socialSignalHistory=new Map();
@@ -2443,7 +2483,7 @@ function rememberTokenRadar(t){
 }
 function tokenRadarPerformanceRows(){
   return [...tokenRadarHistory.values()].map(function(h){
-    var t=findToken(h.mint),current=t?Number(t.priceUsd||0):null,base=Number(h.introducedPrice||0);
+    var t=findToken(h.mint),current=currentPriceForMint(h.mint),base=Number(h.introducedPrice||0);
     var pnl=(current!=null&&current>0&&base>0)?((current/base)-1)*100:null;
     return {history:h,token:t,currentPrice:current,pnlPct:pnl};
   }).sort(function(a,b){
@@ -2494,7 +2534,7 @@ function rememberSocialSignal(t){
 function socialSignalPerformanceRows(){
   return [...socialSignalHistory.values()].map(function(h){
     var t=findToken(h.mint);
-    var current=t?Number(t.priceUsd||0):null;
+    var current=currentPriceForMint(h.mint);
     var base=Number(h.introducedPrice||0);
     var pnl=(current!=null&&current>0&&base>0)?((current/base)-1)*100:null;
     return {history:h,token:t,currentPrice:current,pnlPct:pnl};
@@ -3459,7 +3499,7 @@ function renderSocialTrends(){
         (hist?'<small>اولین سیگنال اجتماعی: '+new Date(hist.introducedAt).toLocaleString('fa-IR')+' · قیمت '+fmtPrice(hist.introducedPrice)+'</small>':'')+
         socialButtons(t)+'</div>'+
         '<div class="cell"><small>Social Heat</small><b><span class="badge '+socialHeatClass(h.label)+'">'+esc(faSocialHeat(h.label))+' '+Number(h.score||0)+'</span></b></div>'+
-        '<div class="cell"><small>سود از معرفی</small><b class="'+pnlClass+'">'+pnlText+'</b></div>'+
+        '<div class="cell"><small>سود از معرفی</small><b data-live-profit-mint="'+esc(t.mint)+'" data-live-profit-base="'+Number(hist&&hist.introducedPrice||0)+'" class="'+pnlClass+'">'+pnlText+'</b></div>'+
         '<div class="cell"><small>X / 2h</small><b>'+Number(h.xPosts2h||0)+'</b></div>'+
         '<div class="cell hide-sm"><small>YouTube / 24h</small><b>'+Number(h.youtubeVideos24h||0)+'</b></div>'+
         '<div class="cell hide-md"><small>امنیت</small><b><span class="badge '+secClass(s.tier)+'">'+esc(faSec(s.tier))+'</span></b></div>'+
@@ -3489,8 +3529,8 @@ function renderSocialTrends(){
       return '<div class="row"><div class="asset"><b>#'+(i+1)+' 📣 '+esc(h.symbol||'?')+' · '+esc(h.name||'')+'</b>'+
         '<small>معرفی '+new Date(h.introducedAt).toLocaleString('fa-IR')+' · Social Heat اولیه '+Number(h.introducedSocialHeat||0)+' · امنیت '+esc(faSec(h.introducedSecurity))+'</small></div>'+
         '<div class="cell"><small>قیمت معرفی</small><b>'+fmtPrice(h.introducedPrice)+'</b></div>'+
-        '<div class="cell"><small>قیمت فعلی</small><b>'+(x.currentPrice?fmtPrice(x.currentPrice):'—')+'</b></div>'+
-        '<div class="cell"><small>سود/ضرر</small><b class="'+cls+'">'+txt+'</b></div>'+
+        '<div class="cell"><small>قیمت فعلی</small><b data-live-price-mint="'+esc(h.mint)+'">'+(x.currentPrice?fmtPrice(x.currentPrice):'—')+'</b></div>'+
+        '<div class="cell"><small>سود/ضرر</small><b data-live-profit-mint="'+esc(h.mint)+'" data-live-profit-base="'+Number(h.introducedPrice||0)+'" class="'+cls+'">'+txt+'</b></div>'+
         '<div class="cell hide-sm"><small>Heat اولیه</small><b>'+Number(h.introducedSocialHeat||0)+'/100</b></div>'+
         '<div class="actions"><a class="action" target="_blank" rel="noopener" href="'+esc(dexUrl(h.mint,h.dexUrl||t&&t.dexUrl))+'">📈 چارت</a></div></div>';
     }).join(''):'<div class="empty">هنوز سیگنال اجتماعی ثبت‌شده‌ای برای محاسبه عملکرد وجود ندارد.</div>';
@@ -3563,8 +3603,8 @@ function renderRecommendationPerformance(){
     return '<div class="row"><div class="asset"><b>#'+(i+1)+' '+esc(h.symbol||'?')+' · '+esc(h.name||'')+'</b>'+
       '<small>زمان معرفی '+new Date(h.introducedAt).toLocaleString('fa-IR')+' · امنیت '+esc(faSec(h.introducedSecurity))+' · امتیاز '+Number(h.introducedScore||0)+'/100</small></div>'+
       '<div class="cell"><small>قیمت معرفی</small><b>'+fmtPrice(h.introducedPrice)+'</b></div>'+
-      '<div class="cell"><small>قیمت فعلی</small><b>'+(current?fmtPrice(current):'—')+'</b></div>'+
-      '<div class="cell"><small>سود/ضرر از معرفی</small><b class="'+cls+'">'+txt+'</b></div>'+
+      '<div class="cell"><small>قیمت فعلی</small><b data-live-price-mint="'+esc(h.mint)+'">'+(current?fmtPrice(current):'—')+'</b></div>'+
+      '<div class="cell"><small>سود/ضرر از معرفی</small><b data-live-profit-mint="'+esc(h.mint)+'" data-live-profit-base="'+Number(h.introducedPrice||0)+'" class="'+cls+'">'+txt+'</b></div>'+
       '<div class="actions"><a class="action" target="_blank" rel="noopener" href="'+esc(dexUrl(h.mint,h.dexUrl||t&&t.dexUrl))+'">📈 چارت</a></div></div>';
   }).join(''):'<div class="empty">هنوز هیچ پیشنهاد ثبت‌شده‌ای برای محاسبه عملکرد وجود ندارد.</div>';
 }
@@ -3678,7 +3718,7 @@ function renderTokens(){
         '<small>اولین ورود '+new Date(h.introducedAt).toLocaleString('fa-IR')+' · امنیت اولیه '+esc(faSec(h.introducedSecurity))+' · امتیاز '+Number(h.introducedScore||0)+'/100</small></div>'+
         '<div class="cell"><small>قیمت اولین ورود</small><b>'+fmtPrice(h.introducedPrice)+'</b></div>'+
         '<div class="cell"><small>قیمت فعلی</small><b>'+(x.currentPrice?fmtPrice(x.currentPrice):'—')+'</b></div>'+
-        '<div class="cell"><small>سود/ضرر</small><b class="'+cls+'">'+txt+'</b></div>'+
+        '<div class="cell"><small>سود/ضرر</small><b data-live-profit-mint="'+esc(h.mint)+'" data-live-profit-base="'+Number(h.introducedPrice||0)+'" class="'+cls+'">'+txt+'</b></div>'+
         '<div class="actions"><a class="action" target="_blank" rel="noopener" href="'+esc(dexUrl(h.mint,h.dexUrl||t&&t.dexUrl))+'">📈 چارت</a></div></div>';
     }).join(''):'<div class="empty">هنوز سابقه‌ای برای عملکرد توکن‌ها ثبت نشده.</div>';
   }
@@ -3688,7 +3728,7 @@ function renderAlerts(){
   var c=live&&live.exitClusters?live.exitClusters.filter(function(x){return x.severity==='MULTI-WALLET EXIT'}).slice(0,3):[];
   document.getElementById('kExits').textContent=c.length;document.getElementById('alerts').innerHTML=c.map(function(x){return '<div class="alert">🚨 خروج همزمان چند کیف‌پول از <b>'+esc(x.token||short(x.tokenAddress))+'</b> · '+Number(x.uniqueSellers||0)+' فروشنده</div>'}).join('');
 }
-function renderAll(){document.getElementById('kTokens').textContent=tokens.length;renderTopQuick();renderChampion();renderAlerts();renderFeatured();renderWhales();renderSmart();renderPrelaunch();renderSocialTrends();renderWallets();renderConviction();renderRecommendationPerformance();renderPerformance24();renderKolTrends();renderTokens()}
+function renderAll(){document.getElementById('kTokens').textContent=tokens.length;renderTopQuick();renderChampion();renderAlerts();renderFeatured();renderWhales();renderSmart();renderPrelaunch();renderSocialTrends();renderWallets();renderConviction();renderRecommendationPerformance();renderPerformance24();renderKolTrends();renderTokens();updateLiveProfitDom()}
 function stateLabel(v){return v==='pass'?'<span class="pass">✓ تأیید خودکار</span>':v==='fail'?'<span class="fail">✕ رد خودکار</span>':v==='warn'?'<span class="manual">△ هشدار خودکار</span>':'<span class="manual">? تأیید نشده — داده ناکافی</span>'}
 function openDetail(m){
   var t=findToken(m),tr=findTracked(m),sm=smartFor(m),wh=whaleFor(m),name=t?(t.symbol+' · '+t.name):(tr?(tr.symbol+' · '+tr.name):short(m)),h='';
@@ -3763,7 +3803,10 @@ function renderActivePanel(){
 
 function mergeMarketLive(x){
   if(!x||!Array.isArray(x.tokens)||!x.tokens.length)return false;
-  var byMint=new Map(x.tokens.map(function(p){return [p.mint,p]}));
+  var byMint=new Map(x.tokens.map(function(p){
+    if(p&&p.mint&&Number(p.priceUsd||0)>0)rememberLivePrice(p.mint,p.priceUsd);
+    return [p.mint,p];
+  }));
   var changed=false;
   tokens=tokens.map(function(t){
     var p=byMint.get(t.mint);if(!p)return t;
@@ -3781,7 +3824,11 @@ async function loadAll(){
   var sx=window.scrollX,sy=window.scrollY;
   try{
     var r=await Promise.all([safeJson('/api/v1/tokens'),safeJson('/api/v1/smart-money'),safeJson('/api/v1/smart-money-live'),safeJson('/api/v1/tracked-wallets'),safeJson('/api/v1/conviction-wallets'),safeJson('/api/v1/prelaunch')]);
-    if(r[0]&&Array.isArray(r[0].tokens))tokens=r[0].tokens;
+    if(r[0]&&Array.isArray(r[0].tokens)&&r[0].tokens.length){
+      tokens=r[0].tokens;
+      tokens.forEach(function(t){rememberLivePrice(t.mint,t.priceUsd)});
+      saveLivePrices();
+    }
     if(r[1])smart=r[1];
     if(r[2])live=r[2];
     if(r[3])tracked=r[3];
@@ -3802,7 +3849,8 @@ async function pollMarketLive(){
   try{
     var x=await safeJson('/api/v1/market-live');
     if(mergeMarketLive(x)){
-      renderActivePanel();
+      updateLiveProfitDom();
+      saveLivePrices();
       document.getElementById('updated').textContent='بازار زنده: '+new Date().toLocaleTimeString('fa-IR');
     }
   }finally{marketLiveBusy=false}
