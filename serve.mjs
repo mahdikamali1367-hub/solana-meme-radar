@@ -10,6 +10,9 @@ const EXTERNAL_SECURITY_CACHE_MS=10*60*1000;
 let cache={at:0,data:null};
 let buildInFlight=null;
 let marketLiveCache={at:0,data:null};
+const exactDexPriceCache=new Map();
+const EXACT_DEX_PRICE_CACHE_MS=1200;
+
 let prelaunchCache={at:0,data:null};
 const prelaunchWatchState=new Map();
 const launchPerfCache=new Map();
@@ -711,6 +714,27 @@ async function pairFor(mint){
     return chooseCanonicalPair(Array.isArray(rows)?rows:[],mint);
   }catch{return null}
 }
+async function exactDexPrice(mint){
+  const hit=exactDexPriceCache.get(mint);
+  if(hit&&Date.now()-hit.at<EXACT_DEX_PRICE_CACHE_MS)return hit.data;
+  const p=await pairFor(mint);
+  if(!p||!(num(p.priceUsd)>0))return null;
+  const data={
+    mint,
+    priceUsd:num(p.priceUsd),
+    pairAddress:String(p.pairAddress||''),
+    dexId:String(p.dexId||''),
+    dexUrl:String(p.url||''),
+    quoteTokenAddress:String(p?.quoteToken?.address||''),
+    quoteTokenSymbol:String(p?.quoteToken?.symbol||''),
+    liquidity:num(p?.liquidity?.usd),
+    observedAt:Date.now(),
+    source:'DEXScreener token-pairs exact mint'
+  };
+  exactDexPriceCache.set(mint,{at:Date.now(),data});
+  return data;
+}
+
 async function security(mint){
   const cached=securityCache.get(mint);
   if(cached&&Date.now()-cached.at<SECURITY_CACHE_MS)return cached.data;
@@ -2577,9 +2601,9 @@ html,body,.shell,.panel,.list{overflow-anchor:none}
 <script>
 var tokens=[],smart=null,live=null,tracked=null,conviction=null,prelaunch=null,prelaunchLive=null,activeTab='featured',signalFilters={short:'',medium:'',long:'',security:'',holders:'',bigbuyers:''};
 try{
-  if(localStorage.getItem('priceCacheSchemaV3')!=='dexscreener-exact-pair-v3'){
+  if(localStorage.getItem('priceCacheSchemaV4')!=='dexscreener-visible-exact-v4'){
     localStorage.removeItem('livePriceCache');
-    localStorage.setItem('priceCacheSchemaV3','dexscreener-exact-pair-v3');
+    localStorage.setItem('priceCacheSchemaV4','dexscreener-visible-exact-v4');
   }
 }catch(e){}
 var livePriceCache=new Map();
@@ -2628,7 +2652,9 @@ function currentPriceForMint(mint){
   var tokenPrice=Number(t&&t.priceUsd||0);
   var tokenPair=String(t&&t.pairAddress||'');
 
-  // Exact DEXScreener pair live price is authoritative while fresh.
+  // Exact DEXScreener lookup is authoritative even for historical rows that are no longer in the current token scan.
+  if(cached&&hit&&hit.source==='dexscreener-exact'&&Date.now()-cachedAt<=15000)return cached;
+  // Market-live cache is authoritative only for the same pinned pair.
   if(cached&&Date.now()-cachedAt<=15000&&(!tokenPair||!cachedPair||tokenPair===cachedPair))return cached;
 
   // Full-scan price is from the same DEXScreener pair and is the fallback.
@@ -4169,6 +4195,41 @@ async function loadAll(){
   }
 }
 
+var visibleDexPriceBusy=false;
+async function pollVisibleDexPrices(){
+  if(visibleDexPriceBusy)return;
+  visibleDexPriceBusy=true;
+  try{
+    var els=[...document.querySelectorAll('[data-live-price-mint],[data-live-profit-mint]')];
+    var mints=[...new Set(els.filter(function(el){
+      var r=el.getBoundingClientRect();
+      return r.bottom>=-120&&r.top<=window.innerHeight+120;
+    }).map(function(el){
+      return el.getAttribute('data-live-price-mint')||el.getAttribute('data-live-profit-mint')||'';
+    }).filter(Boolean))].slice(0,12);
+
+    var rows=await Promise.all(mints.map(async function(mint){
+      return await safeJson('/api/v1/dex-price?mint='+encodeURIComponent(mint));
+    }));
+
+    rows.forEach(function(p){
+      if(!p||!p.ok||!(Number(p.priceUsd)>0))return;
+      // Exact DEXScreener token-pairs lookup overrides any stale historical/local price.
+      rememberLivePrice(p.mint,p.priceUsd,'dexscreener-exact',Number(p.observedAt||Date.now()),p.pairAddress||'');
+
+      var t=findToken(p.mint);
+      if(t){
+        t.priceUsd=Number(p.priceUsd);
+        t.pairAddress=p.pairAddress||t.pairAddress||'';
+        t.dexUrl=p.dexUrl||t.dexUrl||'';
+      }
+    });
+    updateLiveProfitDom();
+  }finally{
+    visibleDexPriceBusy=false;
+  }
+}
+
 async function pollMarketLive(){
   if(marketLiveBusy)return;
   marketLiveBusy=true;
@@ -4284,7 +4345,7 @@ window.addEventListener('error',function(e){
   var u=document.getElementById('updated');
   if(u)u.textContent='خطای رابط: '+String(e.message||'JavaScript');
 });
-loadAll();startLivePush();marketLiveTimer=setInterval(pollMarketLive,1000);setTimeout(pollMarketLive,350);setInterval(pollPrelaunchLive,1000);setTimeout(pollPrelaunchLive,500);setInterval(loadAll,20000);
+loadAll();startLivePush();marketLiveTimer=setInterval(pollMarketLive,1000);setTimeout(pollMarketLive,350);setInterval(pollVisibleDexPrices,1500);setTimeout(pollVisibleDexPrices,650);setInterval(pollPrelaunchLive,1000);setTimeout(pollPrelaunchLive,500);setInterval(loadAll,20000);
 </script>
 </body>
 </html>`;
@@ -4294,7 +4355,7 @@ createServer(async(req,res)=>{
   try{
     if(url.pathname==='/api/health'){res.writeHead(200,{'content-type':'application/json',...headers});return res.end(JSON.stringify({ok:true,time:new Date().toISOString()}))}
     if(url.pathname==='/api/v1/force-refresh'){
-      cache={at:0,data:null};marketLiveCache={at:0,data:null};trackedWalletCache={at:0,data:null};smartMoneyCache={at:0,data:null};convictionCache={at:0,data:null};
+      cache={at:0,data:null};marketLiveCache={at:0,data:null};exactDexPriceCache.clear();trackedWalletCache={at:0,data:null};smartMoneyCache={at:0,data:null};convictionCache={at:0,data:null};
       res.writeHead(200,{'content-type':'application/json; charset=utf-8','cache-control':'no-store',...headers});
       return res.end(JSON.stringify({ok:true,clearedAt:new Date().toISOString()}));
     }
@@ -4318,6 +4379,20 @@ createServer(async(req,res)=>{
       return;
     }
     if(url.pathname==='/api/v1/smart-money-live'){const sm=liveSmartMoneyPayload();res.writeHead(200,{'content-type':'application/json; charset=utf-8','cache-control':'no-store',...headers});return res.end(JSON.stringify(sm))}
+    if(url.pathname==='/api/v1/dex-price'){
+      const mint=String(url.searchParams.get('mint')||'').trim();
+      if(!/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(mint)){
+        res.writeHead(400,{'content-type':'application/json; charset=utf-8','cache-control':'no-store',...headers});
+        return res.end(JSON.stringify({ok:false,error:'invalid mint'}));
+      }
+      const px=await exactDexPrice(mint);
+      if(!px){
+        res.writeHead(404,{'content-type':'application/json; charset=utf-8','cache-control':'no-store',...headers});
+        return res.end(JSON.stringify({ok:false,error:'price not found'}));
+      }
+      res.writeHead(200,{'content-type':'application/json; charset=utf-8','cache-control':'no-store',...headers});
+      return res.end(JSON.stringify({ok:true,...px}));
+    }
     if(url.pathname==='/api/v1/market-live'){const ml=await buildMarketLive();res.writeHead(200,{'content-type':'application/json; charset=utf-8','cache-control':'no-store',...headers});return res.end(JSON.stringify(ml))}
     if(url.pathname==='/api/v1/token-lookup'){
       const mint=String(url.searchParams.get('mint')||'').trim();
