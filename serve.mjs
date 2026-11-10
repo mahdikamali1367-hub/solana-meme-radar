@@ -2248,9 +2248,72 @@ function startLiveFomoStream(){
   }
 }
 startLiveFomoStream();
+async function refreshTrackedWhaleSource(){
+  try{
+    await buildTrackedWallets();
+    liveFomoState.updatedAt=new Date().toISOString();
+    broadcastLiveState('market');
+  }catch{}
+}
+setTimeout(refreshTrackedWhaleSource,1500);
+setInterval(refreshTrackedWhaleSource,60000);
+
+function trackedWhaleEvents(){
+  const tw=trackedWalletCache?.data;
+  if(!tw||!Array.isArray(tw.wallets))return [];
+
+  const tokenMap=new Map((tw.tokens||[]).map(function(t){return [t.mint,t]}));
+  const out=[],seen=new Set();
+
+  for(const w of tw.wallets){
+    for(const e of (w.events||[])){
+      if(!e||!['BUY','SELL'].includes(String(e.side||'')))continue;
+      const mint=String(e.mint||'');
+      const ts=normalizeTs(e.ts||0);
+      if(!mint||!ts)continue;
+
+      const token=tokenMap.get(mint);
+      const holder=(token?.holders||[]).find(function(h){
+        return String(h.address||'')===String(w.address||'');
+      });
+      const positionValueUsd=num(holder?.valueUsd);
+
+      const key=String(e.signature||'')+'|'+mint+'|'+String(w.address||'')+'|'+String(e.side||'');
+      if(seen.has(key))continue;
+      seen.add(key);
+
+      out.push({
+        eventId:'tracked:'+key,
+        alertType:e.side==='BUY'?'buy':'sell',
+        trader:w.name||w.address||'tracked-wallet',
+        traderAddress:w.address||'',
+        userId:null,
+        tradeId:e.signature||null,
+        token:e.symbol||token?.symbol||'?',
+        tokenAddress:mint,
+        tradeUsd:num(e.approxUsd),
+        positionValueUsd,
+        text:'Solana RPC tracked-wallet swap',
+        ts,
+        txHash:e.signature||null,
+        trackedSmart:true,
+        positionVerified:true,
+        source:'tracked-wallet-onchain'
+      });
+    }
+  }
+  return out.sort(function(a,b){return b.ts-a.ts}).slice(0,200);
+}
 
 function liveSmartMoneyPayload(){
-  const events=liveFomoState.events.slice(0,120);
+  const fomoEvents=liveFomoState.events.slice(0,120);
+  const trackedEvents=trackedWhaleEvents();
+  const merged=new Map();
+  for(const e of [...fomoEvents,...trackedEvents]){
+    const k=String(e.eventId||e.txHash||'')+'|'+String(e.tokenAddress||'')+'|'+String(e.alertType||'');
+    if(!merged.has(k))merged.set(k,e);
+  }
+  const events=[...merged.values()].sort(function(a,b){return normalizeTs(b.ts)-normalizeTs(a.ts)}).slice(0,220);
   const cutoff=Date.now()-30*60*1000;
   const recentEvents=events.filter(x=>normalizeTs(x.ts)>=cutoff);
   const exits=recentEvents.filter(x=>x.alertType==='sell');
@@ -2345,6 +2408,25 @@ function liveSmartMoneyPayload(){
     .filter(x=>x.walletCount>=3)
     .sort((a,b)=>b.walletCount-a.walletCount||b.totalBuyUsd-a.totalBuyUsd);
 
+  // Current large positions are useful even if the last buy was older than 30m.
+  // They are shown separately and are never counted as a fresh buy unless a real BUY event exists.
+  const tw=trackedWalletCache?.data;
+  const whalePositions=(tw?.marketTopHoldings||[])
+    .filter(function(x){return num(x.currentHoldingUsd)>=25000})
+    .map(function(x){
+      return {
+        token:x.symbol||x.name||'?',
+        tokenAddress:x.mint,
+        currentHoldingUsd:num(x.currentHoldingUsd),
+        holdingWallets:num(x.holdingWallets),
+        holders:(x.holders||[]).slice(0,6),
+        dexUrl:x.dexUrl||'',
+        source:'tracked-wallet-onchain'
+      };
+    })
+    .sort(function(a,b){return b.currentHoldingUsd-a.currentHoldingUsd})
+    .slice(0,20);
+
   return {
     ok:true,
     connected:liveFomoState.connected,
@@ -2362,6 +2444,14 @@ function liveSmartMoneyPayload(){
     whaleByToken,
     coordinatedBuys,
     totalWhaleBuyUsd,
+    whalePositions,
+    sourceDiagnostics:{
+      fomoEvents:fomoEvents.length,
+      trackedOnchainEvents:trackedEvents.length,
+      recent30m:recentEvents.length,
+      fomoConnected:liveFomoState.connected,
+      trackedCacheReady:!!trackedWalletCache?.data
+    },
     exitClusters,
     whalePolicy:{
       singleBuyUsd:5000,
@@ -3869,19 +3959,29 @@ function renderWhales(){
       '<div class="actions"><a class="action" target="_blank" rel="noopener" href="'+esc(dexUrl(a.tokenAddress,t&&t.dexUrl))+'">📈 چارت</a><button class="detail-btn" data-mint="'+esc(a.tokenAddress)+'">جزئیات</button></div></div>';
   }).join('')+'</div>':'<div class="empty">فعلاً خرید نهنگ تازه‌ای در پنجره ۳۰ دقیقه‌ای ثبت نشده.</div>';
 
+  var positions=live&&Array.isArray(live.whalePositions)?live.whalePositions:[];
+  var positionsHtml=positions.length?'<div class="list">'+positions.slice(0,10).map(function(p,i){
+    var t=findToken(p.tokenAddress),sec=t&&t.security?t.security:{};
+    return '<div class="row"><div class="asset"><b>#'+(i+1)+' 🐋 موقعیت بزرگ · '+esc(p.token||t&&t.symbol||'?')+'</b>'+
+      '<small>'+Number(p.holdingWallets||0)+' کیف‌پول ردیابی‌شده · منبع: Solana RPC portfolio</small></div>'+
+      '<div class="cell"><small>ارزش فعلی</small><b>'+money(p.currentHoldingUsd)+'</b></div>'+
+      '<div class="cell"><small>امنیت</small><b><span class="badge '+secClass(sec.tier)+'">'+esc(faSec(sec.tier))+'</span></b></div>'+
+      '<div class="actions"><a class="action" target="_blank" rel="noopener" href="'+esc(dexUrl(p.tokenAddress,p.dexUrl||t&&t.dexUrl))+'">📈 چارت</a></div></div>';
+  }).join('')+'</div>':'<div class="empty">فعلاً موقعیت فعلی بالای 25هزار دلار در کیف‌پول‌های ردیابی‌شده پیدا نشده.</div>';
+
   var topSummary=document.getElementById('whaleTopSummary');
   var topList=document.getElementById('whaleTopList');
   if(topSummary)topSummary.innerHTML=summaryHtml;
-  if(topList)topList.innerHTML=rankedHtml;
+  if(topList)topList.innerHTML=rankedHtml+'<h3 style="font-size:13px;margin:12px 0 6px">🐋 موقعیت‌های بزرگ فعلی</h3>'+positionsHtml;
 
   var sum=document.getElementById('whaleSummary');
-  if(sum)sum.innerHTML=summaryHtml+rankedHtml;
+  if(sum)sum.innerHTML=summaryHtml+rankedHtml+'<h3 style="font-size:13px;margin:12px 0 6px">🐋 موقعیت‌های بزرگ فعلی</h3>'+positionsHtml;
 
-  document.getElementById('kWhales').textContent=r.length;
+  document.getElementById('kWhales').textContent=r.length||(live&&live.whalePositions?live.whalePositions.length:0);
   var filtered=r.filter(function(e){return passesSignalFilters(findToken(e.tokenAddress))});
   document.getElementById('whaleList').innerHTML=filtered.length?filtered.map(function(e){
     var t=findToken(e.tokenAddress),sec=t&&t.security?t.security:{};
-    return '<div class="row"><div class="asset"><b>🐋 '+esc(e.token||t&&t.symbol||'?')+'</b>'+(t?whaleVerifyChip(t):'')+'<small>'+esc(short(e.tokenAddress))+' · '+esc(e.trader||'نامشخص')+' · Live whale API</small>'+socialButtons(t)+'</div>'+
+    return '<div class="row"><div class="asset"><b>🐋 '+esc(e.token||t&&t.symbol||'?')+'</b>'+(t?whaleVerifyChip(t):'')+'<small>'+esc(short(e.tokenAddress))+' · '+esc(e.trader||'نامشخص')+' · FOMO / Solana RPC</small>'+socialButtons(t)+'</div>'+
     '<div class="cell"><small>خرید</small><b>'+money(e.tradeUsd)+'</b></div><div class="cell"><small>پوزیشن</small><b>'+money(e.positionValueUsd)+'</b></div>'+
     '<div class="cell"><small>امنیت</small><b><span class="badge '+secClass(sec.tier)+'">'+esc(faSec(sec.tier))+'</span></b></div>'+
     '<div class="cell hide-sm"><small>زمان</small><b>'+new Date(Number(e.ts||Date.now())).toLocaleTimeString('fa-IR')+'</b></div>'+
@@ -4716,7 +4816,12 @@ createServer(async(req,res)=>{
       req.on('close',()=>{clearInterval(heartbeat);liveSseClients.delete(res)});
       return;
     }
-    if(url.pathname==='/api/v1/smart-money-live'){const sm=liveSmartMoneyPayload();res.writeHead(200,{'content-type':'application/json; charset=utf-8','cache-control':'no-store',...headers});return res.end(JSON.stringify(sm))}
+    if(url.pathname==='/api/v1/smart-money-live'){
+      try{await buildTrackedWallets()}catch{}
+      const sm=liveSmartMoneyPayload();
+      res.writeHead(200,{'content-type':'application/json; charset=utf-8','cache-control':'no-store',...headers});
+      return res.end(JSON.stringify(sm))
+    }
     if(url.pathname==='/api/v1/dex-price'){
       const mint=String(url.searchParams.get('mint')||'').trim();
       if(!/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(mint)){
