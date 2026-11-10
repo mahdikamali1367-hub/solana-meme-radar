@@ -2169,7 +2169,7 @@ html,body,.shell,.panel,.list{overflow-anchor:none}
   <details class="accordion highlight" open>
     <summary>🔥 پیشنهادهای ورود برتر</summary>
     <div class="accordion-body">
-      <p class="muted" style="font-size:11px">فقط گزینه‌های ترندِ منابع بازار با امنیت MAX SECURITY و نقطه ورود فعال؛ Boost به‌تنهایی معیار انتخاب نیست.</p>
+      <p class="muted" style="font-size:11px">پیشنهاد ویژه: فقط توکن‌های HIGH/MAX با قانون هولدر پاس، Mint/Freeze امن، بدون ریسک قطعی Rug/Bot/PumpDump و قدرت خریدار غالب. نامشخص بودن منابع تکمیلی به‌تنهایی سیگنال را خاموش نمی‌کند.</p>
       <div class="list" id="topFeaturedQuick"></div>
     </div>
   </details>
@@ -2379,6 +2379,14 @@ html,body,.shell,.panel,.list{overflow-anchor:none}
 </div><p class="muted" style="font-size:11px">قانون اجباری هولدر: هولدر #1 باید کمتر از 10% باشد و تک‌تک هولدرهای #2 تا #10 کمتر از 5%. برای سیگنال ورود امن، هر 10 هولدر باید با مالک تجمیع‌شده قابل بررسی باشند؛ Mint/Freeze، Sellability، RugCheck، LP Lock/Burn، Dev/Insider و Token-2022 نیز باید بدون رد یا داده نامشخص بحرانی باشند.</p></div>
   </details>
   <details class="accordion highlight" open>
+    <summary>💰 عملکرد توکن‌ها از اولین ورود به رادار</summary>
+    <div class="accordion-body">
+      <p class="muted" style="font-size:11px">اولین قیمت و زمان دیده‌شدن هر توکن در تب توکن‌ها ثابت ذخیره می‌شود و سود/ضرر تا قیمت فعلی از همان مبنا محاسبه می‌شود.</p>
+      <div id="tokenRadarPerformanceSummary"></div>
+      <div class="list" id="tokenRadarPerformanceList"></div>
+    </div>
+  </details>
+  <details class="accordion highlight" open>
     <summary>🛡️ توکن‌های با امنیت بالا</summary>
     <div class="accordion-body"><p class="muted" style="font-size:11px">MAX SECURITY + عبور کامل از Anti-Rug و بدون بلاک امنیتی.</p><div class="list" id="highSecurityTokenList"></div></div>
   </details>
@@ -2405,6 +2413,44 @@ var tokens=[],smart=null,live=null,tracked=null,conviction=null,prelaunch=null,a
 var stickyFeatured=new Map();
 var recommendationHistory=new Map();
 var socialSignalHistory=new Map();
+var tokenRadarHistory=new Map();
+try{
+  var savedTokenRadarHistory=JSON.parse(localStorage.getItem('tokenRadarHistory')||'[]');
+  if(Array.isArray(savedTokenRadarHistory))savedTokenRadarHistory.forEach(function(x){
+    if(x&&x.mint)tokenRadarHistory.set(x.mint,x);
+  });
+}catch(e){}
+function saveTokenRadarHistory(){
+  try{localStorage.setItem('tokenRadarHistory',JSON.stringify([...tokenRadarHistory.values()].slice(-500)))}catch(e){}
+}
+function rememberTokenRadar(t){
+  if(!t||!t.mint)return;
+  var old=tokenRadarHistory.get(t.mint);
+  if(!old){
+    tokenRadarHistory.set(t.mint,{
+      mint:t.mint,name:t.name||'',symbol:t.symbol||'',
+      introducedAt:new Date().toISOString(),
+      introducedPrice:Number(t.priceUsd||0)||null,
+      introducedSecurity:t.security?.tier||'',
+      introducedScore:bucketScore(t,ageBucket(t)),
+      dexUrl:t.dexUrl||''
+    });
+    saveTokenRadarHistory();
+  }else{
+    old.name=t.name||old.name;old.symbol=t.symbol||old.symbol;old.dexUrl=t.dexUrl||old.dexUrl;
+    tokenRadarHistory.set(t.mint,old);
+  }
+}
+function tokenRadarPerformanceRows(){
+  return [...tokenRadarHistory.values()].map(function(h){
+    var t=findToken(h.mint),current=t?Number(t.priceUsd||0):null,base=Number(h.introducedPrice||0);
+    var pnl=(current!=null&&current>0&&base>0)?((current/base)-1)*100:null;
+    return {history:h,token:t,currentPrice:current,pnlPct:pnl};
+  }).sort(function(a,b){
+    return (b.pnlPct==null?-1e9:b.pnlPct)-(a.pnlPct==null?-1e9:a.pnlPct);
+  });
+}
+
 try{
   var savedSocialHistory=JSON.parse(localStorage.getItem('socialSignalHistory')||'[]');
   if(Array.isArray(savedSocialHistory))savedSocialHistory.forEach(function(x){
@@ -2828,12 +2874,11 @@ function antiRugGate(t){
     sec.tokenExtensions?.hardFail!==true&&
     Number(t.liquidity||0)>=10000&&
     criticalFail.length===0&&
-    criticalUnknown.length===0&&
     t.activity?.label!=='BOT RISK'&&
     t.chart?.pumpDumpRisk!=='HIGH'&&
     ac.blocked!==true;
 
-  return {ok,reasons,holderOk,holdersComplete,criticalFail,criticalUnknown};
+  return {ok,reasons,holderOk,holdersComplete,criticalFail,criticalUnknown,complete:criticalUnknown.length===0};
 }
 
 function tradePlan(t){
@@ -2892,7 +2937,7 @@ function tradePlan(t){
     status:'ENTRY',confidence,
     entry:p,entryLow,entryHigh,
     stopLoss,takeProfit1,takeProfit2,takeProfit3,
-    reason:'امنیت ضد Rug پاس · هولدر #1 زیر 10% · هولدرهای #2 تا #10 هرکدام زیر 5% · قدرت خریدار '+buyerPower+'% در برابر فروشنده '+sellerPower+'%',
+    reason:(safe.complete?'امنیت ضد Rug کامل':'هسته امنیت پاس؛ بعضی منابع تکمیلی هنوز نامشخص')+' · هولدر #1 زیر 10% · هولدرهای #2 تا #10 هرکدام زیر 5% · قدرت خریدار '+buyerPower+'% در برابر فروشنده '+sellerPower+'%',
     riskPct:riskPct*100,buyerPower,sellerPower,edge:buyerPower-sellerPower,quality:q,safety:safe
   };
 }
@@ -2967,11 +3012,16 @@ function siteTrendBadges(t){
   }).join('');
 }
 function highestSecurityTrendOk(t){
-  return !!t&&t.security?.tier==='MAX SECURITY'&&
-    t.security?.mintDisabled===true&&t.security?.freezeDisabled===true&&
-    t.security?.holderPolicyPassed===true&&
-    t.security?.tokenExtensions?.hardFail!==true&&
-    antiRugGate(t).ok===true&&
+  if(!t)return false;
+  var sec=t.security||{},rug=antiRugGate(t);
+  return (sec.tier==='MAX SECURITY'||sec.tier==='HIGH')&&
+    sec.mintDisabled===true&&sec.freezeDisabled===true&&
+    sec.holderPolicyPassed===true&&
+    sec.tokenExtensions?.hardFail!==true&&
+    rug.ok===true&&
+    t.activity?.label!=='BOT RISK'&&
+    t.chart?.pumpDumpRisk!=='HIGH'&&
+    Number(t.liquidity||0)>=10000&&
     siteTrendSources(t).length>=1;
 }
 
@@ -3133,7 +3183,7 @@ function overallCandidates(){
 }
 function renderChampion(){
   var x=overallCandidates()[0],el=document.getElementById('championBox');
-  if(!x){el.innerHTML='<div class="muted">فعلاً توکن ترند با MAX SECURITY، قانون هولدر پاس و نقطه ورود فعال پیدا نشده.</div>';return}
+  if(!x){el.innerHTML='<div class="muted">فعلاً پیشنهاد ویژه‌ای با HIGH/MAX، قانون هولدر پاس، امنیت هسته‌ای سالم و قدرت خریدار غالب پیدا نشده.</div>';return}
   var t=x.t,sg=t.signals||{},d=beginnerDecision(t,x.score);
   el.innerHTML='<div class="decision-banner '+d.cls+'">'+esc(d.label)+'<div class="beginner-note">'+esc(d.reason)+' · تضمین سود نیست و اندازه پوزیشن باید کوچک بماند.</div></div><div class="champion-grid">'+
     '<div class="asset"><b>'+esc(t.symbol||'?')+' · '+esc(t.name||'')+'</b>'+siteTrendBadges(t)+whaleTrendBadge(t)+socialTrendBadges(t)+tradePlanChips(t)+'<small>بدون هشدار خروج · امنیت '+esc(faSec(t.security?.tier))+'</small>'+socialButtons(t)+'</div>'+
@@ -3584,6 +3634,7 @@ function tokenSecurityBucketClass(v){return v==='high'?'good':v==='medium'?'mid'
 
 function renderTokens(){
   var r=filteredTokens();
+  tokens.forEach(rememberTokenRadar);
   function sortRows(a,b){
     return (siteTrendScore(b)-siteTrendScore(a))||
       (tokenStrength(b)-tokenStrength(a))||
@@ -3604,6 +3655,33 @@ function renderTokens(){
   var h=document.getElementById('highSecurityTokenList');if(h)h.innerHTML=rowsHtml(high,'high');
   var m=document.getElementById('mediumSecurityTokenList');if(m)m.innerHTML=rowsHtml(medium,'medium');
   var l=document.getElementById('lowSecurityTokenList');if(l)l.innerHTML=rowsHtml(low,'low');
+
+  var perfList=document.getElementById('tokenRadarPerformanceList');
+  var perfSum=document.getElementById('tokenRadarPerformanceSummary');
+  if(perfList&&perfSum){
+    var perfRows=tokenRadarPerformanceRows();
+    var valid=perfRows.filter(function(x){return x.pnlPct!=null});
+    var wins=valid.filter(function(x){return x.pnlPct>0});
+    var avg=valid.length?valid.reduce(function(a,x){return a+Number(x.pnlPct||0)},0)/valid.length:null;
+    var best=valid.slice().sort(function(a,b){return b.pnlPct-a.pnlPct})[0]||null;
+    perfSum.innerHTML='<div class="perf-summary">'+
+      '<div class="perf-stat"><small>کل توکن‌های ثبت‌شده</small><b>'+perfRows.length+'</b></div>'+
+      '<div class="perf-stat"><small>در سود</small><b class="return-pos">'+wins.length+'</b></div>'+
+      '<div class="perf-stat"><small>میانگین بازده</small><b class="'+(avg==null?'return-flat':avg>=0?'return-pos':'return-neg')+'">'+(avg==null?'—':(avg>0?'+':'')+avg.toFixed(1)+'%')+'</b></div>'+
+      '<div class="perf-stat"><small>بهترین توکن</small><b class="return-pos">'+(best?esc(best.history.symbol||best.history.name)+' '+(best.pnlPct>0?'+':'')+best.pnlPct.toFixed(1)+'%':'—')+'</b></div>'+
+    '</div>';
+    perfList.innerHTML=perfRows.length?perfRows.map(function(x,i){
+      var h=x.history,p=x.pnlPct,t=x.token;
+      var cls=p==null?'return-flat':p>=0?'return-pos':'return-neg';
+      var txt=p==null?'—':(p>0?'+':'')+p.toFixed(1)+'%';
+      return '<div class="row"><div class="asset"><b>#'+(i+1)+' 🪙 '+esc(h.symbol||'?')+' · '+esc(h.name||'')+'</b>'+
+        '<small>اولین ورود '+new Date(h.introducedAt).toLocaleString('fa-IR')+' · امنیت اولیه '+esc(faSec(h.introducedSecurity))+' · امتیاز '+Number(h.introducedScore||0)+'/100</small></div>'+
+        '<div class="cell"><small>قیمت اولین ورود</small><b>'+fmtPrice(h.introducedPrice)+'</b></div>'+
+        '<div class="cell"><small>قیمت فعلی</small><b>'+(x.currentPrice?fmtPrice(x.currentPrice):'—')+'</b></div>'+
+        '<div class="cell"><small>سود/ضرر</small><b class="'+cls+'">'+txt+'</b></div>'+
+        '<div class="actions"><a class="action" target="_blank" rel="noopener" href="'+esc(dexUrl(h.mint,h.dexUrl||t&&t.dexUrl))+'">📈 چارت</a></div></div>';
+    }).join(''):'<div class="empty">هنوز سابقه‌ای برای عملکرد توکن‌ها ثبت نشده.</div>';
+  }
 }
 
 function renderAlerts(){
