@@ -105,10 +105,31 @@ function humanNum(v){
   const n=num(m[2]),u=(m[3]||'').toUpperCase();
   return n*(u==='K'?1e3:u==='M'?1e6:u==='B'?1e9:1);
 }
+function canonicalPairScore(p,mint){
+  if(!p||String(p.chainId||'').toLowerCase()!=='solana')return -1;
+  if(String(p?.baseToken?.address||'')!==String(mint||''))return -1;
+  const price=num(p.priceUsd);
+  if(!(price>0))return -1;
+  const liq=num(p?.liquidity?.usd),v5=num(p?.volume?.m5),v1=num(p?.volume?.h1),v24=num(p?.volume?.h24);
+  const tx5=num(p?.txns?.m5?.buys)+num(p?.txns?.m5?.sells);
+  return Math.log10(1+Math.max(0,liq))*100+
+    Math.log10(1+Math.max(0,v24))*8+
+    Math.log10(1+Math.max(0,v1))*5+
+    Math.log10(1+Math.max(0,v5))*3+
+    Math.min(20,tx5/5);
+}
+function chooseCanonicalPair(rows,mint){
+  const valid=(Array.isArray(rows)?rows:[])
+    .filter(p=>canonicalPairScore(p,mint)>=0)
+    .sort((a,b)=>canonicalPairScore(b,mint)-canonicalPairScore(a,mint));
+  return valid[0]||null;
+}
+
 async function pairsForMany(mints){
   const uniq=[...new Set((mints||[]).filter(Boolean))].slice(0,900);
+  const requested=new Set(uniq);
   const batches=[];for(let i=0;i<uniq.length;i+=30)batches.push(uniq.slice(i,i+30));
-  const out=new Map();
+  const candidates=new Map();
   const settled=await Promise.allSettled(batches.map(async batch=>{
     const rows=await jfetch('https://api.dexscreener.com/tokens/v1/solana/'+batch.join(','),{},12000);
     return Array.isArray(rows)?rows:[];
@@ -116,10 +137,16 @@ async function pairsForMany(mints){
   for(const r of settled){
     if(r.status!=='fulfilled')continue;
     for(const p of r.value){
-      const addr=p?.baseToken?.address||p?.quoteToken?.address;if(!addr)continue;
-      const old=out.get(addr);
-      if(!old||num(p?.liquidity?.usd)>num(old?.liquidity?.usd))out.set(addr,p);
+      const base=String(p?.baseToken?.address||'');
+      if(!base||!requested.has(base))continue;
+      const arr=candidates.get(base)||[];
+      arr.push(p);candidates.set(base,arr);
     }
+  }
+  const out=new Map();
+  for(const mint of uniq){
+    const p=chooseCanonicalPair(candidates.get(mint)||[],mint);
+    if(p)out.set(mint,p);
   }
   return out;
 }
@@ -666,9 +693,8 @@ async function discovery(){
 }
 async function pairFor(mint){
   try{
-    const rows=await jfetch(`https://api.dexscreener.com/token-pairs/v1/solana/${mint}`);
-    const arr=Array.isArray(rows)?rows:[];
-    return arr.sort((a,b)=>num(b?.volume?.m5)-num(a?.volume?.m5))[0]||null;
+    const rows=await jfetch(`https://api.dexscreener.com/token-pairs/v1/solana/${mint}`,{},12000);
+    return chooseCanonicalPair(Array.isArray(rows)?rows:[],mint);
   }catch{return null}
 }
 async function security(mint){
@@ -1522,7 +1548,7 @@ async function buildFresh(){
   out.sort((a,b)=>(rank[b.verdict]-rank[a.verdict])||(b.trend.score-a.trend.score)||(b.volume5m-a.volume5m));
   const strong=out.filter(x=>x.verdict==='STRONG WATCH').length;
   const trending=out.filter(x=>x.trend.score>=50).length;
-  const data={ok:true,generatedAt:new Date().toISOString(),refreshSeconds:20,marketLiveRefreshSeconds:1.5,count:out.length,strong,trending,discovered:seeds.length,tokens:out,
+  const data={ok:true,generatedAt:new Date().toISOString(),refreshSeconds:20,marketLiveRefreshSeconds:1,count:out.length,strong,trending,discovered:seeds.length,tokens:out,
     sourceStatus:{dexscreener:'live',solanaRpc:'live',kolExplorer:'live-public profiles + on-chain holdings/trades',kolX:process.env.X_BEARER_TOKEN?'live-api':'on-chain fallback; X API key not configured',bluesky:'live-public',x:process.env.X_BEARER_TOKEN?'live-api':'needs API key',youtube:process.env.YOUTUBE_API_KEY?'live-api':'needs API key',reddit:process.env.REDDIT_CLIENT_ID?'configured':'presence-only',instagram:'presence-only',facebook:'presence-only',tiktok:'presence-only',telegram:'presence-only'},
     holderPolicy:{hardRules:{holder1MustBeBelowPct:10,holders2to10EachMustBeBelowPct:5,exclusive:true},gradeA:{holder1MaxPct:5,holders2to10EachMaxPct:2.5},gradeB:{holder1MaxPct:7.5,holders2to10EachMaxPct:4},gradeC:{holder1MaxPct:10,holders2to10EachMaxPct:5},unknownFailsStrong:true},
     activityPolicy:{probableOrganicMin:72,highSecurityMin:58,method:'aggregate heuristics; not proof of human identity'},
@@ -1557,7 +1583,10 @@ async function buildMarketLive(){
         buys6h:num(p.txns?.h6?.buys),sells6h:num(p.txns?.h6?.sells),txns6h:num(p.txns?.h6?.buys)+num(p.txns?.h6?.sells),
         buys24h:num(p.txns?.h24?.buys),sells24h:num(p.txns?.h24?.sells),txns24h:num(p.txns?.h24?.buys)+num(p.txns?.h24?.sells),
         priceChange5m:num(p.priceChange?.m5),priceChange1h:num(p.priceChange?.h1),priceChange6h:num(p.priceChange?.h6),priceChange24h:num(p.priceChange?.h24),
-        dexUrl:p.url||t.dexUrl||''
+        dexUrl:p.url||t.dexUrl||'',
+        pairAddress:p.pairAddress||'',
+        priceSource:'DEXScreener canonical base pair',
+        priceObservedAt:Date.now()
       };
       var merged={...t,...patch};
       patch.flow=flowQuality(merged);
@@ -4026,7 +4055,7 @@ function renderActivePanel(){
 function mergeMarketLive(x){
   if(!x||!Array.isArray(x.tokens)||!x.tokens.length)return false;
   var byMint=new Map(x.tokens.map(function(p){
-    if(p&&p.mint&&Number(p.priceUsd||0)>0)rememberLivePrice(p.mint,p.priceUsd,'live',Date.now());
+    if(p&&p.mint&&Number(p.priceUsd||0)>0)rememberLivePrice(p.mint,p.priceUsd,'live',Number(p.priceObservedAt||Date.now()));
     return [p.mint,p];
   }));
   var changed=false;
