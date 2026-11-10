@@ -792,14 +792,26 @@ async function exactDexPrice(mint){
   });
   if(!rows.length)return null;
 
-  // DEXScreener can expose several pools for one mint. Prefer the most liquid
-  // real market, then 24h volume, so thin/manipulated pools cannot produce absurd prices.
+  // Match DEXScreener's visible market as closely as possible.
+  // Pump.fun mints can have a bonding-curve market with little/no LP plus unrelated
+  // secondary pools. If DEXScreener exposes a pumpfun market for a ...pump mint,
+  // use that market instead of a secondary pool with a different price.
+  const looksPump=String(mint||'').toLowerCase().endsWith('pump');
+  const pumpRows=rows.filter(function(p){
+    return String(p?.dexId||'').toLowerCase()==='pumpfun';
+  });
+  if(looksPump&&pumpRows.length)rows=pumpRows;
+
   rows.sort(function(a,b){
+    // Prefer the market with the most recent trading activity first.
+    const atx=num(a?.txns?.m5?.buys)+num(a?.txns?.m5?.sells);
+    const btx=num(b?.txns?.m5?.buys)+num(b?.txns?.m5?.sells);
+    if(btx!==atx)return btx-atx;
+    const av5=num(a?.volume?.m5),bv5=num(b?.volume?.m5);
+    if(bv5!==av5)return bv5-av5;
     const al=num(a?.liquidity?.usd),bl=num(b?.liquidity?.usd);
     if(bl!==al)return bl-al;
-    const av=num(a?.volume?.h24),bv=num(b?.volume?.h24);
-    if(bv!==av)return bv-av;
-    return num(b?.volume?.h1)-num(a?.volume?.h1);
+    return num(b?.volume?.h24)-num(a?.volume?.h24);
   });
   const p=rows[0];
   const data={
@@ -930,23 +942,20 @@ async function contractPrice(mint){
   if(dp>0&&pp>0){
     deviationPct=Math.abs(dp-pp)/Math.min(dp,pp)*100;
 
-    // Before graduation the Pump bonding curve is authoritative.
-    // After graduation DEXScreener is authoritative.
-    if(pump?.complete===false){
-      priceUsd=pp;
-      source='Pump.fun bonding curve';
-    }else{
-      priceUsd=dp;
-      source='DEXScreener exact contract';
-    }
-
-    status=deviationPct<=20?'confirmed':'source-disagreement';
-  }else if(pp>0&&pump?.complete===false){
-    priceUsd=pp;source='Pump.fun bonding curve';status='pump-only';
+    // IMPORTANT: the user-visible live price follows DEXScreener whenever
+    // DEXScreener has a valid exact-contract market. Pump.fun only validates it.
+    priceUsd=dp;
+    source='DEXScreener exact contract';
+    status=deviationPct<=20?'confirmed-by-pump':'dex-pump-disagreement';
   }else if(dp>0){
-    priceUsd=dp;source='DEXScreener exact contract';status=pump?'dex-after-pump':'dex-only';
+    priceUsd=dp;
+    source='DEXScreener exact contract';
+    status='dex-only';
   }else if(pp>0){
-    priceUsd=pp;source='Pump.fun';status='pump-only';
+    // Only use Pump.fun if DEXScreener currently has no price for this contract.
+    priceUsd=pp;
+    source=pump?.complete===false?'Pump.fun bonding curve fallback':'Pump.fun fallback';
+    status='pump-fallback';
   }
 
   if(!(priceUsd>0))return null;
@@ -956,6 +965,7 @@ async function contractPrice(mint){
     source,status,deviationPct,
     observedAt:Date.now(),
     pairAddress:String(dex?.pairAddress||''),
+    dexId:String(dex?.dexId||''),
     dexUrl:String(dex?.dexUrl||''),
     pumpUrl:String(pump?.pumpUrl||''),
     dexPriceUsd:dp||null,
@@ -2941,9 +2951,9 @@ html,body,.shell,.panel,.list{overflow-anchor:none}
 <script>
 var tokens=[],smart=null,live=null,tracked=null,conviction=null,prelaunch=null,prelaunchLive=null,activeTab='featured',signalFilters={short:'',medium:'',long:'',security:'',holders:'',bigbuyers:''};
 try{
-  if(localStorage.getItem('priceCacheSchemaV6')!=='contract-consensus-v6'){
+  if(localStorage.getItem('priceCacheSchemaV7')!=='dexscreener-primary-v7'){
     localStorage.removeItem('livePriceCache');
-    localStorage.setItem('priceCacheSchemaV6','contract-consensus-v6');
+    localStorage.setItem('priceCacheSchemaV7','dexscreener-primary-v7');
   }
 }catch(e){}
 var livePriceCache=new Map();
@@ -2993,7 +3003,7 @@ function currentPriceForMint(mint){
   var tokenPair=String(t&&t.pairAddress||'');
 
   // Exact DEXScreener lookup is authoritative even for historical rows that are no longer in the current token scan.
-  if(cached&&hit&&['dexscreener-exact','pumpfun-exact'].includes(hit.source)&&Date.now()-cachedAt<=15000)return cached;
+  if(cached&&hit&&['dexscreener-exact','pumpfun-fallback'].includes(hit.source)&&Date.now()-cachedAt<=15000)return cached;
   // Market-live cache is authoritative only for the same pinned pair.
   if(cached&&Date.now()-cachedAt<=15000&&(!tokenPair||!cachedPair||tokenPair===cachedPair))return cached;
 
@@ -4644,7 +4654,7 @@ async function pollVisibleDexPrices(){
       rememberLivePrice(
         p.mint,
         p.priceUsd,
-        p.source==='Pump.fun bonding curve'?'pumpfun-exact':'dexscreener-exact',
+        String(p.source||'').startsWith('DEXScreener')?'dexscreener-exact':'pumpfun-fallback',
         Number(p.observedAt||Date.now()),
         p.pairAddress||''
       );
@@ -4662,7 +4672,7 @@ async function pollVisibleDexPrices(){
       }
     });
     updateLiveProfitDom();
-    if(exactUpdated>0){var u=document.getElementById('updated');if(u)u.textContent='قیمت زنده بر اساس Contract · DEXScreener/Pump.fun: '+new Date().toLocaleTimeString('fa-IR')}
+    if(exactUpdated>0){var u=document.getElementById('updated');if(u)u.textContent='قیمت زنده DEXScreener · Pump.fun فقط تأیید/fallback: '+new Date().toLocaleTimeString('fa-IR')}
   }finally{
     visibleDexPriceBusy=false;
   }
