@@ -2307,7 +2307,7 @@ html,body,.shell,.panel,.list{overflow-anchor:none}
   <details class="accordion highlight" open>
     <summary>💰 سود/ضرر از زمان معرفی رادار</summary>
     <div class="accordion-body">
-      <p class="muted" style="font-size:11px">قیمت اولین لحظه معرفی ثابت می‌ماند؛ قیمت فعلی و سود/ضرر تقریباً هر ۱ ثانیه زنده به‌روزرسانی می‌شود و هنگام قطع کوتاه اتصال آخرین مقدار معتبر حفظ می‌شود.</p>
+      <p class="muted" style="font-size:11px">هر آیتم سه مقدار جدا دارد: 💵 قیمت ورود ثابت، ⚡ قیمت لحظه‌ای بازار، 💰 سود/ضرر لحظه‌ای. قیمت ورود بعد از ثبت تغییر نمی‌کند؛ قیمت لحظه‌ای تقریباً هر ۱ ثانیه تازه می‌شود.</p>
       <div id="recommendationPerformanceSummary"></div>
       <div class="list" id="recommendationPerformanceList"></div>
     </div>
@@ -2501,7 +2501,7 @@ html,body,.shell,.panel,.list{overflow-anchor:none}
   <details class="accordion highlight" open>
     <summary>💰 عملکرد توکن‌ها از اولین ورود به رادار</summary>
     <div class="accordion-body">
-      <p class="muted" style="font-size:11px">اولین قیمت و زمان دیده‌شدن ثابت ذخیره می‌شود؛ قیمت فعلی و سود/ضرر تقریباً هر ۱ ثانیه زنده می‌شود و در اختلال کوتاه آخرین مقدار معتبر باقی می‌ماند.</p>
+      <p class="muted" style="font-size:11px">هر آیتم سه مقدار جدا دارد: 💵 قیمت ورود ثابت، ⚡ قیمت لحظه‌ای بازار، 💰 سود/ضرر لحظه‌ای. مبنای ورود ثابت می‌ماند و در اختلال کوتاه آخرین قیمت معتبر حفظ می‌شود.</p>
       <div id="tokenRadarPerformanceSummary"></div>
       <div class="list" id="tokenRadarPerformanceList"></div>
     </div>
@@ -3140,7 +3140,9 @@ function tradePlanChips(t){
   if(p.status==='ENTRY'){
     var zone=(p.entryLow&&p.entryHigh)?fmtPrice(p.entryLow)+' تا '+fmtPrice(p.entryHigh):fmtPrice(p.entry);
     var label=p.confidence==='HIGH'?'🟢 ورود قوی':p.confidence==='MEDIUM'?'🟢 ورود فعال':'🟡 ورود زودهنگام';
+    var liveNow=currentPriceForMint(t.mint)||Number(t.priceUsd||0);
     return '<span class="entry-chip entry-ready">'+label+' · '+zone+'</span>'+
+      '<span class="entry-chip entry-ready">⚡ قیمت لحظه‌ای · <b data-live-price-mint="'+esc(t.mint)+'">'+fmtPrice(liveNow)+'</b></span>'+
       '<span class="entry-chip entry-exit">🛑 حد ضرر · '+fmtPrice(p.stopLoss)+'</span>'+
       '<span class="entry-chip entry-ready">🎯 سود 1 · '+fmtPrice(p.takeProfit1)+'</span>'+
       '<span class="entry-chip entry-ready">🎯 سود 2 · '+fmtPrice(p.takeProfit2)+'</span>'+
@@ -3678,8 +3680,9 @@ function renderSocialTrends(){
       var h=t.socialHeat||{},s=t.security||{};
       var hist=socialSignalHistory.get(t.mint);
       var pnl=null;
-      if(hist&&Number(hist.introducedPrice||0)>0&&Number(t.priceUsd||0)>0){
-        pnl=(Number(t.priceUsd)/Number(hist.introducedPrice)-1)*100;
+      var liveNow=currentPriceForMint(t.mint);
+      if(hist&&Number(hist.introducedPrice||0)>0&&Number(liveNow||0)>0){
+        pnl=((Number(liveNow)-Number(hist.introducedPrice))/Number(hist.introducedPrice))*100;
       }
       var pnlText=pnl==null?'—':(pnl>0?'+':'')+pnl.toFixed(1)+'%';
       var pnlClass=pnl==null?'return-flat':pnl>=0?'return-pos':'return-neg';
@@ -3688,7 +3691,9 @@ function renderSocialTrends(){
         (hist?'<small>اولین سیگنال اجتماعی: '+new Date(hist.introducedAt).toLocaleString('fa-IR')+' · قیمت '+fmtPrice(hist.introducedPrice)+'</small>':'')+
         socialButtons(t)+'</div>'+
         '<div class="cell"><small>Social Heat</small><b><span class="badge '+socialHeatClass(h.label)+'">'+esc(faSocialHeat(h.label))+' '+Number(h.score||0)+'</span></b></div>'+
-        '<div class="cell"><small>سود از معرفی</small><b data-live-profit-mint="'+esc(t.mint)+'" data-live-profit-base="'+Number(hist&&hist.introducedPrice||0)+'" class="'+pnlClass+'">'+pnlText+'</b></div>'+
+        '<div class="cell"><small>💵 قیمت ورود</small><b>'+fmtPrice(hist&&hist.introducedPrice)+'</b></div>'+
+        '<div class="cell"><small>⚡ قیمت لحظه‌ای</small><b data-live-price-mint="'+esc(t.mint)+'">'+(liveNow?fmtPrice(liveNow):'—')+'</b></div>'+
+        '<div class="cell"><small>💰 سود لحظه‌ای</small><b data-live-profit-mint="'+esc(t.mint)+'" data-live-profit-base="'+Number(hist&&hist.introducedPrice||0)+'" class="'+pnlClass+'">'+pnlText+'</b></div>'+
         '<div class="cell"><small>X / 2h</small><b>'+Number(h.xPosts2h||0)+'</b></div>'+
         '<div class="cell hide-sm"><small>YouTube / 24h</small><b>'+Number(h.youtubeVideos24h||0)+'</b></div>'+
         '<div class="cell hide-md"><small>امنیت</small><b><span class="badge '+secClass(s.tier)+'">'+esc(faSec(s.tier))+'</span></b></div>'+
@@ -3717,9 +3722,9 @@ function renderSocialTrends(){
       var txt=p==null?'—':(p>0?'+':'')+p.toFixed(1)+'%';
       return '<div class="row"><div class="asset"><b>#'+(i+1)+' 📣 '+esc(h.symbol||'?')+' · '+esc(h.name||'')+'</b>'+
         '<small>معرفی '+new Date(h.introducedAt).toLocaleString('fa-IR')+' · Social Heat اولیه '+Number(h.introducedSocialHeat||0)+' · امنیت '+esc(faSec(h.introducedSecurity))+'</small></div>'+
-        '<div class="cell"><small>قیمت معرفی</small><b>'+fmtPrice(h.introducedPrice)+'</b></div>'+
-        '<div class="cell"><small>قیمت فعلی</small><b data-live-price-mint="'+esc(h.mint)+'">'+(x.currentPrice?fmtPrice(x.currentPrice):'—')+'</b></div>'+
-        '<div class="cell"><small>سود/ضرر</small><b data-live-profit-mint="'+esc(h.mint)+'" data-live-profit-base="'+Number(h.introducedPrice||0)+'" class="'+cls+'">'+txt+'</b></div>'+
+        '<div class="cell"><small>💵 قیمت ورود</small><b>'+fmtPrice(h.introducedPrice)+'</b></div>'+
+        '<div class="cell"><small>⚡ قیمت لحظه‌ای</small><b data-live-price-mint="'+esc(h.mint)+'">'+(x.currentPrice?fmtPrice(x.currentPrice):'—')+'</b></div>'+
+        '<div class="cell"><small>💰 سود لحظه‌ای</small><b data-live-profit-mint="'+esc(h.mint)+'" data-live-profit-base="'+Number(h.introducedPrice||0)+'" class="'+cls+'">'+txt+'</b></div>'+
         '<div class="cell hide-sm"><small>Heat اولیه</small><b>'+Number(h.introducedSocialHeat||0)+'/100</b></div>'+
         '<div class="actions"><a class="action" target="_blank" rel="noopener" href="'+esc(dexUrl(h.mint,h.dexUrl||t&&t.dexUrl))+'">📈 چارت</a></div></div>';
     }).join(''):'<div class="empty">هنوز سیگنال اجتماعی ثبت‌شده‌ای برای محاسبه عملکرد وجود ندارد.</div>';
@@ -3788,12 +3793,12 @@ function renderRecommendationPerformance(){
     var h=x.history,t=x.token,p=x.pnlPct;
     var cls=p==null?'return-flat':p>=0?'return-pos':'return-neg';
     var txt=p==null?'—':(p>0?'+':'')+p.toFixed(1)+'%';
-    var current=x.currentPrice||0;
+    var current=currentPriceForMint(h.mint)||x.currentPrice||0;
     return '<div class="row"><div class="asset"><b>#'+(i+1)+' '+esc(h.symbol||'?')+' · '+esc(h.name||'')+'</b>'+
       '<small>زمان معرفی '+new Date(h.introducedAt).toLocaleString('fa-IR')+' · امنیت '+esc(faSec(h.introducedSecurity))+' · امتیاز '+Number(h.introducedScore||0)+'/100</small></div>'+
-      '<div class="cell"><small>قیمت معرفی</small><b>'+fmtPrice(h.introducedPrice)+'</b></div>'+
-      '<div class="cell"><small>قیمت فعلی</small><b data-live-price-mint="'+esc(h.mint)+'">'+(current?fmtPrice(current):'—')+'</b></div>'+
-      '<div class="cell"><small>سود/ضرر از معرفی</small><b data-live-profit-mint="'+esc(h.mint)+'" data-live-profit-base="'+Number(h.introducedPrice||0)+'" class="'+cls+'">'+txt+'</b></div>'+
+      '<div class="cell"><small>💵 قیمت ورود</small><b>'+fmtPrice(h.introducedPrice)+'</b></div>'+
+      '<div class="cell"><small>⚡ قیمت لحظه‌ای</small><b data-live-price-mint="'+esc(h.mint)+'">'+(current?fmtPrice(current):'—')+'</b></div>'+
+      '<div class="cell"><small>💰 سود لحظه‌ای</small><b data-live-profit-mint="'+esc(h.mint)+'" data-live-profit-base="'+Number(h.introducedPrice||0)+'" class="'+cls+'">'+txt+'</b></div>'+
       '<div class="actions"><a class="action" target="_blank" rel="noopener" href="'+esc(dexUrl(h.mint,h.dexUrl||t&&t.dexUrl))+'">📈 چارت</a></div></div>';
   }).join(''):'<div class="empty">هنوز هیچ پیشنهاد ثبت‌شده‌ای برای محاسبه عملکرد وجود ندارد.</div>';
 }
@@ -3905,9 +3910,9 @@ function renderTokens(){
       var txt=p==null?'—':(p>0?'+':'')+p.toFixed(1)+'%';
       return '<div class="row"><div class="asset"><b>#'+(i+1)+' 🪙 '+esc(h.symbol||'?')+' · '+esc(h.name||'')+'</b>'+
         '<small>اولین ورود '+new Date(h.introducedAt).toLocaleString('fa-IR')+' · امنیت اولیه '+esc(faSec(h.introducedSecurity))+' · امتیاز '+Number(h.introducedScore||0)+'/100</small></div>'+
-        '<div class="cell"><small>قیمت اولین ورود</small><b>'+fmtPrice(h.introducedPrice)+'</b></div>'+
-        '<div class="cell"><small>قیمت فعلی</small><b data-live-price-mint="'+esc(h.mint)+'">'+(x.currentPrice?fmtPrice(x.currentPrice):'—')+'</b></div>'+
-        '<div class="cell"><small>سود/ضرر</small><b data-live-profit-mint="'+esc(h.mint)+'" data-live-profit-base="'+Number(h.introducedPrice||0)+'" class="'+cls+'">'+txt+'</b></div>'+
+        '<div class="cell"><small>💵 قیمت ورود</small><b>'+fmtPrice(h.introducedPrice)+'</b></div>'+
+        '<div class="cell"><small>⚡ قیمت لحظه‌ای</small><b data-live-price-mint="'+esc(h.mint)+'">'+(x.currentPrice?fmtPrice(x.currentPrice):'—')+'</b></div>'+
+        '<div class="cell"><small>💰 سود لحظه‌ای</small><b data-live-profit-mint="'+esc(h.mint)+'" data-live-profit-base="'+Number(h.introducedPrice||0)+'" class="'+cls+'">'+txt+'</b></div>'+
         '<div class="actions"><a class="action" target="_blank" rel="noopener" href="'+esc(dexUrl(h.mint,h.dexUrl||t&&t.dexUrl))+'">📈 چارت</a></div></div>';
     }).join(''):'<div class="empty">هنوز سابقه‌ای برای عملکرد توکن‌ها ثبت نشده.</div>';
   }
