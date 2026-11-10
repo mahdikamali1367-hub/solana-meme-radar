@@ -11,7 +11,7 @@ let cache={at:0,data:null};
 let buildInFlight=null;
 let marketLiveCache={at:0,data:null};
 const exactDexPriceCache=new Map();
-const EXACT_DEX_PRICE_CACHE_MS=1200;
+const EXACT_DEX_PRICE_CACHE_MS=650;
 
 let prelaunchCache={at:0,data:null};
 const prelaunchWatchState=new Map();
@@ -2601,9 +2601,9 @@ html,body,.shell,.panel,.list{overflow-anchor:none}
 <script>
 var tokens=[],smart=null,live=null,tracked=null,conviction=null,prelaunch=null,prelaunchLive=null,activeTab='featured',signalFilters={short:'',medium:'',long:'',security:'',holders:'',bigbuyers:''};
 try{
-  if(localStorage.getItem('priceCacheSchemaV4')!=='dexscreener-visible-exact-v4'){
+  if(localStorage.getItem('priceCacheSchemaV5')!=='dexscreener-visible-exact-v5'){
     localStorage.removeItem('livePriceCache');
-    localStorage.setItem('priceCacheSchemaV4','dexscreener-visible-exact-v4');
+    localStorage.setItem('priceCacheSchemaV5','dexscreener-visible-exact-v5');
   }
 }catch(e){}
 var livePriceCache=new Map();
@@ -2881,6 +2881,16 @@ function ageText(t){
   if(m<1440)return (m/60).toFixed(m<360?1:0)+' ساعت';
   return (m/1440).toFixed(m<4320?1:0)+' روز';
 }
+function holderPolicyOk(t){
+  if(!t)return false;
+  var sec=t.security||{};
+  var holders=Array.isArray(sec.topHolders)?sec.topHolders:[];
+  if(holders.length<10||sec.ownerAggregationComplete!==true)return false;
+  var first=Number(sec.largestHolder!=null?sec.largestHolder:holders[0]?.pct);
+  var maxOther=Number(sec.maxOtherHolder!=null?sec.maxOtherHolder:Math.max.apply(null,holders.slice(1,10).map(function(h){return Number(h&&h.pct||0)})));
+  return sec.holderPolicyPassed===true&&first<10&&maxOther<5;
+}
+
 function bucketScore(t,bucket){
   if(!t)return 0;
   var sec=t.security||{},sg=t.signals||{},fl=t.flow||{},mq=t.marketQuality||{},sh=Number(sg.short?.score||0),md=Number(sg.medium?.score||0),lg=Number(sg.long?.score||0);
@@ -4087,20 +4097,25 @@ function preserveViewport(fn){
 
 function renderActivePanel(){
   preserveViewport(function(){
-    if(activeTab==='featured'){
-      renderTopQuick();renderChampion();renderAlerts();renderFeatured();renderRecommendationPerformance();renderPerformance24();
-    }else if(activeTab==='whales'){
-      renderWhales();
-    }else if(activeTab==='tokens'){
-      renderTopQuick();renderKolTrends();renderTokens();
-    }else if(activeTab==='smart'){
-      renderSmart();
-    }else if(activeTab==='prelaunch'){
-      renderPrelaunch();
-    }else if(activeTab==='social'){
-      renderSocialTrends();
-    }else if(activeTab==='wallets'){
-      renderWallets();renderConviction();
+    try{
+      if(activeTab==='featured'){
+        renderTopQuick();renderChampion();renderAlerts();renderFeatured();renderRecommendationPerformance();renderPerformance24();
+      }else if(activeTab==='whales'){
+        renderWhales();
+      }else if(activeTab==='tokens'){
+        renderTopQuick();renderKolTrends();renderTokens();
+      }else if(activeTab==='smart'){
+        renderSmart();
+      }else if(activeTab==='prelaunch'){
+        renderPrelaunch();
+      }else if(activeTab==='social'){
+        renderSocialTrends();
+      }else if(activeTab==='wallets'){
+        renderWallets();renderConviction();
+      }
+    }catch(e){
+      var u=document.getElementById('updated');
+      if(u)u.textContent='خطای بخش '+activeTab+': '+String(e&&e.message||e);
     }
   });
 }
@@ -4212,8 +4227,10 @@ async function pollVisibleDexPrices(){
       return await safeJson('/api/v1/dex-price?mint='+encodeURIComponent(mint));
     }));
 
+    var exactUpdated=0;
     rows.forEach(function(p){
       if(!p||!p.ok||!(Number(p.priceUsd)>0))return;
+      exactUpdated++;
       // Exact DEXScreener token-pairs lookup overrides any stale historical/local price.
       rememberLivePrice(p.mint,p.priceUsd,'dexscreener-exact',Number(p.observedAt||Date.now()),p.pairAddress||'');
 
@@ -4225,6 +4242,7 @@ async function pollVisibleDexPrices(){
       }
     });
     updateLiveProfitDom();
+    if(exactUpdated>0){var u=document.getElementById('updated');if(u)u.textContent='قیمت مستقیم DEXScreener: '+new Date().toLocaleTimeString('fa-IR')}
   }finally{
     visibleDexPriceBusy=false;
   }
@@ -4345,7 +4363,7 @@ window.addEventListener('error',function(e){
   var u=document.getElementById('updated');
   if(u)u.textContent='خطای رابط: '+String(e.message||'JavaScript');
 });
-loadAll();startLivePush();marketLiveTimer=setInterval(pollMarketLive,1000);setTimeout(pollMarketLive,350);setInterval(pollVisibleDexPrices,1500);setTimeout(pollVisibleDexPrices,650);setInterval(pollPrelaunchLive,1000);setTimeout(pollPrelaunchLive,500);setInterval(loadAll,20000);
+loadAll();startLivePush();marketLiveTimer=setInterval(pollMarketLive,1000);setTimeout(pollMarketLive,350);setInterval(pollVisibleDexPrices,1000);setTimeout(pollVisibleDexPrices,250);setInterval(pollPrelaunchLive,1000);setTimeout(pollPrelaunchLive,500);setInterval(loadAll,20000);
 </script>
 </body>
 </html>`;
