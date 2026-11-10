@@ -5363,12 +5363,12 @@ async function pollVisibleDexPrices(){
   if(visibleDexPriceBusy)return;
   visibleDexPriceBusy=true;
   try{
-    var els=[...document.querySelectorAll('[data-live-price-mint],[data-live-profit-mint]')];
+    var els=[...document.querySelectorAll('[data-live-price-mint],[data-live-profit-mint],[data-trader-position-mint]')];
     var mints=[...new Set(els.filter(function(el){
       var r=el.getBoundingClientRect();
       return r.bottom>=-120&&r.top<=window.innerHeight+120;
     }).map(function(el){
-      return el.getAttribute('data-live-price-mint')||el.getAttribute('data-live-profit-mint')||'';
+      return el.getAttribute('data-live-price-mint')||el.getAttribute('data-live-profit-mint')||el.getAttribute('data-trader-position-mint')||'';
     }).filter(Boolean))].slice(0,12);
 
     var rows=await Promise.all(mints.map(async function(mint){
