@@ -6095,7 +6095,7 @@ async function pollPumpXMonitor(){
   if(pumpXBusy)return;pumpXBusy=true;
   try{
     var r=await safeJson('/api/v1/pump-x-monitor');
-    if(r){pumpXMonitor=r;if(activeTab==='social')renderActivePanel()}
+    if(r){pumpXMonitor=r;safeUiRender('شواهد ۲۴ ساعت قبل از پامپ',renderTopSpotlight);if(activeTab==='social')renderActivePanel()}
   }finally{pumpXBusy=false}
 }
 function renderSocialTrends(){
@@ -6483,11 +6483,90 @@ function renderAlerts(){
   var c=live&&live.exitClusters?live.exitClusters.filter(function(x){return x.severity==='MULTI-WALLET EXIT'}).slice(0,3):[];
   document.getElementById('kExits').textContent=c.length;document.getElementById('alerts').innerHTML=c.map(function(x){return '<div class="alert">🚨 خروج همزمان چند کیف‌پول از <b>'+esc(x.token||short(x.tokenAddress))+'</b> · '+Number(x.uniqueSellers||0)+' فروشنده</div>'}).join('');
 }
+
+function spotlightSocialWhaleCandidates(rows,whaleLookup){
+  return (Array.isArray(rows)?rows:[]).map(function(t){
+    if(!t||!t.mint||t.securityGate?.blocked===true||
+       t.security?.tier==='REJECT'||t.security?.holderPolicyPassed===false||
+       t.chart?.pumpDumpRisk==='HIGH')return null;
+    var social=Number(t.socialHeat?.score||0),
+        posts=Number(t.xSocial?.posts2h||0),
+        videos=Number(t.youtubeSocial?.videos24h||0),
+        bluesky=Number(t.bluesky?.mentions2h||0),
+        kol=Number(t.kolTrend?.xMentionCount||0);
+    if(!(social>=55||posts>=3||videos>=2||bluesky>=2||kol>=1))return null;
+    var whale=whaleLookup(t.mint);
+    if(!whale||!(Number(whale.count)>0)||!(Number(whale.usd)>0))return null;
+    return {token:t,whale:whale,social:social,
+      rank:social+Math.min(40,Math.log10(1+Number(whale.usd))*7)};
+  }).filter(Boolean).sort(function(a,b){return b.rank-a.rank}).slice(0,3);
+}
+function spotlightVerifiedPrePump(rows){
+  // These are HISTORICAL pumps, not predictions. Require timestamped, exact-CA
+  // posts that precede the price breakout by no more than 24 hours.
+  return (Array.isArray(rows)?rows:[]).map(function(p){
+    var onset=Number(p?.onsetAt);
+    if(!Number.isFinite(onset)||onset<=0||!p.mint)return null;
+    var evidence=(Array.isArray(p.accounts)?p.accounts:[]).filter(function(a){
+      var posted=Number(a?.postAt);
+      return Number.isFinite(posted)&&posted>=onset-86400000&&posted<onset&&
+        /^https:\/\/x\.com\/[A-Za-z0-9_]+\/status\/\d+$/.test(String(a.postUrl||''));
+    });
+    if(!evidence.length)return null;
+    return {symbol:p.symbol||'?',mint:p.mint,onsetAt:onset,
+      growth1hPct:Number(p.growth1hPct||0),evidence:evidence};
+  }).filter(Boolean).sort(function(a,b){return b.onsetAt-a.onsetAt}).slice(0,3);
+}
+function renderTopSpotlight(){
+  var whaleBox=document.getElementById('spotlightSocialWhale'),
+      historyBox=document.getElementById('spotlightPrePump'),
+      timeBox=document.getElementById('spotlightUpdated');
+  if(!whaleBox||!historyBox)return;
+  var matches=spotlightSocialWhaleCandidates(tokens,whaleFor);
+  whaleBox.innerHTML=matches.length?matches.map(function(x){
+    var t=x.token,w=x.whale;
+    var tags='<span class="badge good">🐋 '+Number(w.count)+' خرید نهنگ · '+money(w.usd)+'</span>'+
+      '<span class="badge blue">📣 امتیاز اجتماعی '+Math.round(x.social)+'/100</span>';
+    if(Number(t.xSocial?.posts2h||0)>=3)
+      tags+='<span class="badge blue">X: '+Number(t.xSocial.posts2h)+' پست/۲ساعت</span>';
+    if(Number(t.youtubeSocial?.videos24h||0)>=2)
+      tags+='<span class="badge blue">YouTube: '+Number(t.youtubeSocial.videos24h)+' ویدیو/۲۴ساعت</span>';
+    return '<div class="spotlight-token"><div class="spotlight-token-top"><strong>'+
+      esc(t.symbol||'?')+' · '+esc(t.name||'')+'</strong><span class="badge '+
+      secClass(t.security?.tier)+'">'+esc(faSec(t.security?.tier))+'</span></div>'+
+      '<div class="spotlight-token-tags">'+tags+'</div>'+
+      '<small>هم‌زمانی شاخص اجتماعی و خریدهای ردیابی‌شده؛ شواهد تاریخی قبل از پامپ جداگانه نمایش داده می‌شوند.</small>'+
+      '<div class="spotlight-token-actions"><button type="button" class="detail-btn" data-mint="'+esc(t.mint)+'">جزئیات توکن</button>'+
+      '<a href="'+esc(dexUrl(t.mint,t.dexUrl))+'" rel="noopener" target="_blank">چارت و قیمت</a></div></div>';
+  }).join(''):'<div class="spotlight-empty">فعلاً توکنی که هم شاخص اجتماعی قابل‌رصد داشته باشد و هم خرید نهنگ در داده‌های فعلی ثبت شده باشد پیدا نشده است.</div>';
+
+  var history=spotlightVerifiedPrePump(pumpXMonitor?.discoveredPumps);
+  historyBox.innerHTML=history.length?history.map(function(p){
+    var links=p.evidence.slice(0,3).map(function(a){
+      return '<a href="'+esc(a.postUrl)+'" target="_blank" rel="noopener">پست @'+esc(a.handle||'X')+'</a>';
+    }).join('');
+    var first=p.evidence.slice().sort(function(a,b){return Number(a.postAt)-Number(b.postAt)})[0],
+        aheadHours=Math.max(0,(p.onsetAt-Number(first.postAt))/3600000);
+    return '<div class="spotlight-token"><div class="spotlight-token-top"><strong>'+
+      esc(p.symbol)+'</strong><span class="badge blue">شاهد تاریخی X</span></div>'+
+      '<div class="spotlight-token-tags"><span class="badge good">'+
+      Number(p.evidence.length)+' پست مستند</span><span class="badge blue">'+
+      aheadHours.toFixed(1)+' ساعت قبل از شروع رشد</span></div>'+
+      '<small>زمان شروع رشد: '+new Date(p.onsetAt).toLocaleString('fa-IR')+
+      ' · رشد یک‌ساعته: '+Number(p.growth1hPct).toFixed(1)+'٪</small>'+
+      '<small>CA: '+esc(p.mint)+'</small>'+
+      '<div class="spotlight-token-actions">'+links+
+      '<a href="'+esc(dexUrl(p.mint,''))+'" target="_blank" rel="noopener">چارت توکن</a></div></div>';
+  }).join(''):'<div class="spotlight-empty">هنوز پست مستندِ دارای آدرس قرارداد و زمان معتبر در بازه ۲۴ ساعت قبل از یک پامپ تاریخی پیدا نشده است. نتیجه‌ای برای Instagram، Facebook یا YouTube بدون شواهد زمانی نمایش داده نمی‌شود.</div>';
+  if(timeBox)timeBox.textContent='آخرین نمایش: '+new Date().toLocaleTimeString('fa-IR');
+}
+
 function renderAll(){
   // Render only the currently visible section. Previously every full update
   // rebuilt ALL seven panels (including social, trader and prelaunch lists),
   // causing long main-thread blocks that made buttons appear unresponsive.
   var kt=document.getElementById('kTokens');if(kt)kt.textContent=tokens.length;
+  safeUiRender('ویژه‌های بالای صفحه',renderTopSpotlight);
   safeUiRender('پنل فعال',renderActivePanel);
 }
 function stateLabel(v){return v==='pass'?'<span class="pass">✓ تأیید خودکار</span>':v==='fail'?'<span class="fail">✕ رد خودکار</span>':v==='warn'?'<span class="manual">△ هشدار خودکار</span>':'<span class="manual">? تأیید نشده — داده ناکافی</span>'}
@@ -6748,6 +6827,7 @@ async function pollMarketLive(){
     var x=await safeJson('/api/v1/market-live');
     if(mergeMarketLive(x)){
       lastMarketLiveAt=Date.now();
+      safeUiRender('تطبیق بازار و اجتماع',renderTopSpotlight);
       updateLiveProfitDom();
       document.getElementById('updated').textContent='بازار زنده: '+new Date().toLocaleTimeString('fa-IR');
     }
@@ -6764,6 +6844,7 @@ function setLiveStatus(txt){
 function applyLivePayload(x,label){
   if(!x)return;
   live=x;
+  safeUiRender('ترند + خرید نهنگ',renderTopSpotlight);
   renderActivePanel();
   setLiveStatus((label||'زنده')+': '+new Date().toLocaleTimeString('fa-IR'));
 }
