@@ -3521,7 +3521,7 @@ async function buildSmartMoney(){
 }
 
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-const html=()=>`<!doctype html>
+const html=()=>String.raw`<!doctype html>
 <html lang="fa" dir="rtl">
 <head>
 <meta charset="utf-8">
