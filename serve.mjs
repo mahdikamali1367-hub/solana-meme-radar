@@ -98,9 +98,14 @@ async function buildPumpXMonitor(){
         note:'Connect an X developer API bearer token. No X accounts or pump posts have been verified.'};
     }
     const base=cache.data?.tokens||[];
+    if(!base.length){
+      return {ok:true,configured:true,status:'waiting-for-first-token-scan',
+        generatedAt:new Date().toISOString(),discoveredPumps:[],trackedAccounts:[],watchlist:[],
+        note:'Token discovery has not completed. Retry after the initial radar scan.'};
+    }
     const historyCandidates=base.filter(t=>t.pairAddress&&t.mint&&
       t.ageMinutes>=24*60&&num(t.liquidity)>=25000&&
-      num(t.priceChange24h)>=60).sort((a,b)=>num(b.volume24h)-num(a.volume24h)).slice(0,8);
+      num(t.priceChange24h)>=60).sort((a,b)=>num(b.volume24h)-num(a.volume24h)).slice(0,6);
     const discoveredPumps=[];
     for(const t of historyCandidates){
       const onset=await historicalPumpOnset(t);
@@ -131,7 +136,7 @@ async function buildPumpXMonitor(){
     const upcoming=base.filter(t=>t.pairAddress&&t.mint&&
       Number.isInteger(t.totalHolderCount)&&t.totalHolderCount>=1000&&
       num(t.liquidity)>=40000&&num(t.priceChange5m)>=0&&num(t.priceChange5m)<=8&&
-      num(t.priceChange1h)<=22).sort((a,b)=>num(b.volume5m)-num(a.volume5m)).slice(0,6);
+      num(t.priceChange1h)<=22).sort((a,b)=>num(b.volume5m)-num(a.volume5m)).slice(0,4);
     for(const t of upcoming){
       if(!trackedIds.size)break;
       const q=await queryXPostsForMint(t.mint,now-2*3600000,now-30000);
@@ -160,7 +165,9 @@ async function buildPumpXMonitor(){
   })();
   try{
     const data=await pumpXMonitorInFlight;
-    pumpXMonitorCache.at=Date.now();pumpXMonitorCache.data=data;return data;
+    pumpXMonitorCache.at=data.status==='waiting-for-first-token-scan'
+      ?Date.now()-PUMP_X_REFRESH_MS+30000:Date.now();
+    pumpXMonitorCache.data=data;return data;
   }finally{pumpXMonitorInFlight=null}
 }
 
@@ -5299,6 +5306,7 @@ function renderPumpXMonitor(){
   var history=document.getElementById('pumpXHistory');
   if(st)st.textContent=!d.configured
     ?'X API فعال نیست؛ برای تشخیص واقعی نویسندگان پست‌های قبل از پامپ، X_BEARER_TOKEN روی سرور لازم است. هیچ اکانتی تأیید یا دنبال نشده.'
+    :d.status==='waiting-for-first-token-scan'?'داده توکن‌ها هنوز بارگذاری نشده؛ اسکن تاریخی پس از دریافت توکن‌ها شروع می‌شود.'
     :'منبع کندل: GeckoTerminal · منبع پست: X API · پامپ‌های دارای شواهد: '+Number(d.discoveredPumps?.length||0)+
       ' · اکانت‌های دارای حداقل ۲ سابقه مستقل: '+Number(d.trackedAccounts?.length||0)+
       ' · آخرین بررسی: '+(d.generatedAt?new Date(d.generatedAt).toLocaleString('fa-IR'):'—');
