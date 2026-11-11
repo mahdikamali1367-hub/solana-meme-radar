@@ -3724,6 +3724,19 @@ html,body,.shell,.panel,.list{overflow-anchor:none}
 </section>
 <section class="panel" id="socialPanel">
   <details class="accordion highlight" open>
+    <summary>🕵️‍♂️ اکانت‌های X که ۲۴ ساعت قبل از پامپ، قرارداد ارز را معرفی کرده‌اند</summary>
+    <div class="accordion-body">
+      <p class="muted" id="pumpXStatus">در حال آماده‌سازی مقایسه قیمت تاریخی و پست‌های X...</p>
+      <p class="muted" style="font-size:11px">پامپ با کندل تاریخی ۱۵ دقیقه‌ای و رشد حداقل ۵۰٪ در یک ساعت شناسایی می‌شود. پست‌ها باید شامل آدرس دقیق توکن، اشاره به ورود/خرید و تاریخ قبل از شروع پامپ باشند. اکانت‌ها داخل رادار ردیابی می‌شوند، نه در حساب X شما. سبز بودن به معنی تضمین یا احتمال عددی پامپ نیست.</p>
+      <h3 style="font-size:13px">🟢 کاندیدهای اجتماعی با تطابق تأییدشده</h3>
+      <div id="pumpXWatchlist" class="list"></div>
+      <h3 style="font-size:13px">👤 اکانت‌های زودهنگام ردیابی‌شده</h3>
+      <div id="pumpXAccounts" class="list"></div>
+      <h3 style="font-size:13px">📈 پامپ‌های تاریخی و پست‌های قبل از رشد</h3>
+      <div id="pumpXHistory" class="list"></div>
+    </div>
+  </details>
+  <details class="accordion highlight" open>
     <summary>💰 عملکرد سیگنال‌های ترند اجتماعی از زمان معرفی</summary>
     <div class="accordion-body">
       <p class="muted" style="font-size:11px">مبنای هر توکن اولین Social Trend است؛ قیمت ورود ثابت و سود لحظه‌ای زنده است. ورود نهنگ و اسمارت‌مانی روی همان Mint نیز کنار هر سیگنال نمایش داده می‌شود.</p>
@@ -3840,6 +3853,7 @@ html,body,.shell,.panel,.list{overflow-anchor:none}
 
 <script>
 var TOTAL_HOLDERS_MIN=1000;
+var pumpXMonitor=null,pumpXBusy=false;
 var tokens=[],smart=null,live=null,tracked=null,conviction=null,prelaunch=null,prelaunchLive=null,topTraders=null,activeTab='featured',signalFilters={short:'',medium:'',long:'',security:'',holders:'',bigbuyers:'',totalholders:'1000'};
 try{
   if(localStorage.getItem('priceCacheSchemaV7')!=='dexscreener-primary-v7'){
@@ -5270,6 +5284,60 @@ function renderConviction(){
 }
 
 
+function pumpXBadge(t){
+  if(!pumpXMonitor||!Array.isArray(pumpXMonitor.watchlist)||!t)return '';
+  var item=pumpXMonitor.watchlist.find(function(x){return x.mint===t.mint});
+  if(!item)return '';
+  return '<span class="badge '+(item.greenWatch?'good':'mid')+'">'+
+    (item.greenWatch?'🟢 واچ اجتماعی تأییدشده':'🟡 ذکر توسط اکانت سابقه‌دار')+
+    ' · '+Number(item.verifiedEarlyAccounts||0)+' اکانت</span>';
+}
+function renderPumpXMonitor(){
+  var d=pumpXMonitor||{},st=document.getElementById('pumpXStatus');
+  var watch=document.getElementById('pumpXWatchlist');
+  var accounts=document.getElementById('pumpXAccounts');
+  var history=document.getElementById('pumpXHistory');
+  if(st)st.textContent=!d.configured
+    ?'X API فعال نیست؛ برای تشخیص واقعی نویسندگان پست‌های قبل از پامپ، X_BEARER_TOKEN روی سرور لازم است. هیچ اکانتی تأیید یا دنبال نشده.'
+    :'منبع کندل: GeckoTerminal · منبع پست: X API · پامپ‌های دارای شواهد: '+Number(d.discoveredPumps?.length||0)+
+      ' · اکانت‌های دارای حداقل ۲ سابقه مستقل: '+Number(d.trackedAccounts?.length||0)+
+      ' · آخرین بررسی: '+(d.generatedAt?new Date(d.generatedAt).toLocaleString('fa-IR'):'—');
+  if(watch)watch.innerHTML=(d.watchlist||[]).length?(d.watchlist||[]).map(function(x){
+    var green=x.greenWatch===true;
+    var refs=(x.accounts||[]).map(function(a){
+      return '<a class="action" target="_blank" rel="noopener" href="'+esc(a.postUrl)+'">@'+esc(a.handle)+' · '+Number(a.historicalPumps||0)+' پامپ قبلی</a>';
+    }).join('');
+    return '<div class="row" style="'+(green?'border-color:#34745e;background:#102b27':'')+'"><div class="asset"><b>'+
+      (green?'🟢 واچ سبز با شواهد چندگانه':'🟡 نیازمند تأیید بیشتر')+
+      ' · '+esc(x.symbol||'?')+'</b><small>CA: '+esc(x.mint)+' · '+Number(x.verifiedEarlyAccounts||0)+
+      ' اکانت دارای سابقه پیش از پامپ</small></div>'+
+      '<div class="cell"><small>هولدر</small><b>'+Number(x.holders||0)+'</b></div>'+
+      '<div class="cell"><small>نقدینگی</small><b>'+money(x.liquidity)+'</b></div>'+
+      '<div class="actions">'+refs+'<a class="action" href="'+esc(dexUrl(x.mint,''))+'" target="_blank" rel="noopener">DEX</a></div></div>';
+  }).join(''):'<div class="empty">هنوز کاندید دارای پست مستند از اکانت‌های سابقه‌دار پیدا نشده. نبود نتیجه به معنی نبود پامپ احتمالی نیست.</div>';
+  if(accounts)accounts.innerHTML=(d.trackedAccounts||[]).length?(d.trackedAccounts||[]).map(function(a){
+    return '<div class="row"><div class="asset"><b>@'+esc(a.handle)+'</b><small>'+
+      Number(a.documentedPumps||0)+' توکن متفاوت با پست مستند قبل از پامپ؛ این آمار نرخ موفقیت پیش‌بینی نیست.</small></div>'+
+      '<div class="actions"><a class="action" target="_blank" rel="noopener" href="https://x.com/'+encodeURIComponent(a.handle)+'">X</a>'+
+      (a.calls||[]).slice(0,3).map(function(v){return '<a class="action" target="_blank" rel="noopener" href="'+esc(v.postUrl)+'">'+esc(v.symbol||'پست')+'</a>'}).join('')+'</div></div>';
+  }).join(''):'<div class="empty">برای تأیید سابقه حداقل دو پامپ مجزا برای یک اکانت لازم است.</div>';
+  if(history)history.innerHTML=(d.discoveredPumps||[]).length?(d.discoveredPumps||[]).map(function(x){
+    return '<div class="row"><div class="asset"><b>📈 '+esc(x.symbol||'?')+'</b><small>CA: '+esc(x.mint)+
+      ' · شروع پامپ: '+new Date(x.onsetAt).toLocaleString('fa-IR')+
+      ' · رشد یک‌ساعته '+Number(x.growth1hPct||0).toFixed(1)+'٪</small></div>'+
+      '<div class="cell"><small>اکانت‌های پیش از پامپ</small><b>'+Number(x.postCount||0)+'</b></div>'+
+      '<div class="actions">'+(x.accounts||[]).slice(0,6).map(function(a){
+        return '<a class="action" target="_blank" rel="noopener" href="'+esc(a.postUrl)+'">@'+esc(a.handle)+'</a>';
+      }).join('')+'</div></div>';
+  }).join(''):'<div class="empty">در نمونه استخرهای بررسی‌شده فعلاً پامپ دارای زمان و پست معتبر پیدا نشده.</div>';
+}
+async function pollPumpXMonitor(){
+  if(pumpXBusy)return;pumpXBusy=true;
+  try{
+    var r=await safeJson('/api/v1/pump-x-monitor');
+    if(r){pumpXMonitor=r;if(activeTab==='social')renderActivePanel()}
+  }finally{pumpXBusy=false}
+}
 function renderSocialTrends(){
   var el=document.getElementById('socialList');
   var minHolders=Number(signalFilters.totalholders||0);
@@ -5293,7 +5361,7 @@ function renderSocialTrends(){
       }
       var pnlText=pnl==null?'—':(pnl>0?'+':'')+pnl.toFixed(1)+'%';
       var pnlClass=pnl==null?'return-flat':pnl>=0?'return-pos':'return-neg';
-      return '<div class="row"><div class="asset"><b>#'+(i+1)+' 📣 '+esc(t.symbol||'?')+' · '+esc(t.name||'')+'</b>'+socialMoneyBadges(t)+socialTrendBadges(t)+topTraderBadge(t)+tradePlanChips(t)+
+      return '<div class="row"><div class="asset"><b>#'+(i+1)+' 📣 '+esc(t.symbol||'?')+' · '+esc(t.name||'')+'</b>'+socialMoneyBadges(t)+socialTrendBadges(t)+topTraderBadge(t)+pumpXBadge(t)+tradePlanChips(t)+
         '<small>'+esc((h.reasons||[]).slice(0,3).join(' • '))+'</small>'+
         (hist?'<small>اولین سیگنال اجتماعی: '+new Date(hist.introducedAt).toLocaleString('fa-IR')+' · قیمت '+fmtPrice(hist.introducedPrice)+'</small>':'')+
         socialButtons(t)+'</div>'+
@@ -5758,6 +5826,7 @@ function renderActivePanel(){
     }else if(activeTab==='prelaunch'){
       safeUiRender('پیش‌لانچ',renderPrelaunch);
     }else if(activeTab==='social'){
+      safeUiRender('اکانت‌های پیش از پامپ',renderPumpXMonitor);
       safeUiRender('ترند اجتماعی',renderSocialTrends);
     }else if(activeTab==='wallets'){
       safeUiRender('کیف‌پول‌ها',renderWallets);
@@ -6041,6 +6110,8 @@ window.addEventListener('error',function(e){
   if(u)u.textContent='خطای رابط: '+String(e.message||'JavaScript');
 });
 loadAll();startLivePush();marketLiveTimer=setInterval(pollMarketLive,1000);setTimeout(pollMarketLive,350);setInterval(pollTopTraders,12000);setTimeout(pollTopTraders,2500);setInterval(pollVisibleDexPrices,1000);setTimeout(pollVisibleDexPrices,250);setInterval(pollPrelaunchLive,1000);setTimeout(pollPrelaunchLive,500);setInterval(loadAll,20000);
+setTimeout(pollPumpXMonitor,6000);
+setInterval(pollPumpXMonitor,15*60*1000);
 </script>
 </body>
 </html>`;
