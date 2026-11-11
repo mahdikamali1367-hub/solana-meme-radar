@@ -2254,18 +2254,19 @@ async function externalSecurityAudit(t){
     const decimals=Math.max(0,Math.min(9,num(pick(report?.token,'decimals'),6)));
     const desiredTokens=t.priceUsd>0?Math.max(1,Math.min(1e9,50/t.priceUsd)):1000;
     const units=(BigInt(Math.max(1,Math.floor(desiredTokens)))*(10n**BigInt(decimals))).toString();
-    const query='?inputMint='+encodeURIComponent(mint)+'&outputMint='+encodeURIComponent(WSOL_MINT)+'&amount='+units+'&slippageBps=500&instructionVersion=V2';
-    const urls=[];
-    if(process.env.JUPITER_API_KEY)urls.push({u:'https://api.jup.ag/swap/v1/quote'+query,h:{'x-api-key':process.env.JUPITER_API_KEY}});
-    urls.push({u:'https://lite-api.jup.ag/swap/v1/quote'+query,h:{}});
+    // Jupiter Swap V1 /quote is deprecated. V2 /order without taker
+    // returns a quote without constructing or executing a transaction.
+    const query='?inputMint='+encodeURIComponent(mint)+'&outputMint='+encodeURIComponent(WSOL_MINT)+'&amount='+units;
+    const jh=process.env.JUPITER_API_KEY?{'x-api-key':process.env.JUPITER_API_KEY}:{};
     let quote=null;
-    for(const x of urls){
-      try{quote=await jfetch(x.u,{headers:x.h},9000);if(quote?.outAmount&&num(quote.outAmount)>0)break}catch{}
-    }
-    if(quote?.outAmount&&num(quote.outAmount)>0){
-      const impact=Math.abs(num(quote?.priceImpactPct))*100;
-      sell=impact<=10?auditState('pass','مسیر فروش Jupiter موجود؛ impact تقریبی '+impact.toFixed(2)+'%','Jupiter quote'):
-           auditState('warn','مسیر فروش موجود ولی impact '+impact.toFixed(2)+'%','Jupiter quote');
+    try{quote=await jfetch('https://api.jup.ag/swap/v2/order'+query,{headers:jh},9000)}catch{}
+    if(quote&&(num(quote.outAmount)>0||num(quote.outputAmountResult)>0)){
+      const impactRaw=Number(quote.priceImpactPct);
+      const hasImpact=quote.priceImpactPct!=null&&Number.isFinite(impactRaw);
+      const impact=hasImpact?Math.abs(impactRaw)*100:null;
+      sell=impact!==null&&impact>10
+        ?auditState('warn','مسیر فروش Jupiter V2 موجود ولی impact تقریبی '+impact.toFixed(2)+'%','Jupiter Swap V2 quote')
+        :auditState('warn','مسیر احتمالی فروش در Jupiter V2 پیدا شد؛ اجرا، اسلیپیج و فروش قطعی تأیید نشده','Jupiter Swap V2 quote');
     }else if(num(t.sells5m)>=3||num(t.sells1h)>=10){
       sell=auditState('warn','فروش واقعی اخیر در DEX مشاهده شده، ولی quote مستقل Jupiter تأیید نشد','DexScreener');
     }else if(sellRisks.length){
