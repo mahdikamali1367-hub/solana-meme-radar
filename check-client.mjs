@@ -39,6 +39,7 @@ const buttons=nav.map(x=>{
 });
 makeEl('workspaceTitle');makeEl('workspaceDescription');makeEl('advancedMenu');
 const simulatedDocument={
+  readyState:'loading',
   getElementById(id){return elements[id]||null},
   querySelectorAll(sel){return sel==='#tabs .tab'?buttons:sel==='.panel'?panels:[]},
   addEventListener(){}
