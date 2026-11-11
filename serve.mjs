@@ -23,9 +23,10 @@ function findPumpOnset(candles,pairCreatedAt){
     if(rows[i][0]-rows[i-4][0]>75*60)continue; // disallow gaps
     const before=num(rows[i-4][4]),after=num(rows[i][4]);
     if(before<=0||after/before<1.5)continue;
-    const onset=rows[i][0]*1000;
-    // The reference pair existed for a full day before the identified pump.
-    if(onset-num(pairCreatedAt)<24*60*60*1000)continue;
+    // Post attribution uses the beginning of the rise, not its final
+    // confirming candle, to avoid counting posts during the pump.
+    const onset=rows[i-4][0]*1000;
+    if(onset<num(pairCreatedAt))continue;
     // Ignore events in the current candle and historical events outside X recent search.
     if(now-onset>5*24*60*60*1000)continue;
     return {onsetAt:onset,growth1hPct:(after/before-1)*100,priceBefore:before,priceAfter:after};
@@ -39,7 +40,7 @@ async function historicalPumpOnset(t){
   let onset=null;
   try{
     const endpoint='https://api.geckoterminal.com/api/v2/networks/solana/pools/'+
-      encodeURIComponent(ck)+'/ohlcv/minute?aggregate=15&limit=480&currency=usd&token=base';
+      encodeURIComponent(ck)+'/ohlcv/minute?aggregate=15&limit=480&currency=usd&token=base&include_empty_intervals=true';
     const d=await jfetch(endpoint,{},12000);
     onset=findPumpOnset(d?.data?.attributes?.ohlcv_list,Date.now()-num(t.ageMinutes)*60000);
   }catch{}
@@ -99,7 +100,7 @@ async function geckoHistoricalPumpCandidates(){
       const createdAt=Date.parse(attr.pool_created_at||'');
       const volume24h=num(attr.volume_usd?.h24),change24h=num(attr.price_change_percentage?.h24);
       if(!PUMP_X_MINT_RE.test(mint)||!PUMP_X_MINT_RE.test(pairAddress)||
-         !Number.isFinite(createdAt)||Date.now()-createdAt<24*3600*1000||
+         !Number.isFinite(createdAt)||Date.now()-createdAt<2*3600*1000||
          volume24h<100000||change24h<60||num(attr.reserve_in_usd)<25000)return null;
       return {mint,pairAddress,symbol:String(attr.name||'').split('/')[0].trim(),
         ageMinutes:(Date.now()-createdAt)/60000,liquidity:num(attr.reserve_in_usd),
@@ -118,7 +119,7 @@ async function buildPumpXMonitor(){
     const base=cache.data?.tokens||[];
     const gecko=await geckoHistoricalPumpCandidates();
     const historyCandidates=[...new Map(gecko.concat(base.filter(t=>t.pairAddress&&t.mint&&
-      t.ageMinutes>=24*60&&num(t.liquidity)>=25000&&
+      t.ageMinutes>=2*60&&num(t.liquidity)>=25000&&
       num(t.priceChange24h)>=60)).sort((a,b)=>num(b.volume24h)-num(a.volume24h))
       .map(t=>[t.mint,t])).values()].slice(0,8);
     if(!base.length&&!historyCandidates.length){
