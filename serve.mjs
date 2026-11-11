@@ -6203,7 +6203,7 @@ setInterval(pollPumpXMonitor,15*60*1000);
 createServer(async(req,res)=>{
   const url=new URL(req.url,'http://localhost');
   try{
-    if(url.pathname==='/api/health'){res.writeHead(200,{'content-type':'application/json','cache-control':'no-store',...headers});return res.end(JSON.stringify({ok:true,time:new Date().toISOString(),version:'b41bd2e+rpc-safety',uptimeSeconds:Math.floor(process.uptime()),marketCacheAgeMs:marketLiveCache.at?Date.now()-marketLiveCache.at:null,radarCacheAgeMs:cache.at?Date.now()-cache.at:null}))}
+    if(url.pathname==='/api/health'){res.writeHead(200,{'content-type':'application/json','cache-control':'no-store',...headers});return res.end(JSON.stringify({ok:true,time:new Date().toISOString(),version:'2026-11-11-ui-clickfix',uptimeSeconds:Math.floor(process.uptime()),marketCacheAgeMs:marketLiveCache.at?Date.now()-marketLiveCache.at:null,radarCacheAgeMs:cache.at?Date.now()-cache.at:null}))}
     if(url.pathname==='/api/v1/force-refresh'){
       cache={at:0,data:null};marketLiveCache={at:0,data:null};exactDexPriceCache.clear();contractPriceCache.clear();prelaunchCache={at:0,data:null};pumpTraderIntelCache={at:0,data:null};solidProofIntelCache={at:0,data:null};trackedWalletCache={at:0,data:null};topTraderIntelCache={at:0,data:null};smartMoneyCache={at:0,data:null};convictionCache={at:0,data:null};
       res.writeHead(200,{'content-type':'application/json; charset=utf-8','cache-control':'no-store',...headers});
