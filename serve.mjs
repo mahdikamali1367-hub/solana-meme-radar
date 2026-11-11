@@ -3962,7 +3962,7 @@ button:focus-visible,.accordion>summary:focus-visible,.nav-more>summary:focus-vi
     <div class="list" id="whaleTopList"></div>
   </div>
 </details>
-  <details class="accordion" open>
+  <details class="accordion">
     <summary>🐋 خریدهای نهنگ</summary>
     <div class="accordion-body"><p class="muted" style="font-size:11px">خرید بزرگ اخیر و هشدار خروج.</p><div id="whaleSummary"></div><div class="subfilters">
 <label>کوتاه‌مدت<select class="signal-filter" data-filter="short"><option value="">همه</option><option value="STRONG">قوی</option><option value="POSITIVE">مثبت</option><option value="NEUTRAL">خنثی</option><option value="WAIT_DATA">داده ناکافی</option><option value="AVOID">ورود نکن</option><option value="BLOCKED">مسدود امنیتی</option></select></label>
@@ -4006,38 +4006,38 @@ button:focus-visible,.accordion>summary:focus-visible,.nav-more>summary:focus-vi
     <div class="list" id="prelaunchSuggestedList"></div>
   </div>
 </details>
-<details class="accordion highlight" open><summary>🛡️ پیش‌لانچ با امنیت بالا</summary><div class="accordion-body"><div class="list" id="prelaunchHighList"></div></div></details>
-<details class="accordion" open><summary>⚖️ پیش‌لانچ با امنیت متوسط</summary><div class="accordion-body"><div class="list" id="prelaunchMediumList"></div></div></details>
+<details class="accordion highlight"><summary>🛡️ پیش‌لانچ با امنیت بالا</summary><div class="accordion-body"><div class="list" id="prelaunchHighList"></div></div></details>
+<details class="accordion"><summary>⚖️ پیش‌لانچ با امنیت متوسط</summary><div class="accordion-body"><div class="list" id="prelaunchMediumList"></div></div></details>
 <details class="accordion"><summary>⚠️ پیش‌لانچ با امنیت بسیار کم</summary><div class="accordion-body"><div class="list" id="prelaunchLowList"></div></div></details>
-      <details class="accordion highlight" open>
+      <details class="accordion highlight">
         <summary>⚡ رادار Early Launch — مناسب برای بررسی خرید</summary>
         <div class="accordion-body">
           <p class="muted" style="font-size:11px">توکن‌های تازه‌لانچ‌شده از Pump.fun/DEXScreener با امتیاز ترکیبی امنیت، جریان خریدار، Social Heat، نهنگ/اسمارت‌مانی و—در صورت دسترسی—تریدرهای سودده Pump.fun. این لیست تضمین خرید نیست.</p>
           <div class="list" id="earlyLaunchList"></div>
         </div>
       </details>
-      <details class="accordion highlight" open>
+      <details class="accordion highlight">
         <summary>🏆 هوش تریدرهای برتر Pump.fun</summary>
         <div class="accordion-body">
           <p class="muted" id="pumpTraderIntelStatus" style="font-size:11px">در حال دریافت Leaderboard و پوزیشن‌ها…</p>
           <div class="list" id="pumpTraderIntelList"></div>
         </div>
       </details>
-      <details class="accordion" open>
+      <details class="accordion">
         <summary>🛡️ هوش امنیت چندمنبعی</summary>
         <div class="accordion-body">
           <p class="muted" style="font-size:11px">SolidProof برای Audit/KYC/TrustNet؛ RugCheck + GoPlus برای قرارداد/هولدر/Rug/Honeypot؛ CertiK/TokenSniffer/Bubblemaps به‌عنوان شواهد تکمیلی و لینک تحقیق.</p>
           <div class="list" id="multiSourceSecurityList"></div>
         </div>
       </details>
-      <details class="accordion highlight" open>
+      <details class="accordion highlight">
         <summary>📈 عملکرد پیشنهادهای پیش‌لانچ بعد از لانچ</summary>
         <div class="accordion-body">
           <p class="muted" style="font-size:11px">رشد/افت از اولین قیمت تاریخی قابل‌دریافت نزدیک زمان ساخت Pair تا قیمت فعلی. اگر قیمت شروع قابل‌تأیید نباشد، درصد نمایش داده نمی‌شود.</p>
           <div class="list" id="prelaunchPerformanceList"></div>
         </div>
       </details>
-      <details class="accordion" open>
+      <details class="accordion">
         <summary>🧭 منابع کشف و بررسی از راهنمای فایل</summary>
         <div class="accordion-body">
           <div class="list" id="prelaunchSources">
@@ -4069,7 +4069,7 @@ button:focus-visible,.accordion>summary:focus-visible,.nav-more>summary:focus-vi
       <div id="famousXPosts" class="list"></div>
     </div>
   </details>
-  <details class="accordion highlight" open>
+  <details class="accordion highlight">
     <summary>🕵️‍♂️ اکانت‌های X که ۲۴ ساعت قبل از پامپ، قرارداد ارز را معرفی کرده‌اند</summary>
     <div class="accordion-body">
       <p class="muted" id="pumpXStatus">در حال آماده‌سازی مقایسه قیمت تاریخی و پست‌های X...</p>
@@ -4111,15 +4111,15 @@ button:focus-visible,.accordion>summary:focus-visible,.nav-more>summary:focus-vi
       <div class="list" id="topTraderRecentBuys"></div>
     </div>
   </details>
-  <details class="accordion" open>
+  <details class="accordion">
     <summary>💼 پرتفوی تریدرهای برتر</summary>
     <div class="accordion-body"><div class="list" id="topTraderWallets"></div></div>
   </details>
-  <details class="accordion" open>
+  <details class="accordion">
     <summary>🏆 وضعیت کیف‌پول‌های برتر</summary>
     <div class="accordion-body"><p class="muted" id="walletStatus" style="font-size:11px">در حال اسکن آن‌چین…</p></div>
   </details>
-  <details class="accordion" open>
+  <details class="accordion">
     <summary>💰 بیشترین سرمایه کل کیف‌پول‌ها</summary>
     <div class="accordion-body"><div id="topHoldings"></div></div>
   </details>
@@ -4131,7 +4131,7 @@ button:focus-visible,.accordion>summary:focus-visible,.nav-more>summary:focus-vi
     <summary>🤝 خرید همزمان چند کیف‌پول</summary>
     <div class="accordion-body"><div id="consensus"></div></div>
   </details>
-  <details class="accordion" open>
+  <details class="accordion">
     <summary>🧱 کیف‌پول‌های سودده با هولد ۷ روز+</summary>
     <div class="accordion-body"><p class="muted" style="font-size:11px">فروش جزئی ممکن است رخ داده باشد؛ برای تأیید نهایی تاریخچه را بررسی کن.</p><div class="list" id="convictionList"></div></div>
   </details>
@@ -4149,7 +4149,7 @@ button:focus-visible,.accordion>summary:focus-visible,.nav-more>summary:focus-vi
       <div class="list" id="topTokenQuick"></div>
     </div>
   </details>
-  <details class="accordion highlight" open>
+  <details class="accordion highlight">
     <summary>👑 ترند KOL — فقط بالاترین امنیت</summary>
     <div class="accordion-body"><p class="muted" id="kolTrendStatus" style="font-size:11px">توکن‌هایی که همین KOLهای منتخب در پوزیشن/معامله اخیر داشته‌اند یا مستقیماً در X اشاره کرده‌اند؛ فقط امنیت HIGH/MAX نمایش داده می‌شود.</p><div class="list" id="kolTrendList"></div></div>
   </details>
@@ -4165,7 +4165,7 @@ button:focus-visible,.accordion>summary:focus-visible,.nav-more>summary:focus-vi
 <label>خریدار ۵۰۰$+ بیشتر از فروشنده (فقط فیلتر نمایش)<select class="signal-filter" data-filter="bigbuyers"><option value="">همه</option><option value="yes">فقط خریدار غالب</option></select></label>
 </div><p class="muted" style="font-size:11px">قانون اجباری هولدر: هولدر #1 باید کمتر از 10% باشد و تک‌تک هولدرهای #2 تا #10 کمتر از 5%. برای سیگنال ورود امن، هر 10 هولدر باید با مالک تجمیع‌شده قابل بررسی باشند؛ Mint/Freeze، Sellability، RugCheck، LP Lock/Burn، Dev/Insider و Token-2022 نیز باید بدون رد یا داده نامشخص بحرانی باشند.</p></div>
   </details>
-  <details class="accordion highlight" open>
+  <details class="accordion highlight">
     <summary>💰 عملکرد توکن‌ها از اولین ورود به رادار</summary>
     <div class="accordion-body">
       <p class="muted" style="font-size:11px">هر آیتم سه مقدار جدا دارد: 💵 قیمت ورود ثابت، ⚡ قیمت لحظه‌ای بازار، 💰 سود/ضرر لحظه‌ای. مبنای ورود ثابت می‌ماند و در اختلال کوتاه آخرین قیمت معتبر حفظ می‌شود.</p>
