@@ -21,9 +21,9 @@ function mockSourceHealth(env,failed=''){
     if(url.includes('birdeye'))return {success:true,data:{value:101}};
     throw new Error('Unexpected fixture endpoint');
   };
-  const factory=new Function('jfetch','rpc','process','num','WSOL_MINT','xFamousCache','pumpXMonitorCache',
+  const factory=new Function('jfetch','pacedJupiterFetch','rpc','process','num','WSOL_MINT','xFamousCache','pumpXMonitorCache',
     monitor+'return sourcesHealth;');
-  return factory(req,async()=>({result:300000000}),{env},x=>Number(x||0),
+  return factory(req,req,async()=>({result:300000000}),{env},x=>Number(x||0),
     mint,{data:null},{data:null});
 }
 const good=await mockSourceHealth({JUPITER_API_KEY:'SECRET_TEST_VALUE',
