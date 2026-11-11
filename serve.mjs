@@ -3632,6 +3632,8 @@ html,body,.shell,.panel,.list{overflow-anchor:none}
     <div class="accordion-body">
       <p class="muted" style="font-size:11px">هر آیتم سه مقدار جدا دارد: 💵 قیمت ورود ثابت، ⚡ قیمت لحظه‌ای بازار، 💰 سود/ضرر لحظه‌ای. مبنای ورود ثابت می‌ماند و در اختلال کوتاه آخرین قیمت معتبر حفظ می‌شود.</p>
       <div id="tokenRadarPerformanceSummary"></div>
+      <div class="actions"><button type="button" id="exportSignalHistory" class="action">⬇ خروجی CSV تاریخچه کشف‌ها و سیگنال‌های ورود</button></div>
+      <p class="muted" style="font-size:11px">خروجی شامل همان داده‌های ذخیره‌شده در همین مرورگر است؛ سابقه همه کاربران یا معاملات واقعی را شامل نمی‌شود.</p>
       <div class="list" id="tokenRadarPerformanceList"></div>
     </div>
   </details>
@@ -3808,6 +3810,45 @@ function rememberTokenRadar(t){
     tokenRadarHistory.set(t.mint,old);
     if(old.baselineRepaired)saveTokenRadarHistory();
   }
+}
+function exportSignalAuditCsv(){
+  var hist=[...tokenRadarHistory.values()].map(function(h){
+    var t=findToken(h.mint),price=currentPriceForMint(h.mint),base=Number(h.introducedPrice||0);
+    return {
+      type:'discovered_token',mint:h.mint,symbol:h.symbol,name:h.name,
+      introducedAt:h.introducedAt,basePrice:base||'',currentPrice:price||'',
+      pnlPct:base>0&&price>0?((price-base)/base*100).toFixed(4):'',
+      entryAtIntroduction:h.entrySignalAtIntroduction===true?'yes':h.entrySignalAtIntroduction===false?'no':'unknown',
+      originalScore:h.introducedScore,security:h.introducedSecurity,
+      strategy:'discovery_history_not_trade_signal',
+      entrySnapshot:''
+    };
+  });
+  var entries=[...recommendationHistory.values()].map(function(h){
+    var price=currentPriceForMint(h.mint),base=Number(h.introducedPrice||0);
+    return {
+      type:'confirmed_entry',mint:h.mint,symbol:h.symbol,name:h.name,
+      introducedAt:h.introducedAt,basePrice:base||'',currentPrice:price||'',
+      pnlPct:base>0&&price>0?((price-base)/base*100).toFixed(4):'',
+      entryAtIntroduction:'yes',originalScore:h.introducedScore,security:h.introducedSecurity,
+      strategy:h.strategyVersion||'legacy_entry',entrySnapshot:JSON.stringify(h.entrySnapshot||{})
+    };
+  });
+  var header=['type','mint','symbol','name','introducedAt','basePrice','currentPrice','pnlPct','entryAtIntroduction','originalScore','security','strategy','entrySnapshot'];
+  var rows=hist.concat(entries);
+  var csv=[header.join(',')].concat(rows.map(function(row){
+    return header.map(function(key){
+      var s=String(row[key]??'');
+      // prevent spreadsheet formula injection in arbitrary token names
+      if(/^[=+@\-\t\r]/.test(s))s="'"+s;
+      return '"'+s.replace(/"/g,'""')+'"';
+    }).join(',');
+  })).join('\r\n');
+  var blob=new Blob(['\uFEFF'+csv],{type:'text/csv;charset=utf-8'});
+  var url=URL.createObjectURL(blob),a=document.createElement('a');
+  a.href=url;a.download='solana-radar-signal-audit-'+new Date().toISOString().slice(0,10)+'.csv';
+  document.body.appendChild(a);a.click();a.remove();
+  setTimeout(function(){URL.revokeObjectURL(url)},1000);
 }
 function tokenRadarPerformanceRows(){
   return [...tokenRadarHistory.values()].map(function(h){
@@ -5741,6 +5782,7 @@ function startLivePush(){
   }
 }
 document.addEventListener('click',function(e){var d=e.target.closest('.detail-btn');if(!d)return;openDetail(d.getAttribute('data-mint')||'')});
+document.getElementById('exportSignalHistory').addEventListener('click',exportSignalAuditCsv);
 document.getElementById('tabs').addEventListener('click',function(e){var b=e.target.closest('[data-tab]');if(!b)return;activeTab=b.dataset.tab;document.querySelectorAll('.tab').forEach(function(x){x.classList.toggle('active',x===b)});document.querySelectorAll('.panel').forEach(function(x){x.classList.remove('active')});document.getElementById(activeTab+'Panel').classList.add('active');renderActivePanel()});
 document.addEventListener('change',function(e){var sfel=e.target.closest('.signal-filter');if(!sfel)return;signalFilters[sfel.dataset.filter]=sfel.value;document.querySelectorAll('.signal-filter[data-filter="'+sfel.dataset.filter+'"]').forEach(function(x){if(x!==sfel)x.value=sfel.value});renderChampion();renderFeatured();renderWhales();renderSmart();renderTokens();renderSocialTrends()});
 var mintLookupTimer=null;
