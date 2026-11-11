@@ -3649,6 +3649,55 @@ async function buildSmartMoney(){
 }
 
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+let sourcesHealthCache={at:0,data:null},sourcesHealthInFlight=null;
+async function sourcesHealth(){
+  if(sourcesHealthCache.data&&Date.now()-sourcesHealthCache.at<300000)return sourcesHealthCache.data;
+  if(sourcesHealthInFlight)return sourcesHealthInFlight;
+  sourcesHealthInFlight=(async()=>{
+    const mint=WSOL_MINT,jh=process.env.JUPITER_API_KEY?{'x-api-key':process.env.JUPITER_API_KEY}:{};
+    const tasks=[
+      ['dexscreener','DEXScreener',()=>jfetch('https://api.dexscreener.com/tokens/v1/solana/'+mint,{},7000).then(d=>Array.isArray(d)?{count:d.length}:Promise.reject(Error('shape')))],
+      ['geckoterminal','GeckoTerminal',()=>jfetch('https://api.geckoterminal.com/api/v2/networks/solana/new_pools?page=1',{headers:{accept:'application/json;version=20230203'}},7000).then(d=>Array.isArray(d?.data)?{count:d.data.length}:Promise.reject(Error('shape')))],
+      ['jupiter','Jupiter Price',()=>jfetch('https://api.jup.ag/price/v3?ids='+mint,{headers:jh},7000).then(d=>num(d?.[mint]?.usdPrice)>0?{priceAvailable:true}:Promise.reject(Error('price missing')))],
+      ['jupiterTokens','Jupiter Tokens',()=>jfetch('https://api.jup.ag/tokens/v2/search?query='+mint,{headers:jh},7000).then(d=>Array.isArray(d)?{holdersAvailable:d.some(t=>t.id===mint&&Number.isInteger(t.holderCount))}:Promise.reject(Error('shape')))],
+      ['rpc','Solana RPC',()=>rpc('getSlot',[]).then(d=>Number.isFinite(d?.result)&&!d.error?{slotReturned:true}:Promise.reject(Error('RPC error')))],
+      ['rugcheck','RugCheck',()=>jfetch('https://api.rugcheck.xyz/v1/tokens/'+mint+'/report/summary',{},7000).then(d=>d&&typeof d==='object'&&!d.error?{responseReceived:true}:Promise.reject(Error('shape')))],
+      ['goplus','GoPlus',()=>jfetch('https://api.gopluslabs.io/api/v1/solana/token_security?contract_addresses='+mint,
+        {headers:process.env.GOPLUS_ACCESS_TOKEN?{authorization:'Bearer '+process.env.GOPLUS_ACCESS_TOKEN}:{}},7000)
+        .then(d=>d&&typeof d==='object'&&d.code!==0?{responseReceived:true}:Promise.reject(Error('shape')))]
+    ];
+    if(process.env.BIRDEYE_API_KEY)tasks.push(['birdeye','Birdeye',()=>jfetch('https://public-api.birdeye.so/defi/price?address='+mint,
+      {headers:{'X-API-KEY':process.env.BIRDEYE_API_KEY,'x-chain':'solana'}},7000)
+      .then(d=>d?.success!==false&&d?.data?{responseReceived:true}:Promise.reject(Error('shape')))]);
+    const rows=await Promise.all(tasks.map(async([id,name,fn])=>{
+      const start=Date.now();
+      try{return {id,name,status:'ok',latencyMs:Date.now()-start,...await fn()}}
+      catch(e){const raw=String(e?.message||'').slice(0,70),status=raw.match(/^(401|403|404|429|5\d\d)\b/);
+        return {id,name,status:'error',latencyMs:Date.now()-start,reason:status?'HTTP '+status[1]:/abort/i.test(raw)?'timeout':'unavailable-or-invalid-response'}}
+    }));
+    const configured={X_BEARER_TOKEN:!!process.env.X_BEARER_TOKEN,
+      JUPITER_API_KEY:!!process.env.JUPITER_API_KEY,BIRDEYE_API_KEY:!!process.env.BIRDEYE_API_KEY,
+      SOLANA_RPC_URL:!!process.env.SOLANA_RPC_URL,PUMP_FUN_API_KEY:!!process.env.PUMP_FUN_API_KEY,
+      GOPLUS_ACCESS_TOKEN:!!process.env.GOPLUS_ACCESS_TOKEN,FOMO_API_KEY:!!process.env.FOMO_API_KEY,
+      YOUTUBE_API_KEY:!!process.env.YOUTUBE_API_KEY,REDDIT_CLIENT_ID:!!process.env.REDDIT_CLIENT_ID,
+      X_FULL_ARCHIVE_SEARCH:process.env.X_FULL_ARCHIVE_SEARCH==='true'};
+    if(!configured.BIRDEYE_API_KEY)rows.push({id:'birdeye',name:'Birdeye',status:'missing-key',requiredKey:'BIRDEYE_API_KEY'});
+    const xs=xFamousCache?.data?.status||pumpXMonitorCache?.data?.status||null;
+    rows.push({id:'x',name:'X public posts',status:!configured.X_BEARER_TOKEN?'missing-key':
+      xs==='ok'||xs==='scanned'?'ok':xs==='api-error'||xs==='x-api-errors'?'error':'configured-not-tested',
+      requiredKey:configured.X_BEARER_TOKEN?null:'X_BEARER_TOKEN',note:'X API calls may cost credits; no extra call made for this health probe.'});
+    rows.push({id:'pumpfun',name:'Pump.fun',status:configured.PUMP_FUN_API_KEY?'configured-not-tested':'public-fallback',
+      requiredKey:configured.PUMP_FUN_API_KEY?null:'PUMP_FUN_API_KEY'});
+    rows.push({id:'solscan',name:'Solscan',status:'link-only',
+      requiredKey:'SOLSCAN_API_KEY',note:'Explorer links only; Solscan Pro API not integrated.'});
+    const result={ok:true,generatedAt:new Date().toISOString(),cacheSeconds:300,rows,configured,
+      note:'No API secrets are returned. Connectivity is sampled; errors may reflect rate limits or upstream outages.'};
+    sourcesHealthCache={at:Date.now(),data:result};return result;
+  })();
+  try{return await sourcesHealthInFlight}finally{sourcesHealthInFlight=null}
+}
+
 const html=()=>String.raw`<!doctype html>
 <html lang="fa" dir="rtl">
 <head>
@@ -6377,6 +6426,10 @@ setInterval(pollPumpXMonitor,15*60*1000);
 createServer(async(req,res)=>{
   const url=new URL(req.url,'http://localhost');
   try{
+    if(url.pathname==='/api/v1/sources-health'){
+      const d=await sourcesHealth();res.writeHead(200,{'content-type':'application/json; charset=utf-8','cache-control':'no-store',...headers});
+      return res.end(JSON.stringify(d));
+    }
     if(url.pathname==='/api/health'){res.writeHead(200,{'content-type':'application/json','cache-control':'no-store',...headers});return res.end(JSON.stringify({ok:true,time:new Date().toISOString(),version:'2026-11-11-ui-clickfix',uptimeSeconds:Math.floor(process.uptime()),marketCacheAgeMs:marketLiveCache.at?Date.now()-marketLiveCache.at:null,radarCacheAgeMs:cache.at?Date.now()-cache.at:null}))}
     if(url.pathname==='/api/v1/force-refresh'){
       cache={at:0,data:null};marketLiveCache={at:0,data:null};exactDexPriceCache.clear();contractPriceCache.clear();prelaunchCache={at:0,data:null};pumpTraderIntelCache={at:0,data:null};solidProofIntelCache={at:0,data:null};trackedWalletCache={at:0,data:null};topTraderIntelCache={at:0,data:null};smartMoneyCache={at:0,data:null};convictionCache={at:0,data:null};
