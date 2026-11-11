@@ -5,6 +5,165 @@ const RPC=process.env.SOLANA_RPC_URL||'https://api.mainnet.solana.com';
 const CACHE_MS=15_000;
 const SOCIAL_QUERY_CACHE_MS=2*60*60*1000;
 const socialQueryCache=new Map();
+
+const pumpXMonitorCache={at:0,data:null};
+let pumpXMonitorInFlight=null;
+const pumpXAccountEvidence=new Map();
+const pumpXCandleCache=new Map();
+const pumpXPostCache=new Map();
+const PUMP_X_REFRESH_MS=15*60*1000;
+const PUMP_X_MINT_RE=/^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
+function findPumpOnset(candles,pairCreatedAt){
+  // Time stamped completed 15m candles, not a current 24h change masquerading as onset.
+  const now=Date.now();
+  const rows=(Array.isArray(candles)?candles:[]).filter(x=>
+    Array.isArray(x)&&Number.isFinite(+x[0])&&num(x[4])>0&&
+    x[0]*1000<now-15*60*1000).sort((a,b)=>a[0]-b[0]);
+  for(let i=4;i<rows.length;i++){
+    if(rows[i][0]-rows[i-4][0]>75*60)continue; // disallow gaps
+    const before=num(rows[i-4][4]),after=num(rows[i][4]);
+    if(before<=0||after/before<1.5)continue;
+    const onset=rows[i][0]*1000;
+    // The reference pair existed for a full day before the identified pump.
+    if(onset-num(pairCreatedAt)<24*60*60*1000)continue;
+    // Ignore events in the current candle and historical events outside X recent search.
+    if(now-onset>5*24*60*60*1000)continue;
+    return {onsetAt:onset,growth1hPct:(after/before-1)*100,priceBefore:before,priceAfter:after};
+  }
+  return null;
+}
+async function historicalPumpOnset(t){
+  if(!PUMP_X_MINT_RE.test(t?.mint||'')||!PUMP_X_MINT_RE.test(t?.pairAddress||''))return null;
+  const ck=t.pairAddress,hit=pumpXCandleCache.get(ck);
+  if(hit&&Date.now()-hit.at<6*60*60*1000)return hit.value;
+  let onset=null;
+  try{
+    const endpoint='https://api.geckoterminal.com/api/v2/networks/solana/pools/'+
+      encodeURIComponent(ck)+'/ohlcv/minute?aggregate=15&limit=480&currency=usd&token=base';
+    const d=await jfetch(endpoint,{},12000);
+    onset=findPumpOnset(d?.data?.attributes?.ohlcv_list,Date.now()-num(t.ageMinutes)*60000);
+  }catch{}
+  pumpXCandleCache.set(ck,{at:Date.now(),value:onset});
+  return onset;
+}
+function bullishXPost(p,mint){
+  const txt=String(p?.text||'');
+  // Exact CA evidence, original authored post, with a directional trading thesis.
+  // Mention-only, backwards-looking and generic promotions do not count.
+  return txt.includes(mint)&&
+    /\b(buy|buying|accumulat(?:e|ing|ion)|bullish|entry|early|long|gem|ape(?:d|ing)?|potential|undervalued|ape in)\b|خرید|ورود|صعود|مستعد رشد/i.test(txt)&&
+    !/\b(sold|selling|exit|take profit|avoid|scam|rug|dumped)\b/i.test(txt);
+}
+async function queryXPostsForMint(mint,startAt,endAt){
+  const key=process.env.X_BEARER_TOKEN;
+  if(!key||!PUMP_X_MINT_RE.test(mint))return {status:'not-configured',posts:[]};
+  const now=Date.now(),start=Math.max(0,Number(startAt)),end=Math.min(now-15000,Number(endAt));
+  if(!(start<end))return {status:'invalid-window',posts:[]};
+  const cacheKey=mint+':'+Math.floor(start/3600000)+':'+Math.floor(end/3600000);
+  const found=pumpXPostCache.get(cacheKey);
+  if(found&&now-found.at<10*60*1000)return found.value;
+  const recent=start>=now-7*24*3600000;
+  if(!recent&&process.env.X_FULL_ARCHIVE_SEARCH!=='true')return {status:'full-archive-required',posts:[]};
+  const url='https://api.x.com/2/tweets/search/'+(recent?'recent':'all')+'?'+
+    'query='+encodeURIComponent(mint+' -is:retweet -is:reply')+
+    '&start_time='+encodeURIComponent(new Date(start).toISOString())+
+    '&end_time='+encodeURIComponent(new Date(end).toISOString())+
+    '&max_results=100&tweet.fields=created_at,author_id,public_metrics'+
+    '&expansions=author_id&user.fields=username,name';
+  let result={status:'unavailable',posts:[]};
+  try{
+    const d=await jfetch(url,{headers:{authorization:'Bearer '+key}},12000);
+    const users=new Map((d?.includes?.users||[]).map(u=>[String(u.id),u]));
+    const posts=(d?.data||[]).map(p=>{
+      const user=users.get(String(p.author_id));
+      const posted=Date.parse(p.created_at||'');
+      return {id:String(p.id||''),createdAt:p.created_at,postedAt:posted,
+        handle:String(user?.username||''),authorId:String(p.author_id||''),
+        text:String(p.text||''),url:user?.username&&p.id?'https://x.com/'+user.username+'/status/'+p.id:'',
+        likes:num(p.public_metrics?.like_count)};
+    }).filter(p=>p.handle&&p.url&&p.postedAt>=start&&p.postedAt<end&&bullishXPost(p,mint));
+    result={status:'ok',posts,partial:!!d?.meta?.next_token,source:recent?'recent':'full-archive'};
+  }catch(e){result={status:'api-error',posts:[],error:String(e?.message||e).slice(0,110)}}
+  pumpXPostCache.set(cacheKey,{at:now,value:result});
+  return result;
+}
+async function buildPumpXMonitor(){
+  const now=Date.now();
+  if(pumpXMonitorCache.data&&now-pumpXMonitorCache.at<PUMP_X_REFRESH_MS)return pumpXMonitorCache.data;
+  if(pumpXMonitorInFlight)return pumpXMonitorInFlight;
+  pumpXMonitorInFlight=(async()=>{
+    if(!process.env.X_BEARER_TOKEN){
+      return {ok:true,configured:false,status:'needs-x-bearer-token',generatedAt:new Date().toISOString(),
+        discoveredPumps:[],trackedAccounts:[],watchlist:[],
+        note:'Connect an X developer API bearer token. No X accounts or pump posts have been verified.'};
+    }
+    const base=cache.data?.tokens||[];
+    const historyCandidates=base.filter(t=>t.pairAddress&&t.mint&&
+      t.ageMinutes>=24*60&&num(t.liquidity)>=25000&&
+      num(t.priceChange24h)>=60).sort((a,b)=>num(b.volume24h)-num(a.volume24h)).slice(0,8);
+    const discoveredPumps=[];
+    for(const t of historyCandidates){
+      const onset=await historicalPumpOnset(t);
+      if(!onset)continue;
+      const posts=await queryXPostsForMint(t.mint,onset.onsetAt-24*3600000,onset.onsetAt);
+      if(posts.status!=='ok')continue;
+      const distinct=[...new Map(posts.posts.map(p=>[p.authorId,p])).values()];
+      for(const post of distinct){
+        const a=pumpXAccountEvidence.get(post.authorId)||{authorId:post.authorId,handle:post.handle,
+          calls:new Map(),updatedAt:now};
+        a.handle=post.handle;a.updatedAt=now;
+        if(!a.calls.has(t.mint))a.calls.set(t.mint,{mint:t.mint,symbol:t.symbol,
+          onsetAt:onset.onsetAt,growth1hPct:onset.growth1hPct,postUrl:post.url,postAt:post.postedAt});
+        pumpXAccountEvidence.set(post.authorId,a);
+      }
+      discoveredPumps.push({mint:t.mint,symbol:t.symbol,contract:t.mint,
+        onsetAt:onset.onsetAt,growth1hPct:onset.growth1hPct,
+        pairAddress:t.pairAddress,postCount:distinct.length,accounts:distinct.slice(0,12).map(p=>({
+          handle:p.handle,authorId:p.authorId,postAt:p.postedAt,postUrl:p.url
+        })),partial:posts.partial});
+    }
+    // A 'tracked' user needs two independently documented, distinct pumps,
+    // not two reposts or two posts about one token.
+    const tracked=[...pumpXAccountEvidence.values()].filter(x=>x.calls.size>=2)
+      .sort((a,b)=>b.calls.size-a.calls.size).slice(0,25);
+    const trackedIds=new Set(tracked.map(x=>x.authorId));
+    const watchlist=[];
+    const upcoming=base.filter(t=>t.pairAddress&&t.mint&&
+      Number.isInteger(t.totalHolderCount)&&t.totalHolderCount>=1000&&
+      num(t.liquidity)>=40000&&num(t.priceChange5m)>=0&&num(t.priceChange5m)<=8&&
+      num(t.priceChange1h)<=22).sort((a,b)=>num(b.volume5m)-num(a.volume5m)).slice(0,6);
+    for(const t of upcoming){
+      if(!trackedIds.size)break;
+      const q=await queryXPostsForMint(t.mint,now-2*3600000,now-30000);
+      if(q.status!=='ok')continue;
+      const matching=[...new Map(q.posts.filter(p=>trackedIds.has(p.authorId)).map(p=>[p.authorId,p])).values()];
+      const qualified=matching.length>=2&&
+        Number(t.totalHolderCount)>=1000&&
+        t.security?.holderPolicyPassed===true&&
+        ['MAX SECURITY','HIGH'].includes(t.security?.tier||'')&&
+        t.activity?.label!=='BOT RISK'&&t.chart?.pumpDumpRisk!=='HIGH'&&
+        num(t.liquidity)>=40000&&num(t.volume5m)>=5000&&
+        num(t.buys5m)>num(t.sells5m);
+      if(!matching.length)continue;
+      watchlist.push({mint:t.mint,symbol:t.symbol,name:t.name,
+        greenWatch:qualified,verifiedEarlyAccounts:matching.length,
+        holders:t.totalHolderCount,liquidity:t.liquidity,change5m:t.priceChange5m,
+        accounts:matching.map(p=>({handle:p.handle,authorId:p.authorId,postUrl:p.url,
+          postAt:p.postedAt,historicalPumps:pumpXAccountEvidence.get(p.authorId)?.calls.size||0}))});
+    }
+    return {ok:true,configured:true,status:'scanned',generatedAt:new Date().toISOString(),
+      samplesScanned:historyCandidates.length,discoveredPumps,trackedAccounts:tracked.map(a=>({
+        authorId:a.authorId,handle:a.handle,documentedPumps:a.calls.size,
+        calls:[...a.calls.values()].slice(-6)
+      })),watchlist,
+      note:'Exploratory evidence only. Historical search is limited to sampled surviving high-volume pools; no calibrated pump probability is implied. X accounts are followed inside this radar, not in your X account.'};
+  })();
+  try{
+    const data=await pumpXMonitorInFlight;
+    pumpXMonitorCache.at=Date.now();pumpXMonitorCache.data=data;return data;
+  }finally{pumpXMonitorInFlight=null}
+}
+
 const SECURITY_CACHE_MS=2*60*1000;
 const EXTERNAL_SECURITY_CACHE_MS=10*60*1000;
 let cache={at:0,data:null};
@@ -5894,6 +6053,11 @@ createServer(async(req,res)=>{
       cache={at:0,data:null};marketLiveCache={at:0,data:null};exactDexPriceCache.clear();contractPriceCache.clear();prelaunchCache={at:0,data:null};pumpTraderIntelCache={at:0,data:null};solidProofIntelCache={at:0,data:null};trackedWalletCache={at:0,data:null};topTraderIntelCache={at:0,data:null};smartMoneyCache={at:0,data:null};convictionCache={at:0,data:null};
       res.writeHead(200,{'content-type':'application/json; charset=utf-8','cache-control':'no-store',...headers});
       return res.end(JSON.stringify({ok:true,clearedAt:new Date().toISOString()}));
+    }
+    if(url.pathname==='/api/v1/pump-x-monitor'){
+      const data=await buildPumpXMonitor();
+      res.writeHead(200,{'content-type':'application/json; charset=utf-8','cache-control':'no-store',...headers});
+      return res.end(JSON.stringify(data));
     }
     if(url.pathname==='/api/v1/conviction-wallets'){const cw=await buildConvictionWallets();res.writeHead(200,{'content-type':'application/json; charset=utf-8','cache-control':'no-store',...headers});return res.end(JSON.stringify(cw))}
     if(url.pathname==='/api/v1/top-traders'){
