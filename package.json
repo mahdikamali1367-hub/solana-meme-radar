@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "start": "node serve.mjs",
-    "check": "node --check serve.mjs && node check-client.mjs"
+    "check": "node --check serve.mjs && node check-client.mjs && node check-sources.mjs"
   },
   "engines": {
     "node": ">=18"
