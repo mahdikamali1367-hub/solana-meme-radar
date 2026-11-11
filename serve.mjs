@@ -3414,12 +3414,14 @@ html,body,.shell,.panel,.list{overflow-anchor:none}
     <div class="accordion-body">
       <p class="muted" style="font-size:11px">هر آیتم سه مقدار جدا دارد: 💵 قیمت ورود ثابت، ⚡ قیمت لحظه‌ای بازار، 💰 سود/ضرر لحظه‌ای. قیمت ورود بعد از ثبت تغییر نمی‌کند؛ قیمت لحظه‌ای تقریباً هر ۱ ثانیه تازه می‌شود.</p>
       <div id="recommendationPerformanceSummary"></div>
+      <div id="entryFactorAnalysis" class="note"></div>
+      <p class="muted" style="font-size:11px">این آمار عملکرد توکن از زمان صدور سیگنال است، نه PnL محقق‌شده معامله. برای برآیند خالص باید هزینه رفت‌وبرگشت، اسلیپیج و اجرای واقعی لحاظ شود.</p>
       <div class="list" id="recommendationPerformanceList"></div>
     </div>
   </details>
 
   <details class="accordion highlight" open>
-    <summary>📈 بازده واقعی ۲۴ساعته سیگنال‌های رادار</summary>
+    <summary>📈 تغییر قیمت بازار در ۲۴ ساعت اخیر (نه بازده سیگنال)</summary>
     <div class="accordion-body">
       <p class="muted" style="font-size:11px">بازدهی بازار در ۲۴ ساعت اخیر برای توکن‌های امن و امتیازبالای فعلی رادار. برای توکن جوان‌تر از ۲۴ ساعت، تغییر از زمان ساخت تا اکنون نمایش داده می‌شود.</p>
       <div id="performance24Summary"></div>
@@ -3987,6 +3989,54 @@ function rememberRecommendation(t,score){
     old.dexUrl=t.dexUrl||old.dexUrl;
     recommendationHistory.set(t.mint,old);
   }
+}
+function entryFactorReport(rows){
+  // Only entry-time snapshots qualify. Never use currently observed features
+  // to explain why a historical trade succeeded (look-ahead bias).
+  var records=rows.filter(function(r){
+    return r&&r.history&&r.history.entrySnapshot&&
+      r.pnlPct!=null&&Number.isFinite(r.pnlPct)&&
+      Number(r.history.introducedPrice)>0;
+  });
+  var el=document.getElementById('entryFactorAnalysis');if(!el)return;
+  if(records.length<8){
+    el.textContent='تحلیل عوامل مثبت‌ها: '+records.length+
+      ' سیگنال ورود با ویژگی‌های لحظه ورود و بازده قابل بررسی موجود است. برای مقایسه معتبرتر حداقل ۸ نمونه لازم است؛ داده تاریخی ۵۰۰ توکن فقط با خروجی CSV قابل بررسی است.';
+    return;
+  }
+  var buckets=[
+    {name:'قدرت خریدار ۶۰٪ به بالا',test:s=>Number(s.buyerPower)>=60},
+    {name:'نقدینگی ۱۰۰ هزار دلار به بالا',test:s=>Number(s.liquidity)>=100000},
+    {name:'حجم پنج‌دقیقه‌ای ۱۰ هزار دلار به بالا',test:s=>Number(s.volume5m)>=10000},
+    {name:'تغییر ۵ دقیقه‌ای ۱٪ تا ۵٪',test:s=>Number(s.change5m)>=1&&Number(s.change5m)<=5},
+    {name:'بیش از ۲۰۰۰ هولدر',test:s=>Number(s.holders)>=2000},
+    {name:'امنیت MAX SECURITY',test:s=>s.security==='MAX SECURITY'},
+    {name:'ترند اجتماعی ۵۵ به بالا',test:s=>Number(s.socialHeat)>=55}
+  ];
+  var eligible=records.filter(function(r){
+    return Date.now()-Date.parse(r.history.introducedAt)>=60*60*1000;
+  });
+  var robust=eligible.filter(function(r){return r.pnlPct!=null});
+  if(robust.length<8){
+    el.textContent='داده‌های ورود ثبت شده‌اند؛ برای بررسی عوامل مثبت‌ها دست‌کم ۸ مورد با عمر یک‌ساعته و قیمت تازه نیاز است. فعلاً نتیجه‌ای از برنده‌ها استنباط نمی‌شود.';
+    return;
+  }
+  var avg=rs=>rs.reduce((sum,r)=>sum+Number(r.pnlPct),0)/rs.length;
+  var baselineWins=robust.filter(r=>r.pnlPct>0).length;
+  var parts=buckets.map(function(b){
+    var subset=robust.filter(r=>{try{return b.test(r.history.entrySnapshot||{})}catch(e){return false}});
+    if(subset.length<8)return null;
+    var wins=subset.filter(r=>r.pnlPct>0).length;
+    return {name:b.name,n:subset.length,wins,rate:100*wins/subset.length,mean:avg(subset)};
+  }).filter(Boolean).sort((a,b)=>b.rate-a.rate);
+  el.innerHTML='<b>🔎 ویژگی‌های همراه با بازده مثبت (تحلیل اکتشافی)</b>'+
+    '<div class="note">نمونه‌های واجد شرایط: '+robust.length+' · مثبت: '+baselineWins+
+    ' · نرخ مثبت '+(100*baselineWins/robust.length).toFixed(1)+
+    '٪ · مقایسه‌ها از ویژگی‌های هنگام ورود ساخته شده‌اند، نه داده آینده. بازه نگهداری یکسان و کارمزد واقعی نداریم؛ این ارتباط‌ها علت سود یا تضمین نتیجه نیستند.</div>'+
+    (parts.length?parts.slice(0,7).map(function(x){
+      return '<div class="mini-row"><span>'+esc(x.name)+' · '+x.n+' نمونه</span><b>'+
+        x.rate.toFixed(1)+'٪ مثبت · میانگین '+(x.mean>=0?'+':'')+x.mean.toFixed(1)+'٪</b></div>';
+    }).join(''):'<div class="note">در هیچ گروهی حداقل ۸ نمونه وجود ندارد؛ برای جلوگیری از نتیجه‌گیری بی‌پشتوانه تحلیل نمایش داده نشد.</div>');
 }
 function recommendationPerformanceRows(){
   return [...recommendationHistory.values()].map(function(h){
@@ -5288,14 +5338,15 @@ function renderRecommendationPerformance(){
   var sum=document.getElementById('recommendationPerformanceSummary');
   if(!list||!sum)return;
   var rows=recommendationPerformanceRows();
+  entryFactorReport(rows);
   var valid=rows.filter(function(x){return x.pnlPct!=null});
   var wins=valid.filter(function(x){return x.pnlPct>0});
   var avg=valid.length?valid.reduce(function(a,x){return a+Number(x.pnlPct||0)},0)/valid.length:null;
   var best=valid.slice().sort(function(a,b){return b.pnlPct-a.pnlPct})[0]||null;
   sum.innerHTML='<div class="perf-summary">'+
-    '<div class="perf-stat"><small>کل معرفی‌ها</small><b>'+rows.length+'</b></div>'+
+    '<div class="perf-stat"><small>سیگنال‌های ورود ثبت‌شده</small><b>'+rows.length+'</b></div>'+
     '<div class="perf-stat"><small>در سود</small><b class="return-pos">'+wins.length+'</b></div>'+
-    '<div class="perf-stat"><small>میانگین از معرفی</small><b class="'+(avg==null?'return-flat':avg>=0?'return-pos':'return-neg')+'">'+(avg==null?'—':(avg>0?'+':'')+avg.toFixed(1)+'%')+'</b></div>'+
+    '<div class="perf-stat"><small>میانگین بازده ناخالص مشاهده‌شده</small><b class="'+(avg==null?'return-flat':avg>=0?'return-pos':'return-neg')+'">'+(avg==null?'—':(avg>0?'+':'')+avg.toFixed(1)+'%')+'</b></div>'+
     '<div class="perf-stat"><small>بهترین عملکرد</small><b class="return-pos">'+(best?esc(best.history.symbol||best.history.name)+' '+(best.pnlPct>0?'+':'')+best.pnlPct.toFixed(1)+'%':'—')+'</b></div>'+
   '</div>';
   list.innerHTML=rows.length?rows.map(function(x,i){
