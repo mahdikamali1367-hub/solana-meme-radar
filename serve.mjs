@@ -3753,6 +3753,86 @@ dialog{width:min(720px,94vw);max-height:88vh;border:1px solid #36506e;border-rad
 .panel{display:none!important}.panel.active{display:block!important}
 
 html,body,.shell,.panel,.list{overflow-anchor:none}
+
+/* Radar Workspace 2026: intentional hierarchy, quiet surfaces, responsive navigation */
+:root{--bg:#080e19;--panel:#101a2a;--line:#243047;--text:#edf4ff;--muted:#95a5be;--good:#61daa8;--warn:#efc778;--bad:#ff8c9a;--blue:#96bdff}
+body{background:radial-gradient(ellipse at 95% 0%,rgba(44,77,124,.14),transparent 32%),var(--bg);line-height:1.58}
+.head,.shell{max-width:1320px}
+.head{min-height:72px;padding:12px 25px}
+.shell{padding:20px 24px 64px}
+header{background:rgba(9,16,28,.94);border-color:#23344b}
+.brand{gap:13px}
+.brand .logo{width:40px;height:40px;border:1px solid #40648b;background:linear-gradient(145deg,#22486d,#0f223a);border-radius:13px;color:#9ce8d3;font-size:21px;box-shadow:0 6px 25px #0004}
+.brand b{font-size:17px;letter-spacing:-.3px}
+.brand small{font-size:11px;color:#93a8c5}
+#refresh{border-color:#345775;background:#17314a;color:#cbe0ff;font-size:12px;font-weight:800;padding:9px 14px}
+#refresh:hover{background:#224663}
+.workspace-intro{display:flex;align-items:flex-end;justify-content:space-between;gap:14px;padding:6px 2px 18px}
+.workspace-eyebrow{display:block;font-size:10px;letter-spacing:.9px;font-weight:900;color:var(--good);margin-bottom:5px}
+.workspace-intro h1{font-size:clamp(21px,2.6vw,31px);line-height:1.3;margin:0 0 5px;letter-spacing:-.6px;font-weight:900}
+.workspace-intro p{margin:0;font-size:12px;color:var(--muted);max-width:640px}
+.workspace-status{border:1px solid #2b485c;background:#111f2b;color:#9ad8c2;border-radius:999px;font-size:10px;font-weight:800;padding:6px 11px;white-space:nowrap;display:flex;gap:7px;align-items:center}
+.workspace-dot{width:7px;height:7px;background:#63d9ab;border-radius:50%;box-shadow:0 0 9px #63d9ab70}
+.top-tabs{position:sticky;top:71px;z-index:18;background:rgba(8,14,25,.96);backdrop-filter:blur(16px);padding:10px 0 13px;margin:0 0 18px;border-bottom:1px solid #243348;overflow:visible}
+.tabs{gap:6px;align-items:center;flex-wrap:wrap}
+.tab{background:transparent;color:#a6b4cb;border:1px solid transparent;font-size:12px;font-weight:800;padding:10px 13px;border-radius:10px;min-height:40px;white-space:nowrap;transition:background .15s,border-color .15s}
+.tab:hover{background:#18283d;color:white}
+.tab.active{background:#1a3249;border-color:#365b70;color:#a8e8da;box-shadow:inset 0 -2px #54c9a3}
+.nav-more{margin-inline-start:auto;position:relative;min-width:140px}
+.nav-more>summary{cursor:pointer;list-style:none;border:1px solid #2d3f56;background:#121f31;padding:10px 12px;border-radius:10px;color:#c7d5e9;font-size:12px;font-weight:800;display:flex;justify-content:space-between;gap:12px;align-items:center}
+.nav-more>summary::-webkit-details-marker{display:none}
+.nav-more[open]>summary{background:#1a2c40;border-color:#45627e}
+.nav-more-items{display:grid;gap:4px;position:absolute;top:calc(100% + 9px);inset-inline-end:0;width:max-content;min-width:210px;padding:7px;border:1px solid #354b66;border-radius:13px;background:#111f30;box-shadow:0 24px 60px #0009;z-index:22}
+.nav-more-items .tab{text-align:start;width:100%;display:block}
+.nav-more.has-active>summary{color:#a8e8da;border-color:#397b70}
+#sourcesHealthPanel{margin:0 0 16px;background:#0e1725;border-style:dashed}
+#sourcesHealthPanel>summary{font-size:12px;padding:12px 15px;color:#a5b7cf;font-weight:700}
+#sourcesHealthPanel .accordion-body{padding:0 16px 14px}
+.panel>.accordion,.panel>.top-dashboard>.accordion,.panel>.featured-only-secondary>.accordion{margin-bottom:13px}
+.accordion{background:linear-gradient(150deg,#111c2d,#0d1725);border-color:#24354b;border-radius:15px;box-shadow:0 5px 18px #00000012}
+.accordion.highlight{background:linear-gradient(125deg,#11283a,#101b2d 65%);border-color:#31516a}
+.accordion>summary{padding:16px 19px;font-size:14px;font-weight:800;line-height:1.7;min-height:52px}
+.accordion>summary:after{font-size:18px}
+.accordion-body{padding:0 18px 17px}
+.accordion:not([open])>summary{color:#b9c8da}
+.accordion:not([open]):hover{border-color:#3c5774}
+.note,.accordion p.muted{line-height:1.75}
+.row{background:#111e2d;border:1px solid #26374c;border-radius:12px;padding:13px 14px;gap:10px;transition:border-color .15s,background .15s}
+.row:hover{border-color:#3b5874;background:#142337}
+.asset b{font-size:13px;line-height:1.6}
+.asset small{font-size:11px;margin-top:4px}
+.cell small{font-size:10px}.cell b{font-size:13px}
+.actions{flex-wrap:wrap}
+.actions a,.actions button{background:#17283c;border:1px solid #324760;border-radius:9px;padding:8px 10px}
+.actions a:hover,.actions button:hover{background:#234362;border-color:#53789c}
+.champion{background:linear-gradient(135deg,#13372f,#0d2135);border-color:#32695a;border-radius:14px;padding:16px}
+.kpis{gap:10px}
+.kpi{background:#152236;border-color:#293d55;padding:15px;border-radius:14px}
+.kpi small{font-size:11px}.kpi b{font-size:24px}
+.badge{padding:4px 9px}
+.empty{padding:28px 16px;border-color:#34455b;background:#111b29;line-height:1.8}
+#radarUiAlert{border-radius:12px;margin-bottom:14px}
+button:focus-visible,.accordion>summary:focus-visible,.nav-more>summary:focus-visible,.tab:focus-visible{outline:2px solid #98e6d8;outline-offset:3px}
+@media(max-width:900px){.head{padding:12px 16px}.shell{padding:16px}.top-tabs{top:63px}}
+@media(max-width:620px){
+ .head{min-height:60px;padding:9px 11px}.shell{padding:13px 12px 48px}
+ .brand b{font-size:14px}.brand .logo{width:34px;height:34px}
+ #refresh{font-size:11px;padding:8px 9px}
+ .workspace-intro{padding:5px 0 13px;align-items:center}
+ .workspace-intro h1{font-size:21px}.workspace-intro p{font-size:11px}
+ .workspace-status{font-size:0;padding:7px}.workspace-dot{width:8px;height:8px}
+ .top-tabs{top:59px;gap:5px;padding:7px 0 10px;margin-bottom:13px;flex-wrap:nowrap;overflow-x:auto;scrollbar-width:thin}
+ .tab{font-size:11px;padding:8px 9px;min-height:38px}
+ .nav-more{min-width:114px;margin-inline-start:0;flex-shrink:0}
+ .nav-more>summary{font-size:11px;padding:9px}
+ .nav-more-items{position:fixed;top:150px;inset-inline-start:12px;inset-inline-end:12px;width:auto;min-width:0}
+ .accordion>summary{font-size:12px;padding:14px 13px;min-height:48px}
+ .accordion-body{padding:0 11px 12px}
+ .row{padding:10px}.kpi{padding:10px}.kpi b{font-size:20px}
+ .actions a,.actions button{min-height:34px}
+}
+@media(prefers-reduced-motion:reduce){.tab,.row{transition:none}}
+
 </style>
 </head>
 <body>
@@ -3765,17 +3845,29 @@ html,body,.shell,.panel,.list{overflow-anchor:none}
 
 <main class="shell">
 <div id="radarUiAlert" role="alert"></div>
-<nav class="tabs top-tabs" id="tabs">
-  <button class="tab active" data-tab="featured">🔥 پیشنهادها</button>
-  <button class="tab" data-tab="whales">🐋 نهنگ‌ها</button>
-  <button class="tab" data-tab="tokens">🪙 توکن‌ها</button>
-  <button class="tab" data-tab="smart">🧠 اسمارت‌مانی</button>
-  <button class="tab" data-tab="prelaunch">🚀 پیش‌لانچ</button>
-  <button class="tab" data-tab="social">📣 ترند اجتماعی</button>
-  <button class="tab" data-tab="wallets">🏆 کیف‌پول‌ها</button>
+<div class="workspace-intro">
+  <div><span class="workspace-eyebrow">SOLANA / MARKET INTELLIGENCE</span>
+    <h1 id="workspaceTitle">داشبورد فرصت‌ها</h1>
+    <p id="workspaceDescription">پیشنهادهای قابل بررسی، وضعیت ورود و هشدارهای مهم؛ با اولویت امنیت و داده واقعی.</p>
+  </div>
+  <div class="workspace-status" title="در حال پایش بازار"><span class="workspace-dot"></span><span>پایش زنده بازار</span></div>
+</div>
+<nav class="tabs top-tabs" id="tabs" aria-label="بخش‌های رادار">
+  <button type="button" class="tab active" data-tab="featured" aria-selected="true">◈ نمای کلی</button>
+  <button type="button" class="tab" data-tab="tokens" aria-selected="false">◉ بازار و توکن‌ها</button>
+  <button type="button" class="tab" data-tab="social" aria-selected="false">◎ شبکه‌های اجتماعی</button>
+  <button type="button" class="tab" data-tab="wallets" aria-selected="false">▣ کیف‌پول‌ها</button>
+  <details class="nav-more" id="advancedMenu">
+    <summary>ابزارهای پیشرفته <span aria-hidden="true">⌄</span></summary>
+    <div class="nav-more-items">
+      <button type="button" class="tab" data-tab="whales" aria-selected="false">🐋 ردیابی نهنگ‌ها</button>
+      <button type="button" class="tab" data-tab="smart" aria-selected="false">🧠 اسمارت‌مانی</button>
+      <button type="button" class="tab" data-tab="prelaunch" aria-selected="false">🚀 پیش‌لانچ</button>
+    </div>
+  </details>
 </nav>
 <details class="accordion" id="sourcesHealthPanel">
-  <summary>🔌 وضعیت اتصال APIهای اصلی رادار — قیمت، هولدر، امنیت و شبکه اجتماعی</summary>
+  <summary>⚙️ تنظیمات و سلامت اتصال منابع داده (پیشرفته)</summary>
   <div class="accordion-body">
     <p class="muted" id="sourcesHealthStatus">در حال بررسی منبع‌های بازار...</p>
     <div class="list" id="sourcesHealthList"></div>
@@ -3822,7 +3914,7 @@ html,body,.shell,.panel,.list{overflow-anchor:none}
     </div>
   </details>
 
-  <details class="accordion highlight" open>
+  <details class="accordion">
     <summary>📈 تغییر قیمت بازار در ۲۴ ساعت اخیر (نه بازده سیگنال)</summary>
     <div class="accordion-body">
       <p class="muted" style="font-size:11px">بازدهی بازار در ۲۴ ساعت اخیر برای توکن‌های امن و امتیازبالای فعلی رادار. برای توکن جوان‌تر از ۲۴ ساعت، تغییر از زمان ساخت تا اکنون نمایش داده می‌شود.</p>
@@ -3831,8 +3923,8 @@ html,body,.shell,.panel,.list{overflow-anchor:none}
     </div>
   </details>
 
-<details class="accordion" open>
-  <summary>📊 خلاصه رادار</summary>
+<details class="accordion">
+  <summary>📊 آمار کامل رادار</summary>
   <div class="accordion-body"><section class="kpis">
     <div class="kpi"><small>توکن‌ها</small><b id="kTokens">—</b></div>
     <div class="kpi"><small>پیشنهاد ۹۰+</small><b id="kFeatured">—</b></div>
@@ -3990,7 +4082,7 @@ html,body,.shell,.panel,.list{overflow-anchor:none}
       <div id="pumpXHistory" class="list"></div>
     </div>
   </details>
-  <details class="accordion highlight" open>
+  <details class="accordion">
     <summary>💰 عملکرد سیگنال‌های ترند اجتماعی از زمان معرفی</summary>
     <div class="accordion-body">
       <p class="muted" style="font-size:11px">مبنای هر توکن اولین Social Trend است؛ قیمت ورود ثابت و سود لحظه‌ای زنده است. ورود نهنگ و اسمارت‌مانی روی همان Mint نیز کنار هر سیگنال نمایش داده می‌شود.</p>
@@ -3998,7 +4090,7 @@ html,body,.shell,.panel,.list{overflow-anchor:none}
       <div class="list" id="socialPerformanceList"></div>
     </div>
   </details>
-  <details class="accordion" open>
+  <details class="accordion">
     <summary>📣 داغ‌ترین توکن‌ها در شبکه‌های اجتماعی</summary>
     <div class="accordion-body"><p class="muted" style="font-size:11px">Social Heat از mentionهای قابل‌شمارش + حضور رسمی چندشبکه‌ای ساخته می‌شود. امنیت همچنان شرط مستقل است.</p><div class="list" id="socialList"></div></div>
   </details>
@@ -4126,6 +4218,20 @@ html,body,.shell,.panel,.list{overflow-anchor:none}
       item.classList.toggle('active',item===panel);
     });
     window.activeTab=name;
+    var titles={
+      featured:['داشبورد فرصت‌ها','پیشنهادهای قابل بررسی، وضعیت ورود و هشدارهای مهم؛ با اولویت امنیت و داده واقعی.'],
+      tokens:['بازار و توکن‌ها','کشف توکن‌های سولانا، قیمت لحظه‌ای، فیلتر امنیت و بررسی آدرس قرارداد.'],
+      social:['رادار اجتماعی','رصد X و اکانت‌های مشهور، پست‌های پیش از پامپ و شواهد قابل بررسی.'],
+      wallets:['ردیابی کیف‌پول‌ها','تریدرهای برتر، خریدهای مشترک، پوزیشن‌ها و عملکرد تخمینی.'],
+      whales:['ردیابی نهنگ‌ها','ورود و خروج سرمایه بزرگ، جریان خرید و نشانه‌های هشدار.'],
+      smart:['اسمارت‌مانی','رفتار کیف‌پول‌های منتخب و مقایسه سیگنال‌های سرمایه هوشمند.'],
+      prelaunch:['رادار پیش‌لانچ','پروژه‌های پیش از عرضه و شواهد امنیتی؛ صرفاً برای بررسی.']
+    };
+    var info=titles[name],title=document.getElementById('workspaceTitle'),desc=document.getElementById('workspaceDescription');
+    if(info&&title)title.textContent=info[0];
+    if(info&&desc)desc.textContent=info[1];
+    var menu=document.getElementById('advancedMenu');
+    if(menu){menu.classList.toggle('has-active',['whales','smart','prelaunch'].includes(name));menu.open=false;}
     if(typeof window.radarRenderActivePanel==='function'){
       try{window.radarRenderActivePanel()}catch(err){
         showUiError('خطای بارگذاری تب: '+String(err&&err.message||err));
