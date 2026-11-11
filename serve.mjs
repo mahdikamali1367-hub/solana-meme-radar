@@ -3908,6 +3908,67 @@ button:focus-visible,.accordion>summary:focus-visible,.nav-more>summary:focus-vi
 @media(max-width:350px){.radar-page-grid{grid-template-columns:1fr}}
 @media(prefers-reduced-motion:reduce){.radar-page-card{transition:none}}
 
+
+/* Spotlight dashboard: evidence-first, readable, and lightweight. */
+body{font-size:15px}
+.brand b{font-size:19px}.brand small{font-size:12px}
+.workspace-intro p,.spotlight-head p{font-size:13px}
+.tab{font-size:14px;font-weight:800;padding:11px 14px;gap:8px;display:inline-flex;align-items:center}
+.nav-icon{width:19px;height:19px;flex-shrink:0}
+.nav-more .tab{width:100%}
+.nav-more>summary{font-size:13px}
+.accordion>summary{font-size:15px}
+.accordion-body,.note,.row{font-size:14px}
+.row .asset b,.cell b{font-size:14px}
+.row .asset small,.cell small,.accordion p.muted{font-size:12px}
+.radar-page-card-name{font-size:14px}
+.radar-page-card-icon{font-size:21px}
+.radar-page-back{font-size:13px}
+.kpi small{font-size:12px}.kpi b{font-size:25px}
+.radar-spotlight{background:linear-gradient(140deg,#14263a,#0c1726 70%);border:1px solid #34526a;
+  border-radius:19px;margin:0 0 19px;padding:21px;box-shadow:0 15px 36px #00000024}
+.spotlight-head{display:flex;align-items:start;justify-content:space-between;gap:14px;margin-bottom:17px}
+.spotlight-kicker{display:inline-flex;border:1px solid #3a6d5e;color:#80eac4;background:#16382f;
+  padding:4px 10px;border-radius:99px;font-size:12px;font-weight:850;margin-bottom:9px}
+.spotlight-heading h2{margin:0 0 5px;font-size:clamp(19px,2.2vw,25px);line-height:1.45}
+.spotlight-heading p{margin:0;color:#acc0d8;line-height:1.65}
+.spotlight-freshness{font-size:11px;color:#adbed5;border:1px solid #344a63;padding:7px 10px;border-radius:99px;white-space:nowrap}
+.spotlight-layout{display:grid;grid-template-columns:1fr 1fr;gap:13px}
+.spotlight-group{min-width:0;border:1px solid #30475f;border-radius:14px;background:#101d2d;padding:15px}
+.spotlight-group-title{display:flex;gap:12px;align-items:center;margin-bottom:13px}
+.spotlight-group-icon{font-size:21px;background:#1c3248;width:43px;height:43px;
+  border-radius:12px;display:grid;place-items:center;flex-shrink:0}
+.spotlight-group-title h3{margin:0;font-size:16px;line-height:1.5}
+.spotlight-group-title p{margin:2px 0 0;color:#94abc5;font-size:12px;line-height:1.6}
+.spotlight-results{display:grid;gap:9px}
+.spotlight-token{min-width:0;border:1px solid #30445c;border-radius:12px;
+  background:#14263a;padding:12px;display:flex;flex-direction:column;gap:7px}
+.spotlight-token-top{display:flex;justify-content:space-between;align-items:center;gap:9px}
+.spotlight-token strong{font-size:16px;overflow-wrap:anywhere}
+.spotlight-token small{font-size:12px;color:#acbdd2;line-height:1.65;overflow-wrap:anywhere}
+.spotlight-token-tags{display:flex;flex-wrap:wrap;gap:5px}
+.spotlight-token-tags .badge{font-size:11px}
+.spotlight-token-actions{display:flex;gap:7px;flex-wrap:wrap;margin-top:2px}
+.spotlight-token-actions a,.spotlight-token-actions button{border:1px solid #43617b;
+  background:#1c3952;color:#d8ecfa;padding:7px 11px;border-radius:9px;
+  font:inherit;font-size:12px;text-decoration:none;cursor:pointer}
+.spotlight-token-actions a:hover,.spotlight-token-actions button:hover{background:#295276}
+.spotlight-empty{border:1px dashed #3b526b;border-radius:12px;color:#aabbce;
+  padding:21px 13px;line-height:1.9;font-size:13px}
+.spotlight-disclaimer{font-size:12px;color:#a3b8ce;line-height:1.8;margin:14px 1px 0}
+@media(max-width:900px){.spotlight-layout{grid-template-columns:1fr}}
+@media(max-width:620px){
+ body{font-size:14px}.tab{font-size:12px;padding:9px 11px;gap:6px}
+ .nav-icon{width:17px;height:17px}
+ .radar-spotlight{padding:14px;margin-bottom:13px;border-radius:15px}
+ .spotlight-head{flex-direction:column;gap:7px}
+ .spotlight-freshness{font-size:11px}
+ .spotlight-group{padding:12px}
+ .spotlight-group-title h3{font-size:15px}
+ .radar-page-card-name{font-size:12px}
+ .accordion>summary{font-size:14px}.row .asset b{font-size:13px}
+}
+
 </style>
 </head>
 <body>
@@ -3927,17 +3988,38 @@ button:focus-visible,.accordion>summary:focus-visible,.nav-more>summary:focus-vi
   </div>
   <div class="workspace-status" title="در حال پایش بازار"><span class="workspace-dot"></span><span>پایش زنده بازار</span></div>
 </div>
+<section class="radar-spotlight" id="radarSpotlight" aria-labelledby="spotlightHeading">
+  <div class="spotlight-head">
+    <div class="spotlight-heading"><span class="spotlight-kicker">★ اولویت رادار</span>
+      <h2 id="spotlightHeading">سیگنال‌های ویژه بازار و شبکه‌های اجتماعی</h2>
+      <p>تطبیق ترند اجتماعی با خرید قابل‌رصد نهنگ‌ها و بررسی پست‌های مستند ۲۴ ساعت پیش از پامپ</p></div>
+    <span class="spotlight-freshness" id="spotlightUpdated">در انتظار اولین اسکن…</span>
+  </div>
+  <div class="spotlight-layout">
+    <article class="spotlight-group">
+      <div class="spotlight-group-title"><span class="spotlight-group-icon">🐋</span><div>
+        <h3>ترند اجتماعی + خرید نهنگ</h3><p>هم‌زمان در داده‌های فعلی رادار · سیگنال خرید قطعی نیست</p></div></div>
+      <div class="spotlight-results" id="spotlightSocialWhale"><div class="spotlight-empty">در حال دریافت سیگنال‌های بازار…</div></div>
+    </article>
+    <article class="spotlight-group">
+      <div class="spotlight-group-title"><span class="spotlight-group-icon">𝕏</span><div>
+        <h3>پست‌های ۲۴ ساعت قبل از پامپ</h3><p>فقط شواهد زمانی و آدرس قرارداد مستند · رویدادهای تاریخی</p></div></div>
+      <div class="spotlight-results" id="spotlightPrePump"><div class="spotlight-empty">در حال بررسی کندل‌ها و پست‌های X…</div></div>
+    </article>
+  </div>
+  <p class="spotlight-disclaimer" id="spotlightCoverage">پوشش قابل‌بررسیِ زمان پست فعلاً از X است. اینستاگرام، یوتیوب، فیسبوک و سایر شبکه‌ها تنها در صورت دریافت زمان انتشار و شواهد مستقل به این بخش افزوده می‌شوند؛ نبود داده به معنی نبود ترند نیست.</p>
+</section>
 <nav class="tabs top-tabs" id="tabs" aria-label="بخش‌های رادار">
-  <button type="button" class="tab active" data-tab="featured" aria-selected="true">◈ نمای کلی</button>
-  <button type="button" class="tab" data-tab="tokens" aria-selected="false">◉ بازار و توکن‌ها</button>
-  <button type="button" class="tab" data-tab="social" aria-selected="false">◎ شبکه‌های اجتماعی</button>
-  <button type="button" class="tab" data-tab="wallets" aria-selected="false">▣ کیف‌پول‌ها</button>
+  <button type="button" class="tab active" data-tab="featured" aria-selected="true"><svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="8"/><path d="M12 7v10M7 12h10"/></svg> ◈ نمای کلی</button>
+  <button type="button" class="tab" data-tab="tokens" aria-selected="false"><svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 17l6-6 4 4 8-9"/><path d="M16 6h5v5"/></svg> ◉ بازار و توکن‌ها</button>
+  <button type="button" class="tab" data-tab="social" aria-selected="false"><svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6A8.38 8.38 0 0 1 12.5 3h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg> ◎ شبکه‌های اجتماعی</button>
+  <button type="button" class="tab" data-tab="wallets" aria-selected="false"><svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="15" rx="2"/><path d="M16 14h5M3 9h18"/><circle cx="16" cy="14" r="1"/></svg> ▣ کیف‌پول‌ها</button>
   <details class="nav-more" id="advancedMenu">
     <summary>ابزارهای پیشرفته <span aria-hidden="true">⌄</span></summary>
     <div class="nav-more-items">
-      <button type="button" class="tab" data-tab="whales" aria-selected="false">🐋 ردیابی نهنگ‌ها</button>
-      <button type="button" class="tab" data-tab="smart" aria-selected="false">🧠 اسمارت‌مانی</button>
-      <button type="button" class="tab" data-tab="prelaunch" aria-selected="false">🚀 پیش‌لانچ</button>
+      <button type="button" class="tab" data-tab="whales" aria-selected="false"><svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12c2-5 6-7 11-7 4 0 7 3 7 7 0 5-5 8-10 8-4 0-7-2-8-5"/><path d="M20 10l3-3M8 11h.01"/></svg> 🐋 ردیابی نهنگ‌ها</button>
+      <button type="button" class="tab" data-tab="smart" aria-selected="false"><svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 18h6M10 22h4M9 13a5 5 0 0 1-2-4 5 5 0 0 1 10 0 5 5 0 0 1-2 4l-1 3h-4z"/></svg> 🧠 اسمارت‌مانی</button>
+      <button type="button" class="tab" data-tab="prelaunch" aria-selected="false"><svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 16c-1-4 1-9 5-12l2-2 2 2c4 3 6 8 5 12l-7 4z"/><path d="M9 16l-3 5M15 16l3 5"/><circle cx="12" cy="9" r="2"/></svg> 🚀 پیش‌لانچ</button>
     </div>
   </details>
 </nav>
