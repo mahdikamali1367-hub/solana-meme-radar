@@ -3833,6 +3833,41 @@ button:focus-visible,.accordion>summary:focus-visible,.nav-more>summary:focus-vi
 }
 @media(prefers-reduced-motion:reduce){.tab,.row{transition:none}}
 
+/* Quiet subsections: the default view shows the most useful six rows. */
+.panel .list:not(.show-all)> .row:nth-child(n+7){display:none}
+.list-more{display:none;align-items:center;justify-content:center;gap:7px;margin:10px 0 2px;
+  padding:8px 14px;border:1px solid #344e67;background:#15283e;color:#b9d5ec;
+  font-size:11px;font-weight:800;border-radius:10px;cursor:pointer}
+.panel .list:has(> .row:nth-child(7)) + .list-more{display:inline-flex}
+.list-more:hover{background:#20405e;border-color:#527594;color:white}
+.section-index{margin:0 0 16px;border:1px solid #293e55;background:linear-gradient(130deg,#132237,#0e1827);
+  border-radius:14px;padding:0 14px;overflow:visible}
+.section-index>summary{cursor:pointer;list-style:none;display:flex;gap:12px;align-items:center;
+  justify-content:space-between;padding:13px 0;font-size:12px;color:#bcd3e8;font-weight:850}
+.section-index>summary::-webkit-details-marker{display:none}
+.section-index>summary:after{content:'⌄';color:#91a8c4;transition:transform .15s}
+.section-index[open]>summary:after{transform:rotate(180deg)}
+.section-index-content{display:flex;flex-wrap:wrap;gap:7px;padding:0 0 14px}
+.section-index-btn{min-height:35px;max-width:100%;padding:8px 12px;background:#192d43;border:1px solid #304963;
+  color:#d4e5f4;border-radius:9px;font-size:11px;text-align:start;line-height:1.5;cursor:pointer}
+.section-index-btn:hover{background:#245071;border-color:#4b83a3;color:#fff}
+.section-index-count{font-size:10px;font-weight:700;color:#829cba;margin-inline-start:8px}
+.accordion>summary{gap:12px}
+.accordion>summary::before{content:'';width:4px;min-width:4px;height:18px;border-radius:5px;background:#47637d}
+.accordion.highlight>summary::before{background:#5ad2af}
+.accordion[open]>summary{color:#ebf7ff}
+.accordion:not([open])>summary{background:rgba(10,18,31,.16)}
+.accordion .accordion{box-shadow:none;border-color:#2b4158;background:#101d2c;margin-bottom:7px}
+.accordion .accordion>summary{font-size:12px;min-height:44px;padding:10px 13px}
+.accordion .accordion>.accordion-body{padding:0 12px 12px}
+@media(max-width:620px){
+ .section-index{padding:0 11px;margin-bottom:12px}
+ .section-index>summary{font-size:11px;padding:12px 0}
+ .section-index-content{display:grid;grid-template-columns:1fr 1fr;gap:7px}
+ .section-index-btn{font-size:10px;min-height:38px}
+ .list-more{min-height:36px}
+}
+
 </style>
 </head>
 <body>
@@ -3876,6 +3911,7 @@ button:focus-visible,.accordion>summary:focus-visible,.nav-more>summary:focus-vi
   </div>
 </details>
 <section class="panel active" id="featuredPanel">
+<details class="section-index" data-index-for="featured"><summary>راهنمای زیرمجموعه‌های این بخش <span class="section-index-count">مشاهده همه قسمت‌ها</span></summary><div class="section-index-content"></div></details>
 <section class="top-dashboard">
   <details class="accordion highlight" open>
     <summary>🔥 پیشنهادهای ورود برتر</summary>
@@ -3954,6 +3990,7 @@ button:focus-visible,.accordion>summary:focus-visible,.nav-more>summary:focus-vi
 
 
 <section class="panel" id="whalesPanel">
+<details class="section-index" data-index-for="whales"><summary>راهنمای زیرمجموعه‌های این بخش <span class="section-index-count">مشاهده همه قسمت‌ها</span></summary><div class="section-index-content"></div></details>
   <details class="accordion highlight" open>
   <summary>🐋 پیشنهادهای نهنگ‌ها و همه خریدهای زنده</summary>
   <div class="accordion-body">
@@ -3975,6 +4012,7 @@ button:focus-visible,.accordion>summary:focus-visible,.nav-more>summary:focus-vi
 </section>
 
 <section class="panel" id="smartPanel">
+<details class="section-index" data-index-for="smart"><summary>راهنمای زیرمجموعه‌های این بخش <span class="section-index-count">مشاهده همه قسمت‌ها</span></summary><div class="section-index-content"></div></details>
   <details class="accordion" open>
     <summary>🧠 اسمارت‌مانی</summary>
     <div class="accordion-body"><p class="muted" id="smartStatus" style="font-size:11px">در حال دریافت…</p><div class="subfilters">
@@ -3988,6 +4026,7 @@ button:focus-visible,.accordion>summary:focus-visible,.nav-more>summary:focus-vi
 </section>
 
 <section class="panel" id="prelaunchPanel">
+<details class="section-index" data-index-for="prelaunch"><summary>راهنمای زیرمجموعه‌های این بخش <span class="section-index-count">مشاهده همه قسمت‌ها</span></summary><div class="section-index-content"></div></details>
   <details class="accordion highlight" open>
     <summary>🚀 رادار پیش‌لانچ سولانا</summary>
     <div class="accordion-body">
@@ -4058,6 +4097,7 @@ button:focus-visible,.accordion>summary:focus-visible,.nav-more>summary:focus-vi
   </details>
 </section>
 <section class="panel" id="socialPanel">
+<details class="section-index" data-index-for="social"><summary>راهنمای زیرمجموعه‌های این بخش <span class="section-index-count">مشاهده همه قسمت‌ها</span></summary><div class="section-index-content"></div></details>
   <details class="accordion highlight" open>
     <summary>🌟 رصد اکانت‌های مشهور X، به‌ویژه ایلان ماسک</summary>
     <div class="accordion-body">
@@ -4097,6 +4137,7 @@ button:focus-visible,.accordion>summary:focus-visible,.nav-more>summary:focus-vi
 </section>
 
 <section class="panel" id="walletsPanel">
+<details class="section-index" data-index-for="wallets"><summary>راهنمای زیرمجموعه‌های این بخش <span class="section-index-count">مشاهده همه قسمت‌ها</span></summary><div class="section-index-content"></div></details>
   <details class="accordion highlight" open>
     <summary>🏆 تریدرهای برتر — سرمایه‌گذاری مشترک و پیشنهاد رادار</summary>
     <div class="accordion-body">
@@ -4142,6 +4183,7 @@ button:focus-visible,.accordion>summary:focus-visible,.nav-more>summary:focus-vi
 </section>
 
 <section class="panel" id="tokensPanel">
+<details class="section-index" data-index-for="tokens"><summary>راهنمای زیرمجموعه‌های این بخش <span class="section-index-count">مشاهده همه قسمت‌ها</span></summary><div class="section-index-content"></div></details>
   <details class="accordion highlight" open>
     <summary>🪙 توکن‌های برتر رادار</summary>
     <div class="accordion-body">
@@ -4249,6 +4291,61 @@ button:focus-visible,.accordion>summary:focus-visible,.nav-more>summary:focus-vi
       return;
     }
   },true);
+
+  // Progressive disclosure: a compact in-panel directory and optional row expansion.
+  // This code is independent of market data requests and never removes a data row.
+  function setupSubsections(){
+    document.querySelectorAll('.panel').forEach(function(panel){
+      var directory=panel.querySelector('.section-index');
+      if(!directory)return;
+      var destination=directory.querySelector('.section-index-content');
+      if(!destination)return;
+      var items=[...panel.querySelectorAll('details.accordion')];
+      items.forEach(function(item,index){
+        var summary=item.querySelector(':scope > summary');
+        if(!summary)return;
+        if(!item.id)item.id='radar-section-'+panel.id+'-'+index;
+        var btn=document.createElement('button');
+        btn.type='button';btn.className='section-index-btn';
+        btn.textContent=String(summary.textContent||'').trim();
+        btn.addEventListener('click',function(){
+          // Reveal nested sections, e.g. advanced prelaunch security groups.
+          var parent=item.parentElement;
+          while(parent&&parent!==panel){
+            if(parent.tagName==='DETAILS')parent.open=true;
+            parent=parent.parentElement;
+          }
+          item.open=true;
+          directory.open=false;
+          if(typeof item.scrollIntoView==='function'){
+            try{item.scrollIntoView({behavior:'smooth',block:'start'})}
+            catch(e){item.scrollIntoView()}
+          }
+        });
+        destination.appendChild(btn);
+      });
+      if(items.length<=1)directory.hidden=true;
+      else{
+        var counter=directory.querySelector('.section-index-count');
+        if(counter)counter.textContent=items.length+' زیرمجموعه';
+      }
+    });
+    document.querySelectorAll('.panel .list').forEach(function(list){
+      if(list.nextElementSibling&&list.nextElementSibling.classList.contains('list-more'))return;
+      var btn=document.createElement('button');
+      btn.type='button';btn.className='list-more';
+      btn.textContent='نمایش همه موارد';
+      btn.addEventListener('click',function(){
+        var expanded=list.classList.toggle('show-all');
+        btn.textContent=expanded?'نمایش موارد کمتر':'نمایش همه موارد';
+      });
+      list.insertAdjacentElement('afterend',btn);
+    });
+  }
+  if(document.readyState==='loading'){
+    document.addEventListener('DOMContentLoaded',setupSubsections,{once:true});
+  }else{setupSubsections()}
+
   window.addEventListener('error',function(e){
     showUiError('خطای رابط کاربری: '+String(e.message||'نامشخص')+' — تب‌ها همچنان قابل استفاده‌اند.');
   });
