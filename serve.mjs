@@ -3887,8 +3887,8 @@ button:focus-visible,.accordion>summary:focus-visible,.nav-more>summary:focus-vi
 
 
 </section>
-<details class="accordion" open>
-    <summary>🔥 پیشنهادهای اولویت‌دار</summary>
+<details class="accordion">
+    <summary>🔍 همه پیشنهادها و فیلترهای پیشرفته</summary>
     <div class="accordion-body"><p class="muted" style="font-size:11px">منطق ورود متعادل: وقتی قدرت خریدار از فروشنده بیشتر باشد سیگنال ورود فعال می‌شود، مگر اینکه Bot/Wash پرریسک، ریسک امنیتی قطعی، نقض قطعی قانون هولدر یا فشار خروج زنده سنگین وجود داشته باشد. خریدار 100$+ و فیلتر مومنتوم DEX فقط قدرت سیگنال را بیشتر می‌کنند و دیگر شرط اجباری نیستند.</p><div class="subfilters">
 <label>کوتاه‌مدت<select class="signal-filter" data-filter="short"><option value="">همه</option><option value="STRONG">قوی</option><option value="POSITIVE">مثبت</option><option value="NEUTRAL">خنثی</option><option value="WAIT_DATA">داده ناکافی</option><option value="AVOID">ورود نکن</option><option value="BLOCKED">مسدود امنیتی</option></select></label>
 <label>میان‌مدت<select class="signal-filter" data-filter="medium"><option value="">همه</option><option value="STRONG">قوی</option><option value="POSITIVE">مثبت</option><option value="NEUTRAL">خنثی</option><option value="WAIT_DATA">داده ناکافی</option><option value="AVOID">ورود نکن</option><option value="BLOCKED">مسدود امنیتی</option></select></label>
@@ -3903,8 +3903,8 @@ button:focus-visible,.accordion>summary:focus-visible,.nav-more>summary:focus-vi
   <div class="accordion-body" id="championBox"></div>
 </details>
 
-  <details class="accordion highlight" open>
-    <summary>💰 سود/ضرر از زمان معرفی رادار</summary>
+  <details class="accordion">
+    <summary>💰 گزارش عملکرد سیگنال‌ها</summary>
     <div class="accordion-body">
       <p class="muted" style="font-size:11px">هر آیتم سه مقدار جدا دارد: 💵 قیمت ورود ثابت، ⚡ قیمت لحظه‌ای بازار، 💰 سود/ضرر لحظه‌ای. قیمت ورود بعد از ثبت تغییر نمی‌کند؛ قیمت لحظه‌ای تقریباً هر ۱ ثانیه تازه می‌شود.</p>
       <div id="recommendationPerformanceSummary"></div>
@@ -4179,7 +4179,7 @@ button:focus-visible,.accordion>summary:focus-visible,.nav-more>summary:focus-vi
     <summary>🛡️ توکن‌های با امنیت بالا</summary>
     <div class="accordion-body"><p class="muted" style="font-size:11px">MAX SECURITY + عبور کامل از Anti-Rug و بدون بلاک امنیتی.</p><div class="list" id="highSecurityTokenList"></div></div>
   </details>
-  <details class="accordion" open>
+  <details class="accordion">
     <summary>⚖️ توکن‌های با امنیت متوسط</summary>
     <div class="accordion-body"><p class="muted" style="font-size:11px">توکن‌های HIGH/REVIEW بدون رد امنیتی قطعی؛ بعضی شواهد هنوز کامل نیست.</p><div class="list" id="mediumSecurityTokenList"></div></div>
   </details>
