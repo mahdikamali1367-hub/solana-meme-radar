@@ -35,7 +35,7 @@ function findPumpOnset(candles,pairCreatedAt){
 async function historicalPumpOnset(t){
   if(!PUMP_X_MINT_RE.test(t?.mint||'')||!PUMP_X_MINT_RE.test(t?.pairAddress||''))return null;
   const ck=t.pairAddress,hit=pumpXCandleCache.get(ck);
-  if(hit&&Date.now()-hit.at<6*60*60*1000)return hit.value;
+  if(hit&&Date.now()-hit.at<(hit.value?6*60*60*1000:10*60*1000))return hit.value;
   let onset=null;
   try{
     const endpoint='https://api.geckoterminal.com/api/v2/networks/solana/pools/'+
@@ -87,6 +87,26 @@ async function queryXPostsForMint(mint,startAt,endAt){
   pumpXPostCache.set(cacheKey,{at:now,value:result});
   return result;
 }
+async function geckoHistoricalPumpCandidates(){
+  // Broaden beyond the current radar's small discovery sample.
+  // GeckoTerminal related base token is the source of the exact mint.
+  try{
+    const d=await jfetch('https://api.geckoterminal.com/api/v2/networks/solana/trending_pools?duration=24h&include=base_token',{},12000);
+    return (d?.data||[]).map(x=>{
+      const attr=x?.attributes||{},relation=String(x?.relationships?.base_token?.data?.id||'');
+      const mint=relation.startsWith('solana_')?relation.slice(7):'';
+      const pairAddress=String(attr.address||'');
+      const createdAt=Date.parse(attr.pool_created_at||'');
+      const volume24h=num(attr.volume_usd?.h24),change24h=num(attr.price_change_percentage?.h24);
+      if(!PUMP_X_MINT_RE.test(mint)||!PUMP_X_MINT_RE.test(pairAddress)||
+         !Number.isFinite(createdAt)||Date.now()-createdAt<24*3600*1000||
+         volume24h<100000||change24h<60||num(attr.reserve_in_usd)<25000)return null;
+      return {mint,pairAddress,symbol:String(attr.name||'').split('/')[0].trim(),
+        ageMinutes:(Date.now()-createdAt)/60000,liquidity:num(attr.reserve_in_usd),
+        volume24h,priceChange24h:change24h,discoverySource:'GeckoTerminal historical pump discovery'};
+    }).filter(Boolean).slice(0,5);
+  }catch{return []}
+}
 async function buildPumpXMonitor(){
   const now=Date.now();
   if(pumpXMonitorCache.data&&now-pumpXMonitorCache.at<PUMP_X_REFRESH_MS)return pumpXMonitorCache.data;
@@ -98,20 +118,27 @@ async function buildPumpXMonitor(){
         note:'Connect an X developer API bearer token. No X accounts or pump posts have been verified.'};
     }
     const base=cache.data?.tokens||[];
-    if(!base.length){
+    const gecko=await geckoHistoricalPumpCandidates();
+    const historyCandidates=[...new Map(gecko.concat(base.filter(t=>t.pairAddress&&t.mint&&
+      t.ageMinutes>=24*60&&num(t.liquidity)>=25000&&
+      num(t.priceChange24h)>=60)).sort((a,b)=>num(b.volume24h)-num(a.volume24h))
+      .map(t=>[t.mint,t])).values()].slice(0,8);
+    if(!base.length&&!historyCandidates.length){
       return {ok:true,configured:true,status:'waiting-for-first-token-scan',
         generatedAt:new Date().toISOString(),discoveredPumps:[],trackedAccounts:[],watchlist:[],
         note:'Token discovery has not completed. Retry after the initial radar scan.'};
     }
-    const historyCandidates=base.filter(t=>t.pairAddress&&t.mint&&
-      t.ageMinutes>=24*60&&num(t.liquidity)>=25000&&
-      num(t.priceChange24h)>=60).sort((a,b)=>num(b.volume24h)-num(a.volume24h)).slice(0,6);
     const discoveredPumps=[];
+    const xDiagnostics={apiErrors:0,archivalAccessRequired:0,successfulQueries:0,partialResults:0};
     for(const t of historyCandidates){
       const onset=await historicalPumpOnset(t);
       if(!onset)continue;
       const posts=await queryXPostsForMint(t.mint,onset.onsetAt-24*3600000,onset.onsetAt);
+      if(posts.status==='api-error')xDiagnostics.apiErrors++;
+      if(posts.status==='full-archive-required')xDiagnostics.archivalAccessRequired++;
       if(posts.status!=='ok')continue;
+      xDiagnostics.successfulQueries++;
+      if(posts.partial)xDiagnostics.partialResults++;
       const distinct=[...new Map(posts.posts.map(p=>[p.authorId,p])).values()];
       for(const post of distinct){
         const a=pumpXAccountEvidence.get(post.authorId)||{authorId:post.authorId,handle:post.handle,
@@ -156,7 +183,9 @@ async function buildPumpXMonitor(){
         accounts:matching.map(p=>({handle:p.handle,authorId:p.authorId,postUrl:p.url,
           postAt:p.postedAt,historicalPumps:pumpXAccountEvidence.get(p.authorId)?.calls.size||0}))});
     }
-    return {ok:true,configured:true,status:'scanned',generatedAt:new Date().toISOString(),
+    return {ok:true,configured:true,
+      status:xDiagnostics.apiErrors?'x-api-errors':xDiagnostics.archivalAccessRequired?'archive-access-needed':'scanned',
+      xDiagnostics,generatedAt:new Date().toISOString(),
       samplesScanned:historyCandidates.length,discoveredPumps,trackedAccounts:tracked.map(a=>({
         authorId:a.authorId,handle:a.handle,documentedPumps:a.calls.size,
         calls:[...a.calls.values()].slice(-6)
@@ -5307,7 +5336,8 @@ function renderPumpXMonitor(){
   if(st)st.textContent=!d.configured
     ?'X API فعال نیست؛ برای تشخیص واقعی نویسندگان پست‌های قبل از پامپ، X_BEARER_TOKEN روی سرور لازم است. هیچ اکانتی تأیید یا دنبال نشده.'
     :d.status==='waiting-for-first-token-scan'?'داده توکن‌ها هنوز بارگذاری نشده؛ اسکن تاریخی پس از دریافت توکن‌ها شروع می‌شود.'
-    :'منبع کندل: GeckoTerminal · منبع پست: X API · پامپ‌های دارای شواهد: '+Number(d.discoveredPumps?.length||0)+
+    :'منبع کندل: GeckoTerminal · منبع پست: X API · '+(d.status==='x-api-errors'?'خطا در دسترسی X API؛ اعتبار کلید و سهمیه را بررسی کنید · ':d.status==='archive-access-needed'?'دسترسی به آرشیو قدیمی X موردنیاز است · ':'')+
+      'پامپ‌های دارای شواهد: '+Number(d.discoveredPumps?.length||0)+
       ' · اکانت‌های دارای حداقل ۲ سابقه مستقل: '+Number(d.trackedAccounts?.length||0)+
       ' · آخرین بررسی: '+(d.generatedAt?new Date(d.generatedAt).toLocaleString('fa-IR'):'—');
   if(watch)watch.innerHTML=(d.watchlist||[]).length?(d.watchlist||[]).map(function(x){
