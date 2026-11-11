@@ -2506,7 +2506,8 @@ async function buildUserTopTraderIntel(){
           for(const e of parsed.filter(e=>e.side==='BUY')){
             const ch=x.changes.find(v=>v.mint===e.mint);
             if(!ch)continue;
-            verified.push({mint:e.mint,signature:sig.signature,ts:num(sig.blockTime)*1000,approxUsd:num(e.approxUsd)||ch.usd});
+            verified.push({mint:e.mint,signature:sig.signature,ts:num(sig.blockTime)*1000,approxUsd:num(e.approxUsd)||ch.usd,
+              tokenAmount:num(e.tokenAmount),estimatedExecutionPrice:num(e.tokenAmount)>0&&num(e.approxUsd)>0?num(e.approxUsd)/num(e.tokenAmount):null});
           }
         }catch{}
       }
@@ -2518,7 +2519,11 @@ async function buildUserTopTraderIntel(){
         id:(v?.signature||('obs:'+now))+':'+x.row.w.address+':'+ch.mint,
         trader:x.row.w.name,address:x.row.w.address,mint:ch.mint,
         symbol:a?.symbol||'?',name:a?.name||'',
-        usd:v?.approxUsd||ch.usd,price:ch.price,
+        usd:v?.approxUsd||ch.usd,
+        price:v?.estimatedExecutionPrice||ch.price,
+        priceBasis:v?.estimatedExecutionPrice?'estimated on-chain execution cost':'market price at first observed increase',
+        tokenAmount:ch.delta,
+        initialPairAddress:a?.pairAddress||null,
         ts:v?.ts||now,signature:v?.signature||null,
         verifiedSwap:!!v,source:v?'Solana RPC confirmed swap':'Solana RPC balance increase'
       };
@@ -2526,6 +2531,19 @@ async function buildUserTopTraderIntel(){
     }
   }
   topTraderBuyEvents=topTraderBuyEvents.filter(e=>now-e.ts<=24*60*60*1000).slice(0,250);
+  const pricedRecentBuys=topTraderBuyEvents.slice(0,80).map(e=>{
+    const current=mintAgg.get(e.mint);
+    const currentPriceUsd=num(current?.priceUsd);
+    const samePair=!e.initialPairAddress||!current?.pairAddress||
+      e.initialPairAddress===current.pairAddress;
+    const valid=currentPriceUsd>0&&num(e.price)>0&&samePair;
+    const pnlPct=valid?(currentPriceUsd/num(e.price)-1)*100:null;
+    const pnlUsd=valid?num(e.usd)*pnlPct/100:null;
+    return {...e,currentPriceUsd:valid?currentPriceUsd:null,
+      currentPriceObservedAt:valid?now:null,pricePairMatched:samePair,
+      pnlPct,pnlUsd,pnlBasis:e.verifiedSwap?'approximate swap cost':'balance increase observation',
+      pnlNote:'Approximate mark-to-market change only, not realized trader PnL; sells, transfers, fees and slippage not included'};
+  });
 
   const sharedHoldings=[...mintAgg.values()]
     .filter(x=>x.priceUsd>0&&x.totalValueUsd>0)
@@ -2622,7 +2640,7 @@ async function buildUserTopTraderIntel(){
     wallets:walletRows,
     sharedHoldings:sharedHoldings.slice(0,30),
     sharedBuys,recommendations,best,
-    recentBuys:topTraderBuyEvents.slice(0,80),
+    recentBuys:pricedRecentBuys,
     source:'User supplied wallets + Solana RPC balances/transactions + DEXScreener valuation',
     disclaimer:'پوزیشن‌های موجود قبل از شروع مانیتور، زمان خرید تاریخی قطعی ندارند و بازده آن‌ها از شروع ردیابی محاسبه می‌شود. فقط افزایش موجودی بعد از شروع مانیتور می‌تواند زمان خرید/انباشت مشاهده‌شده داشته باشد.'
   };
@@ -3737,9 +3755,16 @@ function updateLiveProfitDom(){
     // Never show stale prices as live trader PnL.
     var fresh=hit&&Number(hit.price)>0&&Date.now()-Number(hit.at||0)<15000&&
       ['dexscreener-exact','jupiter-verified','pumpfun-fallback'].includes(hit.source);
-    var ret=fresh&&entry>0?((Number(hit.price)-entry)/entry)*100:null;
+    var fallbackPrice=Number(el.getAttribute('data-trader-fallback-price')||0);
+    var fallbackAt=Number(el.getAttribute('data-trader-fallback-at')||0);
+    var fallbackMatched=el.getAttribute('data-trader-pair-matched')!=='false';
+    var canFallback=!fresh&&fallbackMatched&&fallbackPrice>0&&
+      fallbackAt>0&&Date.now()-fallbackAt<=60000;
+    var current=fresh?Number(hit.price):canFallback?fallbackPrice:0;
+    var ret=current>0&&entry>0?((current-entry)/entry)*100:null;
     var val=ret===null?null:buyUsd*ret/100;
-    el.textContent=val===null?'قیمت زنده در دسترس نیست':((val>=0?'+':'')+money(val)+' ('+(ret>=0?'+':'')+ret.toFixed(2)+'%)');
+    el.textContent=val===null?'قیمت تازه موجود نیست':((val>=0?'+':'')+money(val)+' ('+(ret>=0?'+':'')+ret.toFixed(2)+'%)')+
+      (canFallback?' · آخرین اسکن':'');
     el.classList.remove('return-pos','return-neg','return-flat');
     el.classList.add(val===null?'return-flat':val>=0?'return-pos':'return-neg');
     el.title='تغییر ارزش تخمینی مبلغ مشاهده‌شده بر اساس قیمت فعلی؛ سود محقق‌نشده واقعی کیف‌پول یا PnL کل تریدر نیست';
@@ -5181,9 +5206,10 @@ function renderTopTraders(){
       '<small>'+new Date(x.ts).toLocaleString('fa-IR')+' · '+(verified?'تراکنش در Solana RPC تأیید شده':'خرید قطعی نیست؛ تغییر موجودی در اسکن ثبت شده')+'</small>'+
       (x.signature?'<small>Tx: '+esc(short(x.signature))+'</small>':'')+'</div>'+
       '<div class="cell"><small>'+(verified?'ارزش تخمینی خرید':'ارزش افزایش موجودی')+'</small><b>'+money(x.usd)+'</b></div>'+
-      '<div class="cell"><small>قیمت زمان شناسایی</small><b>'+fmtPrice(x.price)+'</b></div>'+
-      '<div class="cell"><small>قیمت فعلی</small><b data-live-price-mint="'+esc(x.mint)+'">—</b></div>'+
-      '<div class="cell"><small>تغییر ارزش از شناسایی</small><b data-trader-pnl-mint="'+esc(x.mint)+'" data-trader-entry-price="'+Number(x.price||0)+'" data-trader-buy-usd="'+Number(x.usd||0)+'">در حال دریافت قیمت…</b></div>'+
+      '<div class="cell"><small>'+(verified&&x.priceBasis==='estimated on-chain execution cost'?'قیمت خرید تخمینی':'قیمت زمان مشاهده')+'</small><b>'+fmtPrice(x.price)+'</b></div>'+
+      '<div class="cell"><small>قیمت الان</small><b data-live-price-mint="'+esc(x.mint)+'">'+fmtPrice(x.currentPriceUsd)+'</b></div>'+
+      '<div class="cell"><small>'+(verified?'تغییر ارزش از خرید':'تغییر ارزش از مشاهده')+' (تقریبی)</small><b data-trader-pnl-mint="'+esc(x.mint)+'" data-trader-entry-price="'+Number(x.price||0)+'" data-trader-buy-usd="'+Number(x.usd||0)+'" data-trader-fallback-price="'+Number(x.currentPriceUsd||0)+'" data-trader-fallback-at="'+Number(x.currentPriceObservedAt||0)+'" data-trader-pair-matched="'+String(x.pricePairMatched!==false)+'">'+
+      (x.pnlPct!=null&&Number.isFinite(Number(x.pnlPct))?((Number(x.pnlUsd)>=0?'+':'')+money(x.pnlUsd)+' ('+(Number(x.pnlPct)>=0?'+':'')+Number(x.pnlPct).toFixed(2)+'%)'):'در حال دریافت قیمت…')+'</b><small>بدون کارمزد، اسلیپیج و فروش‌های بعدی</small></div>'+
       '<div class="actions"><a class="action" target="_blank" rel="noopener" href="'+esc(dexUrl(x.mint,''))+'">DEX</a>'+
       (x.signature?'<a class="action" target="_blank" rel="noopener" href="https://solscan.io/tx/'+esc(x.signature)+'">Tx</a>':'')+'</div></div>';
   }).join('')||'<div class="empty">از زمان شروع مانیتور هنوز خرید یا افزایش موجودی جدیدی ثبت نشده است.</div>';
@@ -5632,12 +5658,12 @@ async function pollVisibleDexPrices(){
   if(visibleDexPriceBusy)return;
   visibleDexPriceBusy=true;
   try{
-    var els=[...document.querySelectorAll('[data-live-price-mint],[data-live-profit-mint],[data-trader-position-mint]')];
+    var els=[...document.querySelectorAll('[data-live-price-mint],[data-live-profit-mint],[data-trader-position-mint],[data-trader-pnl-mint]')];
     var mints=[...new Set(els.filter(function(el){
       var r=el.getBoundingClientRect();
       return r.bottom>=-120&&r.top<=window.innerHeight+120;
     }).map(function(el){
-      return el.getAttribute('data-live-price-mint')||el.getAttribute('data-live-profit-mint')||el.getAttribute('data-trader-position-mint')||'';
+      return el.getAttribute('data-live-price-mint')||el.getAttribute('data-live-profit-mint')||el.getAttribute('data-trader-position-mint')||el.getAttribute('data-trader-pnl-mint')||'';
     }).filter(Boolean))].slice(0,12);
 
     var rows=await Promise.all(mints.map(async function(mint){
