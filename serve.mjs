@@ -336,6 +336,47 @@ async function jupiterPrices(mints){
 }
 
 
+
+// Keyless GeckoTerminal fallback and optional Birdeye fallback. These sources
+// are used sparingly, at documented rate-limits, and never fabricate quotes.
+const secondaryPriceCache=new Map();
+const SECONDARY_PRICE_TTL_MS=45000;
+let geckoLastPriceFetchAt=0,birdeyeLastPriceFetchAt=0;
+async function geckoTokenPrice(mint){
+  if(!PUMP_X_MINT_RE.test(mint))return null;
+  const key='gecko:'+mint,now=Date.now(),hit=secondaryPriceCache.get(key);
+  if(hit&&now-hit.at<SECONDARY_PRICE_TTL_MS)return hit.data;
+  // Public GeckoTerminal budget is about 10/min; never exceed it here.
+  if(now-geckoLastPriceFetchAt<6500)return null;
+  geckoLastPriceFetchAt=now;
+  let value=null;
+  try{
+    const json=await jfetch('https://api.geckoterminal.com/api/v2/simple/networks/solana/token_price/'+encodeURIComponent(mint),
+      {headers:{accept:'application/json;version=20230203'}},8500);
+    const p=num(json?.data?.attributes?.token_prices?.[mint]);
+    if(p>0)value={priceUsd:p,source:'GeckoTerminal token price',observedAt:Date.now()};
+  }catch{}
+  secondaryPriceCache.set(key,{at:Date.now(),data:value});
+  return value;
+}
+async function birdeyeTokenPrice(mint){
+  const keyval=process.env.BIRDEYE_API_KEY;
+  if(!keyval||!PUMP_X_MINT_RE.test(mint))return null;
+  const key='birdeye:'+mint,now=Date.now(),hit=secondaryPriceCache.get(key);
+  if(hit&&now-hit.at<SECONDARY_PRICE_TTL_MS)return hit.data;
+  if(now-birdeyeLastPriceFetchAt<1200)return null;
+  birdeyeLastPriceFetchAt=now;
+  let value=null;
+  try{
+    const json=await jfetch('https://public-api.birdeye.so/defi/price?address='+encodeURIComponent(mint),
+      {headers:{'X-API-KEY':keyval,'x-chain':'solana'}},8500);
+    const price=num(json?.data?.value??json?.data?.price);
+    if(json?.success!==false&&price>0)value={priceUsd:price,source:'Birdeye',observedAt:Date.now()};
+  }catch{}
+  secondaryPriceCache.set(key,{at:Date.now(),data:value});
+  return value;
+}
+
 let prelaunchCache={at:0,data:null};
 let pumpTraderIntelCache={at:0,data:null};
 let solidProofIntelCache={at:0,data:null};
@@ -1580,6 +1621,12 @@ async function contractPrice(mint){
   const jup=jupMap.get(mint)||null;
 
   const dp=num(dex?.priceUsd),pp=num(pump?.priceUsd),jp=num(jup?.priceUsd);
+  // Only fetch additional providers when Jupiter could not validate the DEX
+  // price, or when no price is available at all.
+  const gecko=jp>0?null:await geckoTokenPrice(mint);
+  const gp=num(gecko?.priceUsd);
+  const birdeye=dp<=0&&pp<=0&&jp<=0&&gp<=0?await birdeyeTokenPrice(mint):null;
+  const bp=num(birdeye?.priceUsd);
   let priceUsd=0,source='',status='single-source',deviationPct=null;
   const jupiterDeviationPct=dp>0&&jp>0?Math.abs(dp-jp)/Math.min(dp,jp)*100:null;
   // Do not publish a 'live' PnL against mutually incompatible independent quotes.
@@ -1614,11 +1661,27 @@ async function contractPrice(mint){
     priceUsd=jp;source='Jupiter Price V3';
     status=dp>0?'confirmed-by-dex':'jupiter-only';
   }
+  // Cross-check primary market against an independent free price feed.
+  // A different Gecko pool can deviate without making the canonical DEX
+  // quote wrong, so record disagreement instead of swapping pools silently.
+  const geckoDeviationPct=dp>0&&gp>0?Math.abs(dp-gp)/Math.min(dp,gp)*100:null;
+  if(dp>0&&gp>0&&geckoDeviationPct<=25&&jp<=0&&source.startsWith('DEXScreener')){
+    status='confirmed-by-gecko';
+  }else if(geckoDeviationPct!==null&&geckoDeviationPct>30&&jp<=0){
+    status='dex-gecko-disagreement';
+  }
+  if(!(priceUsd>0)&&gp>0){
+    priceUsd=gp;source='GeckoTerminal token price';status='gecko-fallback';
+  }
+  if(!(priceUsd>0)&&bp>0){
+    priceUsd=bp;source='Birdeye';status='birdeye-fallback';
+  }
   if(!(priceUsd>0))return null;
 
   const data={
     ok:true,mint,priceUsd,
     source,status,deviationPct,jupiterDeviationPct,jupiterPriceUsd:jp||null,
+    geckoPriceUsd:gp||null,geckoDeviationPct,birdeyePriceUsd:bp||null,
     observedAt:Date.now(),
     pairAddress:String(dex?.pairAddress||''),
     dexId:String(dex?.dexId||''),
@@ -4076,7 +4139,7 @@ function currentPriceForMint(mint){
   var tokenPair=String(t&&t.pairAddress||'');
 
   // Exact DEXScreener lookup is authoritative even for historical rows that are no longer in the current token scan.
-  if(cached&&hit&&['dexscreener-exact','jupiter-verified','pumpfun-fallback'].includes(hit.source)&&Date.now()-cachedAt<=15000)return cached;
+  if(cached&&hit&&['dexscreener-exact','jupiter-verified','geckoterminal-fallback','birdeye-fallback','pumpfun-fallback'].includes(hit.source)&&Date.now()-cachedAt<=15000)return cached;
   // Market-live cache is authoritative only for the same pinned pair.
   if(cached&&hit&&hit.source==='dexscreener'&&Date.now()-cachedAt<=5000&&(!tokenPair||!cachedPair||tokenPair===cachedPair))return cached;
 
@@ -4097,7 +4160,7 @@ function updateLiveProfitDom(){
     var hit=livePriceCache.get(mint);
     // Never show stale prices as live trader PnL.
     var fresh=hit&&Number(hit.price)>0&&Date.now()-Number(hit.at||0)<15000&&
-      ['dexscreener-exact','jupiter-verified','pumpfun-fallback'].includes(hit.source);
+      ['dexscreener-exact','jupiter-verified','geckoterminal-fallback','birdeye-fallback','pumpfun-fallback'].includes(hit.source);
     var fallbackPrice=Number(el.getAttribute('data-trader-fallback-price')||0);
     var fallbackAt=Number(el.getAttribute('data-trader-fallback-at')||0);
     var fallbackMatched=el.getAttribute('data-trader-pair-matched')!=='false';
@@ -4118,7 +4181,7 @@ function updateLiveProfitDom(){
     var amount=Number(el.getAttribute('data-trader-position-amount')||0);
     var hit=livePriceCache.get(mint);
     var fresh=hit&&Number(hit.price)>0&&Date.now()-Number(hit.at||0)<15000&&
-      ['dexscreener-exact','jupiter-verified','pumpfun-fallback'].includes(hit.source);
+      ['dexscreener-exact','jupiter-verified','geckoterminal-fallback','birdeye-fallback','pumpfun-fallback'].includes(hit.source);
     var pnl=fresh&&entry>0&&amount>0?(Number(hit.price)-entry)*amount:null;
     el.textContent=pnl===null?'—':(pnl>=0?'+':'')+money(pnl);
     el.classList.remove('return-pos','return-neg','return-flat');
@@ -6146,7 +6209,7 @@ async function pollVisibleDexPrices(){
       rememberLivePrice(
         p.mint,
         p.priceUsd,
-        String(p.source||'').startsWith('Jupiter')?'jupiter-verified':String(p.source||'').startsWith('DEXScreener')?'dexscreener-exact':'pumpfun-fallback',
+        String(p.source||'').startsWith('Jupiter')?'jupiter-verified':String(p.source||'').startsWith('GeckoTerminal')?'geckoterminal-fallback':String(p.source||'').startsWith('Birdeye')?'birdeye-fallback':String(p.source||'').startsWith('DEXScreener')?'dexscreener-exact':'pumpfun-fallback',
         Number(p.observedAt||Date.now()),
         p.pairAddress||''
       );
