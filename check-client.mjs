@@ -56,27 +56,36 @@ assert.equal(elements['button-whales'].active,true,'Advanced menu item must beco
 assert.equal(simulatedWindow.rendered,true,'Tab navigation must trigger a render');
 
 
+
 const sectionIds=['featured','tokens','social','wallets','whales','smart','prelaunch'];
 for(const name of sectionIds){
   assert(rendered.includes('data-index-for="'+name+'"'),
-    'Missing subsection directory for '+name);
+    'Legacy directory placeholder expected for '+name);
 }
-assert.equal((rendered.match(/data-index-for="/g)||[]).length,7,
-  'Each section should have exactly one subsection directory');
+assert(rendered.includes('.radar-page-card')&&rendered.includes('.radar-page-stage'),
+  'Standalone card and page layout must exist');
+assert(rendered.includes('.radar-page[hidden]')&&rendered.includes('.radar-page-stage[hidden]'),
+  'Standalone page hidden states must be enforced');
+assert(rendered.includes('className=\'radar-page-card\'')&&
+       rendered.includes('className=\'radar-page-back\'')&&
+       rendered.includes('className=\'radar-page-stage\''),
+  'Independent category navigation and return button must exist');
+assert(rendered.includes("var sections=[...panel.querySelectorAll('details.accordion')]"),
+  'Nested sections must become standalone category pages too');
+assert(rendered.includes('while(body.firstChild)page.appendChild(body.firstChild)'),
+  'Live market data nodes must be moved rather than reconstructed');
+assert(rendered.includes('item.remove()')&&rendered.includes('previous.remove()'),
+  'Old accordion shells and dropdown index must be removed');
 assert(rendered.includes('.list:not(.show-all)> .row:nth-child(n+7)'),
-  'Long data lists must start in six-row compact mode');
-assert(rendered.includes('className=\'list-more\'')&&
-       rendered.includes('className=\'section-index-btn\''),
-  'Subsection navigation and Show All controls must exist');
+  'Long data lists must keep compact rows');
 const sections=[...rendered.matchAll(/<section class="panel(?: active)?" id="([^"]+)">/g)]
   .map(m=>({id:m[1],index:m.index}));
+assert.equal(sections.length,7,'All seven areas must remain available');
 for(let i=0;i<sections.length;i++){
   const s=sections[i],fragment=rendered.slice(s.index,sections[i+1]?.index??rendered.indexOf('</main>',s.index));
-  const all=[...fragment.matchAll(/<details([^>]*)>\s*<summary>/g)];
-  const initiallyOpen=all.filter(m=>/\bopen\b/.test(m[1]));
-  assert(initiallyOpen.length<=2,
-    'Clutter regression: too many open subsections by default in '+s.id);
+  assert(fragment.includes('details class="accordion"'),
+    'Each area needs data-bearing subsections: '+s.id);
 }
-console.log('All seven subsection directories, compact lists, and default-open limits: PASS');
+console.log('Seven card catalogs, dedicated content pages, and return controls: PASS');
 
 console.log('Rendered scripts + responsive grouped navigation + navigation state: PASS');
