@@ -5818,24 +5818,11 @@ function renderAlerts(){
   document.getElementById('kExits').textContent=c.length;document.getElementById('alerts').innerHTML=c.map(function(x){return '<div class="alert">🚨 خروج همزمان چند کیف‌پول از <b>'+esc(x.token||short(x.tokenAddress))+'</b> · '+Number(x.uniqueSellers||0)+' فروشنده</div>'}).join('');
 }
 function renderAll(){
+  // Render only the currently visible section. Previously every full update
+  // rebuilt ALL seven panels (including social, trader and prelaunch lists),
+  // causing long main-thread blocks that made buttons appear unresponsive.
   var kt=document.getElementById('kTokens');if(kt)kt.textContent=tokens.length;
-  safeUiRender('توکن‌های برتر',renderTopQuick);
-  safeUiRender('پیشنهاد ویژه',renderChampion);
-  safeUiRender('هشدارها',renderAlerts);
-  safeUiRender('پیشنهادها',renderFeatured);
-  safeUiRender('نهنگ‌ها',renderWhales);
-  safeUiRender('اسمارت‌مانی',renderSmart);
-  safeUiRender('پیش‌لانچ',renderPrelaunch);
-  safeUiRender('ترند اجتماعی',renderSocialTrends);
-  safeUiRender('تریدرهای برتر',renderTopTraders);
-      safeUiRender('تریدرهای برتر',renderTopTraders);
-  safeUiRender('کیف‌پول‌ها',renderWallets);
-  safeUiRender('Conviction',renderConviction);
-  safeUiRender('عملکرد پیشنهادها',renderRecommendationPerformance);
-  safeUiRender('عملکرد 24ساعته',renderPerformance24);
-  safeUiRender('KOL',renderKolTrends);
-  safeUiRender('لیست توکن‌ها',renderTokens);
-  safeUiRender('قیمت زنده',updateLiveProfitDom);
+  safeUiRender('پنل فعال',renderActivePanel);
 }
 function stateLabel(v){return v==='pass'?'<span class="pass">✓ تأیید خودکار</span>':v==='fail'?'<span class="fail">✕ رد خودکار</span>':v==='warn'?'<span class="manual">△ هشدار خودکار</span>':'<span class="manual">? تأیید نشده — داده ناکافی</span>'}
 function openDetail(m){
