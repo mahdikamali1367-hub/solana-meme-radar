@@ -3748,7 +3748,7 @@ function rememberTokenRadar(t){
     tokenRadarHistory.set(t.mint,{
       mint:t.mint,name:t.name||'',symbol:t.symbol||'',
       introducedAt:new Date().toISOString(),
-      introducedPrice:Number(t.priceUsd||0)||null,
+      introducedPrice:Number(currentPriceForMint(t.mint)||0)||null,
       entrySignalAtIntroduction:tradePlan(t).status==='ENTRY',
       introducedSecurity:t.security?.tier||'',
       introducedScore:bucketScore(t,ageBucket(t)),
@@ -3757,7 +3757,13 @@ function rememberTokenRadar(t){
     saveTokenRadarHistory();
   }else{
     old.name=t.name||old.name;old.symbol=t.symbol||old.symbol;old.dexUrl=t.dexUrl||old.dexUrl;
+    // A baseline is recorded only when a fresh validated quote exists.
+    if(!(Number(old.introducedPrice)>0)){
+      var first=currentPriceForMint(t.mint);
+      if(first>0){old.introducedPrice=first;old.introducedAt=new Date().toISOString();old.baselineRepaired=true}
+    }
     tokenRadarHistory.set(t.mint,old);
+    if(old.baselineRepaired)saveTokenRadarHistory();
   }
 }
 function tokenRadarPerformanceRows(){
@@ -3794,7 +3800,7 @@ function rememberSocialSignal(t){
       name:t.name||'',
       symbol:t.symbol||'',
       introducedAt:new Date().toISOString(),
-      introducedPrice:Number(t.priceUsd||0)||null,
+      introducedPrice:Number(currentPriceForMint(t.mint)||0)||null,
       isEntrySignal:isEntry,signalClassification:isEntry?'ENTRY':'DISCOVERY_ONLY',
       introducedSocialHeat:heat,
       introducedSocialLabel:t.socialHeat?.label||'',
@@ -3809,7 +3815,12 @@ function rememberSocialSignal(t){
     old.name=t.name||old.name;
     old.symbol=t.symbol||old.symbol;
     old.dexUrl=t.dexUrl||old.dexUrl;
+    if(!(Number(old.introducedPrice)>0)){
+      var first=currentPriceForMint(t.mint);
+      if(first>0){old.introducedPrice=first;old.introducedAt=new Date().toISOString();old.baselineRepaired=true}
+    }
     socialSignalHistory.set(t.mint,old);
+    if(old.baselineRepaired)saveSocialSignalHistory();
   }
 }
 function socialSignalPerformanceRows(){
@@ -4950,6 +4961,7 @@ function renderSocialTrends(){
     var best=valid.slice().sort(function(a,b){return b.pnlPct-a.pnlPct})[0]||null;
     perfSum.innerHTML='<div class="perf-summary">'+
       '<div class="perf-stat"><small>ترندهای کشف‌شده (نه الزاماً سیگنال خرید)</small><b>'+rows.length+'</b></div>'+
+      '<div class="perf-stat"><small>سیگنال ورود قابل‌ارزیابی</small><b>'+valid.length+'</b></div>'+
       '<div class="perf-stat"><small>در سود</small><b class="return-pos">'+wins.length+'</b></div>'+
       '<div class="perf-stat"><small>میانگین بازده</small><b class="'+(avg==null?'return-flat':avg>=0?'return-pos':'return-neg')+'">'+(avg==null?'—':(avg>0?'+':'')+avg.toFixed(1)+'%')+'</b></div>'+
       '<div class="perf-stat"><small>بهترین سیگنال</small><b class="return-pos">'+(best?esc(best.history.symbol||best.history.name)+' '+(best.pnlPct>0?'+':'')+best.pnlPct.toFixed(1)+'%':'—')+'</b></div>'+
@@ -5251,6 +5263,7 @@ function renderTokens(){
     var avg=valid.length?valid.reduce(function(a,x){return a+Number(x.pnlPct||0)},0)/valid.length:null;
     var best=valid.slice().sort(function(a,b){return b.pnlPct-a.pnlPct})[0]||null;
     perfSum.innerHTML='<div class="perf-summary">'+
+      '<div class="perf-stat"><small>سیگنال ورود قابل‌ارزیابی</small><b>'+valid.length+'</b></div>'+
       '<div class="perf-stat"><small>توکن‌های کشف‌شده (نه سیگنال خرید)</small><b>'+perfRows.length+'</b></div>'+
       '<div class="perf-stat"><small>در سود</small><b class="return-pos">'+wins.length+'</b></div>'+
       '<div class="perf-stat"><small>میانگین بازده</small><b class="'+(avg==null?'return-flat':avg>=0?'return-pos':'return-neg')+'">'+(avg==null?'—':(avg>0?'+':'')+avg.toFixed(1)+'%')+'</b></div>'+
@@ -5399,7 +5412,7 @@ function mergeMarketLive(x){
     rememberLivePrice(
       p.mint,
       p.priceUsd,
-      'dexscreener',
+      p.priceValidationStatus==='confirmed-by-jupiter'?'jupiter-verified':'dexscreener',
       Number(p.priceObservedAt||Date.now()),
       p.pairAddress||''
     );
