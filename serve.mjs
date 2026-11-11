@@ -3868,6 +3868,46 @@ button:focus-visible,.accordion>summary:focus-visible,.nav-more>summary:focus-vi
  .list-more{min-height:36px}
 }
 
+
+/* Independent cards and full content views: no expanding/collapsing subsections. */
+.radar-page-catalog{padding:8px 0 22px}
+.radar-catalog-heading{margin:0 0 17px;padding:4px 2px 1px}
+.radar-catalog-heading h2{font-size:19px;margin:0 0 5px;letter-spacing:-.3px}
+.radar-catalog-heading p{font-size:12px;color:var(--muted);margin:0}
+.radar-page-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+.radar-page-card{min-height:106px;text-align:start;display:flex;align-items:center;gap:13px;
+  border:1px solid #31465e;border-radius:15px;background:linear-gradient(140deg,#15253a,#0e1a2a);
+  color:#eaf2fd;padding:17px;box-shadow:0 6px 20px #00000015;
+  transition:transform .16s ease,border-color .16s ease,background .16s ease}
+.radar-page-card:hover{transform:translateY(-2px);border-color:#508eab;
+  background:linear-gradient(140deg,#1b3852,#11263c)}
+.radar-page-card:focus-visible,.radar-page-back:focus-visible{outline:2px solid #85e1cd;outline-offset:3px}
+.radar-page-card-icon{display:flex;align-items:center;justify-content:center;flex:0 0 41px;
+  width:41px;height:41px;border-radius:12px;border:1px solid #37536a;background:#1a344a;font-size:19px}
+.radar-page-card-name{flex:1;font-weight:850;font-size:13px;line-height:1.9}
+.radar-page-card-arrow{font-size:20px;color:#68d7b5}
+.radar-page-stage{min-width:0;padding-bottom:34px}
+.radar-page-back{border:1px solid #38546f;background:#142940;color:#bce8dc;
+  padding:11px 16px;border-radius:11px;font-size:12px;font-weight:800;margin-bottom:18px;cursor:pointer}
+.radar-page-back:hover{background:#1e4259}
+.radar-page-title{font-size:clamp(18px,2.3vw,25px);letter-spacing:-.3px;margin:2px 0 18px;
+  padding-bottom:15px;border-bottom:1px solid #293e55}
+.radar-page{display:block;min-width:0}
+.radar-page[hidden],.radar-page-catalog[hidden],.radar-page-stage[hidden]{display:none!important}
+.radar-page-content .subfilters{margin-top:12px}
+.radar-page-content .row{margin-bottom:2px}
+.radar-page-content .note{max-width:100%}
+@media(max-width:900px){.radar-page-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:620px){.radar-page-grid{grid-template-columns:1fr 1fr;gap:9px}
+ .radar-page-card{padding:12px;min-height:95px;gap:8px;flex-wrap:wrap;align-content:space-between}
+ .radar-page-card-icon{width:34px;height:34px;flex-basis:34px;font-size:17px}
+ .radar-page-card-name{font-size:11px;line-height:1.65}
+ .radar-page-card-arrow{font-size:15px}
+ .radar-page-title{font-size:18px;margin-bottom:12px}
+ .radar-page-back{margin-bottom:13px}}
+@media(max-width:350px){.radar-page-grid{grid-template-columns:1fr}}
+@media(prefers-reduced-motion:reduce){.radar-page-card{transition:none}}
+
 </style>
 </head>
 <body>
@@ -4292,54 +4332,120 @@ button:focus-visible,.accordion>summary:focus-visible,.nav-more>summary:focus-vi
     }
   },true);
 
-  // Progressive disclosure: a compact in-panel directory and optional row expansion.
-  // This code is independent of market data requests and never removes a data row.
+  // Standalone subsection pages. Every former accordion becomes an independent
+  // card and a dedicated content view; no section is expanded as a dropdown.
+  // Move DOM nodes instead of recreating HTML to preserve live market bindings.
   function setupSubsections(){
     document.querySelectorAll('.panel').forEach(function(panel){
-      var directory=panel.querySelector('.section-index');
-      if(!directory)return;
-      var destination=directory.querySelector('.section-index-content');
-      if(!destination)return;
-      var items=[...panel.querySelectorAll('details.accordion')];
-      items.forEach(function(item,index){
+      if(panel.classList.contains('subpages-ready'))return;
+      var previous=panel.querySelector('.section-index');
+      if(previous)previous.remove();
+      var sections=[...panel.querySelectorAll('details.accordion')];
+      if(!sections.length)return;
+      var catalog=document.createElement('div');
+      catalog.className='radar-page-catalog';
+      var heading=document.createElement('div');
+      heading.className='radar-catalog-heading';
+      var headingTitle=document.createElement('h2');
+      headingTitle.textContent='زیرمجموعه‌های این بخش';
+      var headingMeta=document.createElement('p');
+      headingMeta.textContent='برای مشاهده اطلاعات، روی کارت موردنظر بزن. هر کارت صفحه مستقل دارد.';
+      heading.appendChild(headingTitle);
+      heading.appendChild(headingMeta);
+      var cards=document.createElement('div');
+      cards.className='radar-page-grid';
+      catalog.appendChild(heading);
+      catalog.appendChild(cards);
+      var stage=document.createElement('div');
+      stage.className='radar-page-stage';
+      stage.hidden=true;
+      var back=document.createElement('button');
+      back.type='button';
+      back.className='radar-page-back';
+      back.textContent='← بازگشت به زیرمجموعه‌ها';
+      back.setAttribute('aria-label','بازگشت به فهرست زیرمجموعه‌ها');
+      stage.appendChild(back);
+      var title=document.createElement('h2');
+      title.className='radar-page-title';
+      stage.appendChild(title);
+      var content=document.createElement('div');
+      content.className='radar-page-content';
+      stage.appendChild(content);
+      // A nested detail is still included in the category list: it becomes
+      // its own page rather than a hidden dropdown inside another page.
+      sections.forEach(function(item,index){
         var summary=item.querySelector(':scope > summary');
         if(!summary)return;
-        if(!item.id)item.id='radar-section-'+panel.id+'-'+index;
-        var btn=document.createElement('button');
-        btn.type='button';btn.className='section-index-btn';
-        btn.textContent=String(summary.textContent||'').trim();
-        btn.addEventListener('click',function(){
-          // Reveal nested sections, e.g. advanced prelaunch security groups.
-          var parent=item.parentElement;
-          while(parent&&parent!==panel){
-            if(parent.tagName==='DETAILS')parent.open=true;
-            parent=parent.parentElement;
-          }
-          item.open=true;
-          directory.open=false;
-          if(typeof item.scrollIntoView==='function'){
-            try{item.scrollIntoView({behavior:'smooth',block:'start'})}
-            catch(e){item.scrollIntoView()}
+        var label=String(summary.textContent||'').trim();
+        var card=document.createElement('button');
+        card.type='button';
+        card.className='radar-page-card';
+        card.setAttribute('aria-label','باز کردن '+label);
+        var icon=document.createElement('span');
+        icon.className='radar-page-card-icon';
+        icon.textContent=label.match(/^[^\s]+/)?.[0]||'◈';
+        var labelNode=document.createElement('span');
+        labelNode.className='radar-page-card-name';
+        labelNode.textContent=label;
+        var arrow=document.createElement('span');
+        arrow.className='radar-page-card-arrow';
+        arrow.textContent='←';
+        arrow.setAttribute('aria-hidden','true');
+        card.appendChild(icon);card.appendChild(labelNode);card.appendChild(arrow);
+        cards.appendChild(card);
+        // Preserve the contents of a card, including existing live data IDs,
+        // but replace its accordion shell with a standalone section.
+        var page=document.createElement('section');
+        page.className='radar-page';
+        page.hidden=true;
+        page.setAttribute('aria-label',label);
+        var body=item.querySelector(':scope > .accordion-body');
+        if(body){
+          while(body.firstChild)page.appendChild(body.firstChild);
+        }else{
+          while(summary.nextSibling)page.appendChild(summary.nextSibling);
+        }
+        content.appendChild(page);
+        item.remove();
+        card.addEventListener('click',function(){
+          content.querySelectorAll('.radar-page').forEach(function(p){p.hidden=true});
+          page.hidden=false;
+          title.textContent=label;
+          catalog.hidden=true;
+          stage.hidden=false;
+          if(typeof panel.scrollIntoView==='function'){
+            try{panel.scrollIntoView({behavior:'smooth',block:'start'})}catch(e){panel.scrollIntoView()}
           }
         });
-        destination.appendChild(btn);
       });
-      if(items.length<=1)directory.hidden=true;
-      else{
-        var counter=directory.querySelector('.section-index-count');
-        if(counter)counter.textContent=items.length+' زیرمجموعه';
-      }
+      back.addEventListener('click',function(){
+        stage.hidden=true;
+        catalog.hidden=false;
+        content.querySelectorAll('.radar-page').forEach(function(p){p.hidden=true});
+        if(typeof panel.scrollIntoView==='function'){
+          try{panel.scrollIntoView({behavior:'smooth',block:'start'})}catch(e){panel.scrollIntoView()}
+        }
+      });
+      // Remove former layout wrappers only when completely empty. These are
+      // visual wrappers, not data sources.
+      panel.querySelectorAll('.top-dashboard,.featured-only-secondary').forEach(function(wrap){
+        if(!wrap.textContent.trim()&&!wrap.querySelector('*'))wrap.remove();
+      });
+      panel.prepend(stage);
+      panel.prepend(catalog);
+      panel.classList.add('subpages-ready');
+      // Preserve a useful view for tabs that only have one subsection.
+      if(cards.children.length===1)cards.firstElementChild.click();
     });
     document.querySelectorAll('.panel .list').forEach(function(list){
       if(list.nextElementSibling&&list.nextElementSibling.classList.contains('list-more'))return;
-      var btn=document.createElement('button');
-      btn.type='button';btn.className='list-more';
-      btn.textContent='نمایش همه موارد';
-      btn.addEventListener('click',function(){
+      var more=document.createElement('button');
+      more.type='button';more.className='list-more';more.textContent='نمایش همه موارد';
+      more.addEventListener('click',function(){
         var expanded=list.classList.toggle('show-all');
-        btn.textContent=expanded?'نمایش موارد کمتر':'نمایش همه موارد';
+        more.textContent=expanded?'نمایش موارد کمتر':'نمایش همه موارد';
       });
-      list.insertAdjacentElement('afterend',btn);
+      list.insertAdjacentElement('afterend',more);
     });
   }
   if(document.readyState==='loading'){
