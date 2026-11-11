@@ -4054,8 +4054,9 @@ function largeBuyerFlow(t){
   };
 }
 function passesSignalFilters(t){
-  var any=signalFilters.short||signalFilters.medium||signalFilters.long||signalFilters.security||signalFilters.holders||signalFilters.bigbuyers;
+  var any=signalFilters.short||signalFilters.medium||signalFilters.long||signalFilters.security||signalFilters.holders||signalFilters.bigbuyers||signalFilters.totalholders;
   if(!t)return !any;
+  if(Number(signalFilters.totalholders||0)>0&&!(Number.isInteger(t.totalHolderCount)&&t.totalHolderCount>=Number(signalFilters.totalholders)))return false;
   var sg=t.signals||{},sec=t.security||{},bf=largeBuyerFlow(t);
   if(signalFilters.short&&sg.short?.label!==signalFilters.short)return false;
   if(signalFilters.medium&&sg.medium?.label!==signalFilters.medium)return false;
