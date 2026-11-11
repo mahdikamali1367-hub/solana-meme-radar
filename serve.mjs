@@ -6,6 +6,71 @@ const CACHE_MS=15_000;
 const SOCIAL_QUERY_CACHE_MS=2*60*60*1000;
 const socialQueryCache=new Map();
 
+
+const X_FAMOUS_ACCOUNTS=[
+  {handle:'elonmusk',name:'Elon Musk',group:'public figure'},
+  {handle:'BillyM2k',name:'Billy Markus / Shibetoshi Nakamoto',group:'Dogecoin co-creator'},
+  {handle:'dogecoin',name:'Dogecoin',group:'community account'},
+  {handle:'cb_doge',name:'DogeDesigner',group:'Dogecoin / X commentary'},
+  {handle:'itsALLrisky',name:'Its ALL Risky',group:'Dogecoin commentator'},
+  {handle:'mcuban',name:'Mark Cuban',group:'public figure'}
+];
+const X_FAMOUS_POLL_MS=60*60*1000; // at most one search per hour; X API credits are not free by default
+let xFamousCache={at:0,data:null},xFamousInFlight=null;
+function famousXTextKind(text){
+  const t=String(text||'');
+  const mintMatches=[...new Set(t.match(/\b[1-9A-HJ-NP-Za-km-z]{32,44}\b/g)||[])].filter(x=>PUMP_X_MINT_RE.test(x));
+  return {contractMints:mintMatches.slice(0,5),
+    topic:/\b(dogecoin|doge|memecoin|meme coin|shib|pepe|bonk|floki|pump\.fun|cryptocurrency|solana)\b/i.test(t)||
+      mintMatches.length>0};
+}
+async function buildFamousXMonitor(){
+  const now=Date.now();
+  if(xFamousCache.data&&now-xFamousCache.at<X_FAMOUS_POLL_MS)return xFamousCache.data;
+  if(xFamousInFlight)return xFamousInFlight;
+  xFamousInFlight=(async()=>{
+    const accounts=X_FAMOUS_ACCOUNTS.map(a=>({...a,url:'https://x.com/'+a.handle}));
+    const base={ok:true,generatedAt:new Date().toISOString(),accounts,posts:[],
+      source:'X API recent search',intervalMinutes:60,
+      note:'Public posts only; this is radar monitoring, not a follow action on your personal X account. An account mention is not a buy recommendation.'};
+    const bearer=process.env.X_BEARER_TOKEN;
+    if(!bearer)return {...base,status:'not-configured',
+      message:'X_BEARER_TOKEN is not configured for this service.'};
+    try{
+      const handles=X_FAMOUS_ACCOUNTS.map(a=>'from:'+a.handle).join(' OR ');
+      const query='('+handles+') (doge OR dogecoin OR memecoin OR "meme coin" OR shib OR pepe OR bonk OR solana OR "pump.fun") -is:retweet';
+      const url='https://api.x.com/2/tweets/search/recent?query='+encodeURIComponent(query)+
+        '&max_results=30&tweet.fields=created_at,author_id,public_metrics,referenced_tweets'+
+        '&expansions=author_id&user.fields=username,name';
+      const payload=await jfetch(url,{headers:{authorization:'Bearer '+bearer}},12000);
+      const users=new Map((payload?.includes?.users||[]).map(u=>[String(u.id),u]));
+      const accountSet=new Set(X_FAMOUS_ACCOUNTS.map(a=>a.handle.toLowerCase()));
+      const posts=(payload?.data||[]).map(post=>{
+        const author=users.get(String(post.author_id));
+        const handle=String(author?.username||'');
+        const kind=famousXTextKind(post.text);
+        if(!accountSet.has(handle.toLowerCase())||!kind.topic)return null;
+        const at=Date.parse(post.created_at||'');
+        if(!Number.isFinite(at)||at>now||now-at>7*24*60*60*1000)return null;
+        return {id:String(post.id),handle,name:String(author?.name||handle),
+          createdAt:post.created_at,url:'https://x.com/'+handle+'/status/'+post.id,
+          text:String(post.text||'').slice(0,800),contractMints:kind.contractMints,
+          likes:num(post.public_metrics?.like_count),reposts:num(post.public_metrics?.retweet_count),
+          type:kind.contractMints.length?'contract-mention':'topic-mention'};
+      }).filter(Boolean).sort((a,b)=>Date.parse(b.createdAt)-Date.parse(a.createdAt)).slice(0,30);
+      return {...base,status:'ok',posts,partial:!!payload?.meta?.next_token,
+        message:posts.length?'Recent public X mentions retrieved.':'No matching posts returned in the recent search window.'};
+    }catch(e){
+      return {...base,status:'api-error',message:String(e?.message||e).slice(0,180)};
+    }
+  })();
+  try{
+    const result=await xFamousInFlight;
+    xFamousCache={at:Date.now(),data:result};
+    return result;
+  }finally{xFamousInFlight=null}
+}
+
 const pumpXMonitorCache={at:0,data:null};
 let pumpXMonitorInFlight=null;
 const pumpXAccountEvidence=new Map();
@@ -3765,6 +3830,17 @@ html,body,.shell,.panel,.list{overflow-anchor:none}
 </section>
 <section class="panel" id="socialPanel">
   <details class="accordion highlight" open>
+    <summary>🌟 رصد اکانت‌های مشهور X، به‌ویژه ایلان ماسک</summary>
+    <div class="accordion-body">
+      <p class="muted" id="famousXStatus">در حال بررسی فهرست حساب‌های عمومی...</p>
+      <p class="muted" style="font-size:11px">این بخش اکانت‌ها را داخل رادار رصد می‌کند. برای Follow واقعی در حساب توییتر، لینک پروفایل را باز کرده و خودت Follow را بزن. پست بدون آدرس دقیق قرارداد، سیگنال خرید نیست. جستجوی X API ممکن است اعتبار مصرف کند؛ درخواست‌ها حداکثر ساعتی یک‌بار انجام می‌شوند.</p>
+      <h3 style="font-size:13px">👤 حساب‌های رصدشده و لینک Follow</h3>
+      <div id="famousXAccounts" class="list"></div>
+      <h3 style="font-size:13px">🗣 تازه‌ترین پست‌های واقعی مرتبط با میم‌کوین</h3>
+      <div id="famousXPosts" class="list"></div>
+    </div>
+  </details>
+  <details class="accordion highlight" open>
     <summary>🕵️‍♂️ اکانت‌های X که ۲۴ ساعت قبل از پامپ، قرارداد ارز را معرفی کرده‌اند</summary>
     <div class="accordion-body">
       <p class="muted" id="pumpXStatus">در حال آماده‌سازی مقایسه قیمت تاریخی و پست‌های X...</p>
@@ -3945,7 +4021,7 @@ html,body,.shell,.panel,.list{overflow-anchor:none}
 </script>
 <script>
 var TOTAL_HOLDERS_MIN=1000;
-var pumpXMonitor=null,pumpXBusy=false;
+var pumpXMonitor=null,pumpXBusy=false,famousXMonitor=null,famousXBusy=false;
 var tokens=[],smart=null,live=null,tracked=null,conviction=null,prelaunch=null,prelaunchLive=null,topTraders=null,activeTab='featured',signalFilters={short:'',medium:'',long:'',security:'',holders:'',bigbuyers:'',totalholders:'1000'};
 try{
   if(localStorage.getItem('priceCacheSchemaV7')!=='dexscreener-primary-v7'){
@@ -5376,6 +5452,38 @@ function renderConviction(){
 }
 
 
+
+function renderFamousXMonitor(){
+  var d=famousXMonitor||{},st=document.getElementById('famousXStatus'),
+    accounts=document.getElementById('famousXAccounts'),
+    posts=document.getElementById('famousXPosts');
+  if(st)st.textContent=d.status==='ok'
+    ?'X API متصل است · '+Number(d.posts?.length||0)+' پست مرتبط در آخرین جستجو · آخرین بررسی '+new Date(d.generatedAt).toLocaleString('fa-IR')
+    :d.status==='api-error'?'جستجوی X API ناموفق: '+String(d.message||'خطای دسترسی یا اعتبار')
+    :d.status==='not-configured'?'Bearer Token در سرویس رادار تنظیم نشده است.'
+    :'در انتظار اولین درخواست؛ حساب‌ها در فهرست ردیابی رادار قرار دارند.';
+  if(accounts)accounts.innerHTML=(d.accounts||[]).map(function(a){
+    return '<div class="row"><div class="asset"><b>@'+esc(a.handle)+'</b><small>'+esc(a.name||'')+
+      ' · '+esc(a.group||'')+' · رصد رادار (نه Follow شخصی)</small></div>'+
+      '<div class="actions"><a class="action" target="_blank" rel="noopener" href="'+esc(a.url)+'">باز کردن X / Follow</a></div></div>';
+  }).join('')||'<div class="empty">فهرست اکانت‌ها هنوز دریافت نشده است.</div>';
+  if(posts)posts.innerHTML=(d.posts||[]).length?(d.posts||[]).map(function(p){
+    var contracts=p.contractMints||[];
+    return '<div class="row"><div class="asset"><b>@'+esc(p.handle)+
+      ' · '+(contracts.length?'🔎 اشاره به آدرس قرارداد':'💬 اشاره عمومی به میم‌کوین')+'</b>'+
+      '<small>'+new Date(p.createdAt).toLocaleString('fa-IR')+' · پسندیدن '+Number(p.likes||0)+'</small>'+
+      '<small>'+esc(p.text||'')+'</small>'+
+      (contracts.length?'<small>CA: '+esc(contracts.join(' · '))+'</small>':'')+
+      '</div><div class="actions"><a class="action" href="'+esc(p.url)+'" target="_blank" rel="noopener">پست اصلی در X</a></div></div>';
+  }).join(''):'<div class="empty">هنوز پست معتبر دریافت نشده است. نبود پست لزوماً به معنی سکوت اکانت‌ها نیست.</div>';
+}
+async function pollFamousXMonitor(){
+  if(famousXBusy)return;famousXBusy=true;
+  try{var d=await safeJson('/api/v1/famous-x-monitor');
+    if(d){famousXMonitor=d;if(activeTab==='social')renderActivePanel()}
+  }finally{famousXBusy=false}
+}
+
 function pumpXBadge(t){
   if(!pumpXMonitor||!Array.isArray(pumpXMonitor.watchlist)||!t)return '';
   var item=pumpXMonitor.watchlist.find(function(x){return x.mint===t.mint});
@@ -5907,6 +6015,7 @@ function renderActivePanel(){
     }else if(activeTab==='prelaunch'){
       safeUiRender('پیش‌لانچ',renderPrelaunch);
     }else if(activeTab==='social'){
+      safeUiRender('مشاهیر X',renderFamousXMonitor);
       safeUiRender('اکانت‌های پیش از پامپ',renderPumpXMonitor);
       safeUiRender('ترند اجتماعی',renderSocialTrends);
     }else if(activeTab==='wallets'){
@@ -6194,6 +6303,8 @@ window.addEventListener('error',function(e){
 window.radarRenderActivePanel=renderActivePanel;
 window.__radarMainStarted=true;
 loadAll();startLivePush();marketLiveTimer=setInterval(pollMarketLive,1000);setTimeout(pollMarketLive,350);setInterval(pollTopTraders,12000);setTimeout(pollTopTraders,2500);setInterval(pollVisibleDexPrices,1000);setTimeout(pollVisibleDexPrices,250);setInterval(pollPrelaunchLive,1000);setTimeout(pollPrelaunchLive,500);setInterval(loadAll,20000);
+setTimeout(pollFamousXMonitor,3500);
+setInterval(pollFamousXMonitor,60*60*1000);
 setTimeout(pollPumpXMonitor,6000);
 setInterval(pollPumpXMonitor,15*60*1000);
 </script>
@@ -6208,6 +6319,11 @@ createServer(async(req,res)=>{
       cache={at:0,data:null};marketLiveCache={at:0,data:null};exactDexPriceCache.clear();contractPriceCache.clear();prelaunchCache={at:0,data:null};pumpTraderIntelCache={at:0,data:null};solidProofIntelCache={at:0,data:null};trackedWalletCache={at:0,data:null};topTraderIntelCache={at:0,data:null};smartMoneyCache={at:0,data:null};convictionCache={at:0,data:null};
       res.writeHead(200,{'content-type':'application/json; charset=utf-8','cache-control':'no-store',...headers});
       return res.end(JSON.stringify({ok:true,clearedAt:new Date().toISOString()}));
+    }
+    if(url.pathname==='/api/v1/famous-x-monitor'){
+      const data=await buildFamousXMonitor();
+      res.writeHead(200,{'content-type':'application/json; charset=utf-8','cache-control':'no-store',...headers});
+      return res.end(JSON.stringify(data));
     }
     if(url.pathname==='/api/v1/pump-x-monitor'){
       const data=await buildPumpXMonitor();
