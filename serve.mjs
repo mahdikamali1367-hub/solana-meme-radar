@@ -14,6 +14,38 @@ const exactDexPriceCache=new Map();
 const EXACT_DEX_PRICE_CACHE_MS=650;
 const contractPriceCache=new Map();
 const CONTRACT_PRICE_CACHE_MS=700;
+const jupiterPriceCache=new Map();
+let jupiterLastFetchAt=0;
+let jupiterInFlight=null;
+const JUPITER_PRICE_CACHE_MS=20000;
+async function jupiterPrices(mints){
+  const now=Date.now(), ids=[...new Set((mints||[]).filter(m=>/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(m)))].slice(0,50);
+  const out=new Map();
+  for(const id of ids){
+    const h=jupiterPriceCache.get(id);
+    if(h&&now-h.at<JUPITER_PRICE_CACHE_MS&&h.data)out.set(id,h.data);
+  }
+  const missing=ids.filter(id=>!out.has(id));
+  if(!missing.length)return out;
+  // Keyless Jupiter is limited to 0.5 RPS; avoid a burst and
+  // never block the dashboard while another batch is in flight.
+  if(jupiterInFlight||now-jupiterLastFetchAt<2200)return out;
+  jupiterLastFetchAt=now;
+  const headers=process.env.JUPITER_API_KEY?{'x-api-key':process.env.JUPITER_API_KEY}:{};
+  jupiterInFlight=jfetch('https://api.jup.ag/price/v3?ids='+encodeURIComponent(missing.join(',')),{headers},8500);
+  try{
+    const response=await jupiterInFlight;
+    for(const id of missing){
+      const v=response?.[id];
+      if(num(v?.usdPrice)>0){
+        const result={priceUsd:num(v.usdPrice),liquidity:num(v.liquidity),blockId:v.blockId||null,source:'Jupiter Price V3'};
+        jupiterPriceCache.set(id,{at:Date.now(),data:result});
+        out.set(id,result);
+      }
+    }
+  }catch(e){}finally{jupiterInFlight=null}
+  return out;
+}
 
 
 let prelaunchCache={at:0,data:null};
@@ -1252,13 +1284,24 @@ async function contractPrice(mint){
   const hit=contractPriceCache.get(mint);
   if(hit&&Date.now()-hit.at<CONTRACT_PRICE_CACHE_MS)return hit.data;
 
-  const [dex,pump]=await Promise.all([
+  const [dex,pump,jupMap]=await Promise.all([
     exactDexPrice(mint).catch(()=>null),
-    pumpFunPrice(mint).catch(()=>null)
+    pumpFunPrice(mint).catch(()=>null),
+    jupiterPrices([mint]).catch(()=>new Map())
   ]);
+  const jup=jupMap.get(mint)||null;
 
-  const dp=num(dex?.priceUsd),pp=num(pump?.priceUsd);
+  const dp=num(dex?.priceUsd),pp=num(pump?.priceUsd),jp=num(jup?.priceUsd);
   let priceUsd=0,source='',status='single-source',deviationPct=null;
+  const jupiterDeviationPct=dp>0&&jp>0?Math.abs(dp-jp)/Math.min(dp,jp)*100:null;
+  // Do not publish a 'live' PnL against mutually incompatible independent quotes.
+  // Pump.fun reserves/market-cap estimates can diverge; a verified Jupiter/Dex
+  // disagreement is a stronger warning than Pump-only disagreement.
+  if(jupiterDeviationPct!==null&&jupiterDeviationPct>30){
+    return {ok:false,mint,priceUsd:null,status:'price-source-disagreement',
+      dexPriceUsd:dp,jupiterPriceUsd:jp,pumpPriceUsd:pp,
+      jupiterDeviationPct,observedAt:Date.now(),source:'DEXScreener vs Jupiter'};
+  }
 
   if(dp>0&&pp>0){
     deviationPct=Math.abs(dp-pp)/Math.min(dp,pp)*100;
@@ -1279,11 +1322,15 @@ async function contractPrice(mint){
     status='pump-fallback';
   }
 
+  if(jp>0&&(dp>0||!pp)){
+    priceUsd=jp;source='Jupiter Price V3';
+    status=dp>0?'confirmed-by-dex':'jupiter-only';
+  }
   if(!(priceUsd>0))return null;
 
   const data={
     ok:true,mint,priceUsd,
-    source,status,deviationPct,
+    source,status,deviationPct,jupiterDeviationPct,jupiterPriceUsd:jp||null,
     observedAt:Date.now(),
     pairAddress:String(dex?.pairAddress||''),
     dexId:String(dex?.dexId||''),
@@ -2205,13 +2252,29 @@ async function buildMarketLive(){
     if(!base.length)return {ok:true,generatedAt:new Date().toISOString(),tokens:[]};
     const preferredPairs=new Map(base.filter(t=>t.mint&&t.pairAddress).map(t=>[t.mint,t.pairAddress]));
     const pairs=await pairsForMany(base.map(t=>t.mint),preferredPairs);
+    const jp=new Map();
+    // Jupiter independent confirmation is batched; Dex pairs still supply
+    // volume and transaction metrics and are never silently switched.
+    for(let i=0;i<base.length;i+=50){
+      const p=await jupiterPrices(base.slice(i,i+50).map(t=>t.mint));
+      for(const [k,v] of p)jp.set(k,v);
+    }
     const rows=[];
     for(const t of base){
       const p=pairs.get(t.mint);if(!p)continue;
+      const j=jp.get(t.mint);
+      const dexPrice=num(p.priceUsd),jupPrice=num(j?.priceUsd);
+      const divergence=dexPrice>0&&jupPrice>0?Math.abs(dexPrice-jupPrice)/Math.min(dexPrice,jupPrice)*100:null;
+      if(divergence!==null&&divergence>30)continue;
+      const validatedPrice=jupPrice>0?jupPrice:dexPrice;
+      if(!(validatedPrice>0))continue;
       const buys5m=num(p.txns?.m5?.buys),sells5m=num(p.txns?.m5?.sells);
       const patch={
         mint:t.mint,
-        priceUsd:num(p.priceUsd),
+        priceUsd:validatedPrice,
+        jupiterPriceUsd:jupPrice||null,
+        dexPriceUsd:dexPrice||null,
+        priceValidationStatus:jupPrice>0?'confirmed-by-jupiter':'dex-only',
         marketCap:num(p.marketCap||p.fdv),
         liquidity:num(p.liquidity?.usd),
         volume5m:num(p.volume?.m5),volume1h:num(p.volume?.h1),volume6h:num(p.volume?.h6),volume24h:num(p.volume?.h24),
@@ -2224,7 +2287,7 @@ async function buildMarketLive(){
         pairAddress:p.pairAddress||'',
         quoteTokenAddress:p.quoteToken?.address||'',
         priceQuoteTrusted:true,
-        priceSource:'DEXScreener exact pair '+String(p.pairAddress||''),
+        priceSource:jupPrice>0?'Jupiter V3 validated against DEXScreener '+String(p.pairAddress||''):'DEXScreener exact pair '+String(p.pairAddress||''),
         priceObservedAt:Date.now()
       };
       var merged={...t,...patch};
@@ -5647,9 +5710,9 @@ createServer(async(req,res)=>{
         return res.end(JSON.stringify({ok:false,error:'invalid mint'}));
       }
       const px=await contractPrice(mint);
-      if(!px){
-        res.writeHead(404,{'content-type':'application/json; charset=utf-8','cache-control':'no-store',...headers});
-        return res.end(JSON.stringify({ok:false,error:'price not found'}));
+      if(!px||!px.ok){
+        res.writeHead(px?.status==='price-source-disagreement'?409:404,{'content-type':'application/json; charset=utf-8','cache-control':'no-store',...headers});
+        return res.end(JSON.stringify(px||{ok:false,error:'price not found'}));
       }
       res.writeHead(200,{'content-type':'application/json; charset=utf-8','cache-control':'no-store',...headers});
       return res.end(JSON.stringify(px));
