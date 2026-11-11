@@ -112,11 +112,9 @@ async function buildPumpXMonitor(){
   if(pumpXMonitorCache.data&&now-pumpXMonitorCache.at<PUMP_X_REFRESH_MS)return pumpXMonitorCache.data;
   if(pumpXMonitorInFlight)return pumpXMonitorInFlight;
   pumpXMonitorInFlight=(async()=>{
-    if(!process.env.X_BEARER_TOKEN){
-      return {ok:true,configured:false,status:'needs-x-bearer-token',generatedAt:new Date().toISOString(),
-        discoveredPumps:[],trackedAccounts:[],watchlist:[],
-        note:'Connect an X developer API bearer token. No X accounts or pump posts have been verified.'};
-    }
+    // Even without X authorization, still expose verified historical pump
+    // onset times and contract addresses from public market data.
+    const xConfigured=!!process.env.X_BEARER_TOKEN;
     const base=cache.data?.tokens||[];
     const gecko=await geckoHistoricalPumpCandidates();
     const historyCandidates=[...new Map(gecko.concat(base.filter(t=>t.pairAddress&&t.mint&&
@@ -133,13 +131,14 @@ async function buildPumpXMonitor(){
     for(const t of historyCandidates){
       const onset=await historicalPumpOnset(t);
       if(!onset)continue;
-      const posts=await queryXPostsForMint(t.mint,onset.onsetAt-24*3600000,onset.onsetAt);
+      const posts=xConfigured?
+        await queryXPostsForMint(t.mint,onset.onsetAt-24*3600000,onset.onsetAt):
+        {status:'not-configured',posts:[],partial:false};
       if(posts.status==='api-error')xDiagnostics.apiErrors++;
       if(posts.status==='full-archive-required')xDiagnostics.archivalAccessRequired++;
-      if(posts.status!=='ok')continue;
-      xDiagnostics.successfulQueries++;
+      if(posts.status==='ok')xDiagnostics.successfulQueries++;
       if(posts.partial)xDiagnostics.partialResults++;
-      const distinct=[...new Map(posts.posts.map(p=>[p.authorId,p])).values()];
+      const distinct=posts.status==='ok'?[...new Map(posts.posts.map(p=>[p.authorId,p])).values()]:[];
       for(const post of distinct){
         const a=pumpXAccountEvidence.get(post.authorId)||{authorId:post.authorId,handle:post.handle,
           calls:new Map(),updatedAt:now};
@@ -183,8 +182,8 @@ async function buildPumpXMonitor(){
         accounts:matching.map(p=>({handle:p.handle,authorId:p.authorId,postUrl:p.url,
           postAt:p.postedAt,historicalPumps:pumpXAccountEvidence.get(p.authorId)?.calls.size||0}))});
     }
-    return {ok:true,configured:true,
-      status:xDiagnostics.apiErrors?'x-api-errors':xDiagnostics.archivalAccessRequired?'archive-access-needed':'scanned',
+    return {ok:true,configured:xConfigured,
+      status:!xConfigured?'needs-x-bearer-token':xDiagnostics.apiErrors?'x-api-errors':xDiagnostics.archivalAccessRequired?'archive-access-needed':'scanned',
       xDiagnostics,generatedAt:new Date().toISOString(),
       samplesScanned:historyCandidates.length,discoveredPumps,trackedAccounts:tracked.map(a=>({
         authorId:a.authorId,handle:a.handle,documentedPumps:a.calls.size,
@@ -5334,7 +5333,7 @@ function renderPumpXMonitor(){
   var accounts=document.getElementById('pumpXAccounts');
   var history=document.getElementById('pumpXHistory');
   if(st)st.textContent=!d.configured
-    ?'X API فعال نیست؛ برای تشخیص واقعی نویسندگان پست‌های قبل از پامپ، X_BEARER_TOKEN روی سرور لازم است. هیچ اکانتی تأیید یا دنبال نشده.'
+    ?'قیمت و زمان پامپ از GeckoTerminal قابل بررسی است، ولی X API فعال نیست؛ برای شناسایی واقعی اکانت‌های معرفی‌کننده X_BEARER_TOKEN لازم است. هیچ اکانتی تأیید یا دنبال نشده.'
     :d.status==='waiting-for-first-token-scan'?'داده توکن‌ها هنوز بارگذاری نشده؛ اسکن تاریخی پس از دریافت توکن‌ها شروع می‌شود.'
     :'منبع کندل: GeckoTerminal · منبع پست: X API · '+(d.status==='x-api-errors'?'خطا در دسترسی X API؛ اعتبار کلید و سهمیه را بررسی کنید · ':d.status==='archive-access-needed'?'دسترسی به آرشیو قدیمی X موردنیاز است · ':'')+
       'پامپ‌های دارای شواهد: '+Number(d.discoveredPumps?.length||0)+
