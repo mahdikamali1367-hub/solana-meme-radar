@@ -3758,6 +3758,15 @@ html,body,.shell,.panel,.list{overflow-anchor:none}
   <button class="tab" data-tab="social">📣 ترند اجتماعی</button>
   <button class="tab" data-tab="wallets">🏆 کیف‌پول‌ها</button>
 </nav>
+<details class="accordion" id="sourcesHealthPanel">
+  <summary>🔌 وضعیت اتصال APIهای اصلی رادار — قیمت، هولدر، امنیت و شبکه اجتماعی</summary>
+  <div class="accordion-body">
+    <p class="muted" id="sourcesHealthStatus">در حال بررسی منبع‌های بازار...</p>
+    <div class="list" id="sourcesHealthList"></div>
+    <p class="muted" style="font-size:11px">وضعیت API هر پنج دقیقه بررسی می‌شود. خطای موقت یا سهمیه مصرف‌شده به معنی خرابی دائمی نیست. کلیدها نمایش داده نمی‌شوند.</p>
+    <div class="actions"><a class="action" href="/api/v1/sources-health" target="_blank" rel="noopener">مشاهده پاسخ عیب‌یابی API</a></div>
+  </div>
+</details>
 <section class="panel active" id="featuredPanel">
 <section class="top-dashboard">
   <details class="accordion highlight" open>
@@ -4132,6 +4141,36 @@ html,body,.shell,.panel,.list{overflow-anchor:none}
 })();
 </script>
 <script>
+
+var sourcesHealthData=null,sourcesHealthBusy=false;
+function renderSourcesHealth(){
+  var d=sourcesHealthData,st=document.getElementById('sourcesHealthStatus'),
+      out=document.getElementById('sourcesHealthList');
+  if(!st||!out)return;
+  if(!d){st.textContent='در انتظار اولین آزمایش منبع‌ها...';return}
+  var rows=d.rows||[],good=rows.filter(r=>r.status==='ok').length;
+  st.textContent='آزمایش زنده '+good+' از '+rows.length+' منبع · '+new Date(d.generatedAt).toLocaleString('fa-IR')+
+    ' · خطای درخواست یا سهمیه، مساوی با فقدان همیشگی سرویس نیست.';
+  var labels={ok:'✅ پاسخ معتبر',error:'⚠️ پاسخ ناموفق', 'missing-key':'🔑 کلید ندارد',
+    'configured-not-tested':'🟡 کلید دارد، API تست نشده', 'public-fallback':'👁 نسخه عمومی جایگزین',
+    'link-only':'🔗 فقط لینک وب'};
+  out.innerHTML=rows.map(function(r){
+    return '<div class="row"><div class="asset"><b>'+esc(r.name)+'</b><small>'+
+      esc(labels[r.status]||r.status)+
+      (r.reason?' · '+esc(r.reason):'')+
+      (r.requiredKey?' · متغیر اختیاری: '+esc(r.requiredKey):'')+
+      (Number.isFinite(r.latencyMs)?' · '+Number(r.latencyMs)+'ms':'')+
+      '</small></div></div>';
+  }).join('');
+}
+async function pollSourcesHealth(){
+  if(sourcesHealthBusy)return;sourcesHealthBusy=true;
+  try{
+    var d=await safeJson('/api/v1/sources-health');
+    if(d){sourcesHealthData=d;renderSourcesHealth()}
+  }finally{sourcesHealthBusy=false}
+}
+
 var TOTAL_HOLDERS_MIN=1000;
 var pumpXMonitor=null,pumpXBusy=false,famousXMonitor=null,famousXBusy=false;
 var tokens=[],smart=null,live=null,tracked=null,conviction=null,prelaunch=null,prelaunchLive=null,topTraders=null,activeTab='featured',signalFilters={short:'',medium:'',long:'',security:'',holders:'',bigbuyers:'',totalholders:'1000'};
@@ -6415,6 +6454,8 @@ window.addEventListener('error',function(e){
 window.radarRenderActivePanel=renderActivePanel;
 window.__radarMainStarted=true;
 loadAll();startLivePush();marketLiveTimer=setInterval(pollMarketLive,1000);setTimeout(pollMarketLive,350);setInterval(pollTopTraders,12000);setTimeout(pollTopTraders,2500);setInterval(pollVisibleDexPrices,1000);setTimeout(pollVisibleDexPrices,250);setInterval(pollPrelaunchLive,1000);setTimeout(pollPrelaunchLive,500);setInterval(loadAll,20000);
+setTimeout(pollSourcesHealth,1500);
+setInterval(pollSourcesHealth,5*60*1000);
 setTimeout(pollFamousXMonitor,3500);
 setInterval(pollFamousXMonitor,60*60*1000);
 setTimeout(pollPumpXMonitor,6000);
