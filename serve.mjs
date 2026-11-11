@@ -3539,6 +3539,10 @@ button,input,select,a.action{border:1px solid var(--line);background:#101d31;col
 .champion{background:linear-gradient(135deg,#102b27,#101f35);border:1px solid #34745e;border-radius:14px;padding:12px;margin-bottom:10px}.champion h2{font-size:15px;margin:0 0 6px}.champion .score{font-size:24px;font-weight:900;color:var(--good)}.champion-grid{display:grid;grid-template-columns:1.4fr repeat(4,.7fr) auto;gap:8px;align-items:center}.decision-banner{border-radius:11px;padding:10px 12px;margin-bottom:10px;font-weight:900;font-size:16px}.decision-buy{background:#123a2d;color:var(--good);border:1px solid #34745e}.decision-wait{background:#3b3317;color:var(--warn);border:1px solid #6d5d24}.decision-stop{background:#421a24;color:var(--bad);border:1px solid #743040}.beginner-note{font-size:11px;color:var(--muted);margin-top:4px;line-height:1.55}.whale-summary{display:grid;grid-template-columns:repeat(3,1fr);gap:7px;margin:7px 0 10px}.whale-stat{background:#101d31;border:1px solid var(--line);border-radius:10px;padding:9px}.whale-stat small{display:block;color:var(--muted);font-size:10px}.whale-stat b{display:block;margin-top:3px;font-size:14px}.alerts{display:grid;gap:6px;margin-bottom:9px}.alert{padding:8px 10px;border:1px solid #703343;background:#25151d;color:#ffb0bd;border-radius:10px;font-size:12px}
 .tabs{display:flex;gap:6px;overflow:auto;scrollbar-width:none;margin-bottom:10px}.tab{white-space:nowrap}.top-tabs{position:sticky;top:58px;z-index:18;background:rgba(7,16,29,.96);padding:8px 0 10px;margin-top:-2px;border-bottom:1px solid var(--line);backdrop-filter:blur(10px)}
 .tab.active{background:#193759;border-color:#3d709f;color:#c0e1ff}
+.tabs,.tab,.accordion>summary,.detail-btn,#refresh{pointer-events:auto!important;touch-action:manipulation}
+#radarUiAlert{display:none;background:#421a24;border:1px solid #743040;color:#ffb9c3;border-radius:10px;padding:9px 12px;margin-bottom:10px;font-size:12px}
+#radarUiAlert.visible{display:block}
+button:focus-visible,.accordion>summary:focus-visible{outline:2px solid #9bd4ff;outline-offset:2px}
 .toolbar{display:flex;gap:7px;flex-wrap:wrap;margin-bottom:10px}.toolbar input{flex:1;min-width:220px}.toolbar select{min-width:140px}.subfilters{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:7px;margin:8px 0 11px}.subfilters label{font-size:12px;color:var(--muted);font-weight:800}.subfilters select{width:100%;margin-top:4px;padding:8px}.social-actions{display:flex;gap:5px;flex-wrap:wrap;margin-top:5px}.social-actions a{font-size:11px;text-decoration:none;padding:5px 7px;border:1px solid var(--line);border-radius:8px;color:#b5ddff;background:#10243b}
 .accordion{background:var(--panel);border:1px solid var(--line);border-radius:12px;margin-bottom:9px;overflow:hidden}
 .accordion>summary{list-style:none;cursor:pointer;padding:14px 15px;font-weight:900;font-size:16px;display:flex;align-items:center;justify-content:space-between;gap:8px;user-select:none}
@@ -3567,6 +3571,7 @@ html,body,.shell,.panel,.list{overflow-anchor:none}
 </header>
 
 <main class="shell">
+<div id="radarUiAlert" role="alert"></div>
 <nav class="tabs top-tabs" id="tabs">
   <button class="tab active" data-tab="featured">🔥 پیشنهادها</button>
   <button class="tab" data-tab="whales">🐋 نهنگ‌ها</button>
@@ -3887,6 +3892,57 @@ html,body,.shell,.panel,.list{overflow-anchor:none}
   <div class="modal-body" id="detailBody"></div>
 </dialog>
 
+<script>
+/* Minimal independent navigation: functional even if the heavy market script fails. */
+(function(){
+  function showUiError(msg){
+    var el=document.getElementById('radarUiAlert');
+    if(el){el.textContent=msg;el.classList.add('visible')}
+  }
+  window.radarShowUiError=showUiError;
+  window.radarSwitchTab=function(name){
+    if(!/^(featured|whales|tokens|smart|prelaunch|social|wallets)$/.test(name))return;
+    var panel=document.getElementById(name+'Panel');
+    if(!panel)return;
+    document.querySelectorAll('#tabs .tab').forEach(function(btn){
+      var active=btn.getAttribute('data-tab')===name;
+      btn.classList.toggle('active',active);
+      btn.setAttribute('aria-selected',active?'true':'false');
+    });
+    document.querySelectorAll('.panel').forEach(function(item){
+      item.classList.toggle('active',item===panel);
+    });
+    window.activeTab=name;
+    if(typeof window.radarRenderActivePanel==='function'){
+      try{window.radarRenderActivePanel()}catch(err){
+        showUiError('خطای بارگذاری تب: '+String(err&&err.message||err));
+      }
+    }
+  };
+  document.addEventListener('click',function(ev){
+    var target=ev.target&&ev.target.closest?ev.target:null;
+    if(!target)return;
+    var tab=target.closest('#tabs [data-tab]');
+    if(tab){
+      ev.preventDefault();
+      ev.stopImmediatePropagation();
+      window.radarSwitchTab(tab.getAttribute('data-tab'));
+      return;
+    }
+  },true);
+  window.addEventListener('error',function(e){
+    showUiError('خطای رابط کاربری: '+String(e.message||'نامشخص')+' — تب‌ها همچنان قابل استفاده‌اند.');
+  });
+  window.addEventListener('unhandledrejection',function(e){
+    showUiError('خطای اتصال داده: '+String(e.reason&&e.reason.message||e.reason||'نامشخص').slice(0,180));
+  });
+  setTimeout(function(){
+    if(window.__radarMainStarted!==true){
+      showUiError('اسکریپت اصلی رادار اجرا نشده؛ تب‌ها قابل بازشدن هستند، اما داده‌ها باید دوباره بارگذاری شوند.');
+    }
+  },3500);
+})();
+</script>
 <script>
 var TOTAL_HOLDERS_MIN=1000;
 var pumpXMonitor=null,pumpXBusy=false;
@@ -6126,7 +6182,8 @@ function startLivePush(){
 }
 document.addEventListener('click',function(e){var d=e.target.closest('.detail-btn');if(!d)return;openDetail(d.getAttribute('data-mint')||'')});
 document.getElementById('exportSignalHistory').addEventListener('click',exportSignalAuditCsv);
-document.getElementById('tabs').addEventListener('click',function(e){var b=e.target.closest('[data-tab]');if(!b)return;activeTab=b.dataset.tab;document.querySelectorAll('.tab').forEach(function(x){x.classList.toggle('active',x===b)});document.querySelectorAll('.panel').forEach(function(x){x.classList.remove('active')});document.getElementById(activeTab+'Panel').classList.add('active');renderActivePanel()});
+// Tab navigation is delegated to the independent bootstrap above, so it cannot
+// be lost because of a later exception in the main data-loading script.
 document.addEventListener('change',function(e){var sfel=e.target.closest('.signal-filter');if(!sfel)return;signalFilters[sfel.dataset.filter]=sfel.value;document.querySelectorAll('.signal-filter[data-filter="'+sfel.dataset.filter+'"]').forEach(function(x){if(x!==sfel)x.value=sfel.value});renderChampion();renderFeatured();renderWhales();renderSmart();renderTokens();renderSocialTrends()});
 var mintLookupTimer=null;
 document.getElementById('search').addEventListener('input',function(e){
@@ -6147,6 +6204,8 @@ window.addEventListener('error',function(e){
   var u=document.getElementById('updated');
   if(u)u.textContent='خطای رابط: '+String(e.message||'JavaScript');
 });
+window.radarRenderActivePanel=renderActivePanel;
+window.__radarMainStarted=true;
 loadAll();startLivePush();marketLiveTimer=setInterval(pollMarketLive,1000);setTimeout(pollMarketLive,350);setInterval(pollTopTraders,12000);setTimeout(pollTopTraders,2500);setInterval(pollVisibleDexPrices,1000);setTimeout(pollVisibleDexPrices,250);setInterval(pollPrelaunchLive,1000);setTimeout(pollPrelaunchLive,500);setInterval(loadAll,20000);
 setTimeout(pollPumpXMonitor,6000);
 setInterval(pollPumpXMonitor,15*60*1000);
