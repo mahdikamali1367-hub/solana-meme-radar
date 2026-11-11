@@ -295,7 +295,7 @@ async function fetchTokenHolderCounts(mints){
   holderCountLastQuery=now;
   const headers=process.env.JUPITER_API_KEY?{'x-api-key':process.env.JUPITER_API_KEY}:{};
   try{
-    const rows=await jfetch('https://api.jup.ag/tokens/v2/search?query='+encodeURIComponent(missing.join(',')),{headers},10000);
+    const rows=await pacedJupiterFetch('https://api.jup.ag/tokens/v2/search?query='+encodeURIComponent(missing.join(',')),{headers},10000);
     for(const row of (Array.isArray(rows)?rows:[])){
       const mint=String(row?.id||row?.address||'');
       const count=Number(row?.holderCount);
@@ -320,7 +320,7 @@ async function jupiterPrices(mints){
   if(jupiterInFlight||now-jupiterLastFetchAt<2200)return out;
   jupiterLastFetchAt=now;
   const headers=process.env.JUPITER_API_KEY?{'x-api-key':process.env.JUPITER_API_KEY}:{};
-  jupiterInFlight=jfetch('https://api.jup.ag/price/v3?ids='+encodeURIComponent(missing.join(',')),{headers},8500);
+  jupiterInFlight=pacedJupiterFetch('https://api.jup.ag/price/v3?ids='+encodeURIComponent(missing.join(',')),{headers},8500);
   try{
     const response=await jupiterInFlight;
     for(const id of missing){
@@ -511,6 +511,20 @@ const clamp=(v,a=0,b=100)=>Math.max(a,Math.min(b,v));
 async function jfetch(url,opt={},timeout=10000){
   const c=new AbortController(); const t=setTimeout(()=>c.abort(),timeout);
   try{const r=await fetch(url,{...opt,signal:c.signal});if(!r.ok)throw new Error(`${r.status} ${r.statusText}`);return await r.json()}finally{clearTimeout(t)}
+}
+// Share a strict Jupiter request budget across token metadata, prices,
+// quote-only routing and API diagnostics. Keyless is 0.5 RPS, free key 1 RPS.
+let jupiterPaceQueue=Promise.resolve(),jupiterNextAllowedAt=0;
+function pacedJupiterFetch(url,opt={},timeout=10000){
+  const minInterval=process.env.JUPITER_API_KEY?1100:2200;
+  const run=jupiterPaceQueue.then(async()=>{
+    const wait=Math.max(0,jupiterNextAllowedAt-Date.now());
+    if(wait>0)await sleep(wait);
+    jupiterNextAllowedAt=Date.now()+minInterval;
+    return jfetch(url,opt,timeout);
+  });
+  jupiterPaceQueue=run.catch(()=>{});
+  return run;
 }
 async function rpc(method,params){
   let last;
@@ -1623,7 +1637,8 @@ async function contractPrice(mint){
   const dp=num(dex?.priceUsd),pp=num(pump?.priceUsd),jp=num(jup?.priceUsd);
   // Only fetch additional providers when Jupiter could not validate the DEX
   // price, or when no price is available at all.
-  const gecko=jp>0?null:await geckoTokenPrice(mint);
+  // Never delay an available DEX/Jupiter price while a slow public fallback responds.
+  const gecko=jp>0||dp>0?null:await geckoTokenPrice(mint);
   const gp=num(gecko?.priceUsd);
   const birdeye=dp<=0&&pp<=0&&jp<=0&&gp<=0?await birdeyeTokenPrice(mint):null;
   const bp=num(birdeye?.priceUsd);
@@ -2259,7 +2274,7 @@ async function externalSecurityAudit(t){
     const query='?inputMint='+encodeURIComponent(mint)+'&outputMint='+encodeURIComponent(WSOL_MINT)+'&amount='+units;
     const jh=process.env.JUPITER_API_KEY?{'x-api-key':process.env.JUPITER_API_KEY}:{};
     let quote=null;
-    try{quote=await jfetch('https://api.jup.ag/swap/v2/order'+query,{headers:jh},9000)}catch{}
+    try{quote=await pacedJupiterFetch('https://api.jup.ag/swap/v2/order'+query,{headers:jh},9000)}catch{}
     if(quote&&(num(quote.outAmount)>0||num(quote.outputAmountResult)>0)){
       const impactRaw=Number(quote.priceImpactPct);
       const hasImpact=quote.priceImpactPct!=null&&Number.isFinite(impactRaw);
@@ -3660,8 +3675,8 @@ async function sourcesHealth(){
     const tasks=[
       ['dexscreener','DEXScreener',()=>jfetch('https://api.dexscreener.com/tokens/v1/solana/'+mint,{},7000).then(d=>Array.isArray(d)?{count:d.length}:Promise.reject(Error('shape')))],
       ['geckoterminal','GeckoTerminal',()=>jfetch('https://api.geckoterminal.com/api/v2/networks/solana/new_pools?page=1',{headers:{accept:'application/json;version=20230203'}},7000).then(d=>Array.isArray(d?.data)?{count:d.data.length}:Promise.reject(Error('shape')))],
-      ['jupiter','Jupiter Price',()=>jfetch('https://api.jup.ag/price/v3?ids='+mint,{headers:jh},7000).then(d=>num(d?.[mint]?.usdPrice)>0?{priceAvailable:true}:Promise.reject(Error('price missing')))],
-      ['jupiterTokens','Jupiter Tokens',()=>jfetch('https://api.jup.ag/tokens/v2/search?query='+mint,{headers:jh},7000).then(d=>Array.isArray(d)?{holdersAvailable:d.some(t=>t.id===mint&&Number.isInteger(t.holderCount))}:Promise.reject(Error('shape')))],
+      ['jupiter','Jupiter Price',()=>pacedJupiterFetch('https://api.jup.ag/price/v3?ids='+mint,{headers:jh},7000).then(d=>num(d?.[mint]?.usdPrice)>0?{priceAvailable:true}:Promise.reject(Error('price missing')))],
+      ['jupiterTokens','Jupiter Tokens',()=>pacedJupiterFetch('https://api.jup.ag/tokens/v2/search?query='+mint,{headers:jh},7000).then(d=>Array.isArray(d)?{holdersAvailable:d.some(t=>t.id===mint&&Number.isInteger(t.holderCount))}:Promise.reject(Error('shape')))],
       ['rpc','Solana RPC',()=>rpc('getSlot',[]).then(d=>Number.isFinite(d?.result)&&!d.error?{slotReturned:true}:Promise.reject(Error('RPC error')))],
       ['rugcheck','RugCheck',()=>jfetch('https://api.rugcheck.xyz/v1/tokens/'+mint+'/report/summary',{},7000).then(d=>d&&typeof d==='object'&&!d.error?{responseReceived:true}:Promise.reject(Error('shape')))],
       ['goplus','GoPlus',()=>jfetch('https://api.gopluslabs.io/api/v1/solana/token_security?contract_addresses='+mint,
