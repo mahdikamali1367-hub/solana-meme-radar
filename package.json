@@ -1,8 +1,13 @@
 {
-  "name":"solana-meme-radar",
-  "version":"2.1.0",
-  "private":true,
-  "type":"module",
-  "scripts":{"start":"node serve.mjs","check":"node --check serve.mjs"},
-  "engines":{"node":">=18"}
+  "name": "solana-meme-radar",
+  "version": "2.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node serve.mjs",
+    "check": "node --check serve.mjs && node check-client.mjs"
+  },
+  "engines": {
+    "node": ">=18"
+  }
 }
