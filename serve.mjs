@@ -18,6 +18,34 @@ const jupiterPriceCache=new Map();
 let jupiterLastFetchAt=0;
 let jupiterInFlight=null;
 const JUPITER_PRICE_CACHE_MS=20000;
+const TOTAL_HOLDERS_MIN=1000;
+const tokenHolderCountCache=new Map();
+const TOKEN_HOLDER_COUNT_CACHE_MS=2*60*1000;
+let holderCountLastQuery=0;
+async function fetchTokenHolderCounts(mints){
+  const ids=[...new Set((mints||[]).filter(m=>/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(m)))].slice(0,100);
+  const now=Date.now(),out=new Map(),missing=[];
+  for(const mint of ids){
+    const hit=tokenHolderCountCache.get(mint);
+    if(hit&&now-hit.at<TOKEN_HOLDER_COUNT_CACHE_MS){
+      if(Number.isInteger(hit.count)&&hit.count>=0)out.set(mint,hit.count);
+    }else missing.push(mint);
+  }
+  if(!missing.length||now-holderCountLastQuery<2200)return out;
+  holderCountLastQuery=now;
+  const headers=process.env.JUPITER_API_KEY?{'x-api-key':process.env.JUPITER_API_KEY}:{};
+  try{
+    const rows=await jfetch('https://api.jup.ag/tokens/v2/search?query='+encodeURIComponent(missing.join(',')),{headers},10000);
+    for(const row of (Array.isArray(rows)?rows:[])){
+      const mint=String(row?.id||row?.address||'');
+      const count=Number(row?.holderCount);
+      if(!ids.includes(mint)||!Number.isInteger(count)||count<0)continue;
+      tokenHolderCountCache.set(mint,{at:Date.now(),count});
+      out.set(mint,count);
+    }
+  }catch{}
+  return out;
+}
 async function jupiterPrices(mints){
   const now=Date.now(), ids=[...new Set((mints||[]).filter(m=>/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(m)))].slice(0,50);
   const out=new Map();
@@ -2137,7 +2165,7 @@ function verdict(t){
   const sec=assessSecurity(t);
   t.security.tier=sec.tier;
   const early=t.ageMinutes<=20&&t.marketCap>=12000&&t.marketCap<=250000&&t.volume5m>=5000&&t.txns5m>=50;
-  const strong=early&&sec.maxOk&&t.preSignalGuard?.status==='CONFIRMED'&&t.trend.score>=55&&t.buys5m>t.sells5m;
+  const strong=early&&t.totalHolderCount!=null&&t.totalHolderCount>=TOTAL_HOLDERS_MIN&&sec.maxOk&&t.preSignalGuard?.status==='CONFIRMED'&&t.trend.score>=55&&t.buys5m>t.sells5m;
   if(strong)return 'STRONG WATCH';
   if(sec.tier==='REJECT')return 'SKIP';
   if(sec.tier==='MAX SECURITY'||sec.tier==='HIGH')return t.trend.score>=35?'WATCH':'LOW SIGNAL';
@@ -2195,6 +2223,15 @@ async function buildFresh(){
     t.signals=multiHorizonSignals(t);
     t.verdict=verdict(t); out.push(t); await sleep(55);
   }
+  // Holder count is independently sourced from Jupiter Token API. Missing data
+  // is UNKNOWN and must not be fabricated from the top 10 or tracked wallets.
+  const allHolderCounts=await fetchTokenHolderCounts(out.map(t=>t.mint));
+  for(const t of out){
+    const hc=allHolderCounts.get(t.mint);
+    t.totalHolderCount=Number.isInteger(hc)?hc:null;
+    t.totalHolderCountSource=Number.isInteger(hc)?'Jupiter Token API V2':'unavailable';
+    t.verdict=verdict(t);
+  }
   const pre=[...out].sort((a,b)=>b.trend.score-a.trend.score).slice(0,10);
   for(let i=0;i<pre.length;i++){
     const t=pre[i];
@@ -2234,7 +2271,7 @@ async function buildFresh(){
     orderFlowPolicy:{buyerPower:'buy transaction count / total buy+sell transactions; not dollar buy volume',strongBuyer:'5m >=55% and 1h >=51% when available',volumeQuality:'absolute volume + tx count + volume/liquidity sanity check'},
     knowledgeEngine:{marketQuality:'transparency + liquidity + data coverage',chartDiscipline:'trend + FOMO + pump/dump guard',academy:'automated Solana RPC + Token-2022 extension audit + RugCheck full/summary + Jupiter sell-route quote + DexScreener sell evidence; unavailable evidence stays UNKNOWN'},
     ageBuckets:{fresh:'0-24h',day:'24h-7d',week:'7d-30d discovery horizon'},
-    entryExitPolicy:{entry:'buyer power > seller power + holder policy pass + no detected bot-wash; no minimum buyer USD threshold; DEXScreener momentum is advisory/ranking only; critical safety/live-exit overrides remain',exit:'live exit/whale sell/seller dominance/Trust Guard block; price invalidation is a risk reference, not guaranteed execution'},
+    entryExitPolicy:{entry:'At least 1000 verified token holders + buyer power > seller power + holder distribution policy + no bot-wash + healthy momentum/volume; unknown holder counts block ENTRY',exit:'live exit/whale sell/seller dominance/Trust Guard block; price invalidation is a risk reference, not guaranteed execution'},
     trustGuard:{strongSignalRequires:'2+ holder snapshots, 2 consecutive good scans, >=45 seconds stable confirmation, buyer strength, healthy volume, no holder-outflow risk',downgrade:'holder movement, seller dominance, whale/tracked exits or pump cooldown immediately remove strong status'},
     signalWindows:{short:'5m-1h',medium:'1h-6h',long:'6h-24h',securityGate:'HIGH/MAX requires zero manual, zero unknown and zero failed automated security checks; unknown evidence cannot receive strong approval'},
     disclaimer:'قانون هولدرها: هولدر شماره 1 باید کمتر از 10% و هرکدام از هولدرهای شماره 2 تا 10 باید کمتر از 5% داشته باشند. مجموع Top10 فقط جهت اطلاع نمایش داده می‌شود و شرط رد نیست. Organic Activity یک تخمین ضدربات/ضدواش است. هیچ فیلتر آن‌چین کلاهبرداری را 100% رد نمی‌کند.'};
@@ -3965,6 +4002,7 @@ function bucketScore(t,bucket){
   score=Math.max(0,Math.min(100,Math.round(score)));if(trustGuard(t).status==='WAIT'||t.flow?.volumeLabel!=='STRONG'||tradePlan(t).status!=='ENTRY')score=Math.min(score,74);return score;
 }
 function bucketSignalLabel(score,t){
+  if(t&&!(Number.isInteger(t.totalHolderCount)&&t.totalHolderCount>=1000))return 'حداقل ۱۰۰۰ هولدر تأیید نشده / ورود نکن';
   if(t&&!holderPolicyOk(t))return 'رد هولدر / ورود نکن';
   if(t&&trustGuard(t).status==='BLOCK')return 'ریسک خروج / ورود نکن';
   if(t&&tradePlan(t).status==='EXIT')return 'خروج / ورود نکن';
@@ -3977,6 +4015,7 @@ function bucketSignalLabel(score,t){
   return 'ضعیف';
 }
 function bucketSignalClass(score,t){
+  if(t&&!(Number.isInteger(t.totalHolderCount)&&t.totalHolderCount>=1000))return 'bad';
   if(t&&!holderPolicyOk(t))return 'bad';
   if(t&&t.securityGate?.blocked)return 'bad';
   return score>=75?'good':score>=50?'mid':'bad';
@@ -4173,6 +4212,9 @@ function entryQualityGate(t){
   var botBlocked=act.label==='BOT RISK'||
     (act.flags||[]).some(function(x){return /wash محتمل|ربات|فرکانس بسیار بالا/i.test(String(x))});
   if(botBlocked)reasons.push('ریسک Bot/Wash بالا تشخیص داده شده');
+  var totalHolders=Number(t.totalHolderCount);
+  var holdersVerified=Number.isInteger(t.totalHolderCount)&&totalHolders>=TOTAL_HOLDERS_MIN;
+  if(!holdersVerified)reasons.push(t.totalHolderCount==null?'تعداد کل هولدرها نامشخص؛ حداقل ۱۰۰۰ قابل تأیید نیست':'تعداد کل هولدرها کمتر از ۱۰۰۰ است');
   // Entry is withheld on a falling 5-minute candle, thin liquidity,
   // exhausted pump or weak organic transaction participation.
   var buys=Number(t.buys5m||0),sells=Number(t.sells5m||0);
@@ -4189,8 +4231,8 @@ function entryQualityGate(t){
   var buyer100Ok=buyers100.length>=1;
 
   return {
-    ok:buyerDominant&&!botBlocked&&!priceRisk,
-    buyerDominant,botBlocked,priceRisk,buyer100Ok,
+    ok:buyerDominant&&!botBlocked&&!priceRisk&&holdersVerified,
+    buyerDominant,botBlocked,priceRisk,holdersVerified,totalHolders:t.totalHolderCount,minimumTotalHolders:TOTAL_HOLDERS_MIN,buyer100Ok,
     buyers100Count:buyers100.length,
     buyers100Usd:buyers100.reduce(function(a,x){return a+Number(x.buyUsd||0)},0),
     momentum,
@@ -4306,7 +4348,7 @@ function tradePlan(t){
     status:'ENTRY',confidence,
     entry:p,entryLow,entryHigh,
     stopLoss,takeProfit1,takeProfit2,takeProfit3,
-    reason:(safe.complete?'امنیت ضد Rug کامل':'هسته امنیت پاس؛ بعضی منابع تکمیلی هنوز نامشخص')+' · هولدر #1 زیر 10% · هولدرهای #2 تا #10 هرکدام زیر 5% · قدرت خریدار '+buyerPower+'% در برابر فروشنده '+sellerPower+'%',
+    reason:(safe.complete?'امنیت ضد Rug کامل':'هسته امنیت پاس؛ بعضی منابع تکمیلی هنوز نامشخص')+' · حداقل ۱۰۰۰ هولدر تأییدشده · هولدر #1 زیر 10% · هولدرهای #2 تا #10 هرکدام زیر 5% · قدرت خریدار '+buyerPower+'% در برابر فروشنده '+sellerPower+'%',
     riskPct:riskPct*100,buyerPower,sellerPower,edge:buyerPower-sellerPower,quality:q,safety:safe
   };
 }
@@ -5759,6 +5801,9 @@ createServer(async(req,res)=>{
       };
       t.flow=flowQuality(t);
       const sec=await security(mint);t.security=sec;
+      const holderCounts=await fetchTokenHolderCounts([mint]);
+      t.totalHolderCount=holderCounts.has(mint)?holderCounts.get(mint):null;
+      t.totalHolderCountSource=holderCounts.has(mint)?'Jupiter Token API V2':'unavailable';
       t.activity=activityScore(t);t.trend={score:0,reasons:[]};t.socialHeat={score:0,label:'LOW',reasons:[]};
       t.marketQuality=marketQualityScore(t);t.chart=chartDiscipline(t);t.externalSecurity=await externalSecurityAudit(t);
       t.academy=academyGuard(t);t.holderBehavior=holderBehaviorAudit(t);t.preSignalGuard=preSignalConfirmation(t);
