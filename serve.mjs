@@ -3792,6 +3792,7 @@ function rememberTokenRadar(t){
       introducedAt:new Date().toISOString(),
       introducedPrice:Number(currentPriceForMint(t.mint)||0)||null,
       entrySignalAtIntroduction:tradePlan(t).status==='ENTRY',
+      historicalClassification:'DISCOVERY_TRACKING',
       introducedSecurity:t.security?.tier||'',
       introducedScore:bucketScore(t,ageBucket(t)),
       dexUrl:t.dexUrl||''
@@ -3899,9 +3900,18 @@ function rememberRecommendation(t,score){
       name:t.name||'',
       symbol:t.symbol||'',
       introducedAt:new Date().toISOString(),
-      introducedPrice:Number(t.priceUsd||0)||null,
+      introducedPrice:Number(currentPriceForMint(t.mint)||0)||null,
       introducedScore:Number(score||0),
       introducedSecurity:t.security?.tier||'',
+      strategyVersion:'confirmed-entry-v1',
+      entrySnapshot:{
+        holders:t.totalHolderCount,liquidity:t.liquidity,marketCap:t.marketCap,
+        volume5m:t.volume5m,txns5m:t.txns5m,buys5m:t.buys5m,sells5m:t.sells5m,
+        change5m:t.priceChange5m,change1h:t.priceChange1h,
+        buyerPower:t.flow?.buyerPower,activity:t.activity?.label,
+        security:t.security?.tier,confirmation:t.preSignalGuard?.status,
+        socialHeat:t.socialHeat?.score
+      },
       dexUrl:t.dexUrl||''
     });
     saveRecommendationHistory();
@@ -4345,6 +4355,34 @@ function tradePlan(t){
     };
   }
 
+  // A single bullish snapshot often precedes a reversal. For new entry calls,
+  // require independent on-chain holder stability and consecutive scan evidence.
+  // Watch candidates still remain visible without pretending they are buy signals.
+  var confirmation=t.preSignalGuard||{},guard=trustGuard(t);
+  if(confirmation.status!=='CONFIRMED'||guard.status!=='CONFIRMED'){
+    return {
+      status:'WAIT',entry:null,entryLow:null,entryHigh:null,
+      stopLoss,takeProfit1,takeProfit2,takeProfit3,
+      reason:'منتظر تأیید حداقل دو اسکن متوالی، ۴۵ ثانیه پایداری و ثبات هولدرها',
+      riskPct:riskPct*100,buyerPower,sellerPower,quality:q,safety:safe,
+      confirmationStatus:confirmation.status||'UNKNOWN'
+    };
+  }
+  // Prefer early, sustained momentum, not already-extended or collapsing candles.
+  // These are initial safeguards, NOT thresholds learned from the 500 historical tokens.
+  if(Number(t.priceChange5m)<1||Number(t.priceChange5m)>8||
+     Number(t.priceChange1h)<1||Number(t.priceChange1h)>22||
+     Number(t.liquidity||0)<40000||
+     Number(t.volume5m||0)<5000||
+     Number(t.txns5m||0)<35||
+     (Number(t.buys5m||0)+1)/(Number(t.sells5m||0)+1)<1.4){
+    return {
+      status:'WAIT',entry:null,entryLow:null,entryHigh:null,
+      stopLoss,takeProfit1,takeProfit2,takeProfit3,
+      reason:'مومنتوم پایدار یا نقدینگی/حجم کافی برای ورود محافظه‌کارانه تأیید نشده',
+      riskPct:riskPct*100,buyerPower,sellerPower,quality:q,safety:safe
+    };
+  }
   var momScore=Number(q.momentum?.score||0);
   var confidence='EARLY';
   if(buyerPower>=60&&q.buyer100Ok&&momScore>=65)confidence='HIGH';
@@ -4502,7 +4540,7 @@ function featuredRows(){
   // Add/update every current valid recommendation in the sticky list.
   fresh.forEach(function(x){
     stickyFeatured.set(x.token.mint,x);
-    if(tradePlan(x.token).status==='ENTRY')rememberRecommendation(x.token,x.score);
+    if(tradePlan(x.token).status==='ENTRY'&&currentPriceForMint(x.token.mint)>0)rememberRecommendation(x.token,x.score);
   });
 
   // Refresh sticky rows from current live token data when available.
