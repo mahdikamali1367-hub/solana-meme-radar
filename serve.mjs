@@ -2388,7 +2388,7 @@ async function buildUserTopTraderIntel(){
   const mintAgg=new Map();
   for(const row of scans){
     if(!row.rpcOk)continue;
-    for(const [mint,amount] of row.balances.entries(){
+    for(const [mint,amount] of row.balances.entries()){
       if(!mint||amount<=0||STABLE_MINTS.has(mint)||mint===WSOL_MINT)continue;
       const a=mintAgg.get(mint)||{mint,holders:[],holderCount:0,totalAmount:0};
       a.holders.push({name:row.w.name,address:row.w.address,amount});
