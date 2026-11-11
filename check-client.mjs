@@ -88,4 +88,41 @@ for(let i=0;i<sections.length;i++){
 }
 console.log('Seven card catalogs, dedicated content pages, and return controls: PASS');
 
+
+assert(rendered.includes('id="radarSpotlight"')&&
+       rendered.includes('id="spotlightSocialWhale"')&&rendered.includes('id="spotlightPrePump"'),
+       'Special feature cards must be visible at the top of all tabs');
+assert(rendered.indexOf('id="radarSpotlight"')<rendered.indexOf('id="tabs"'),
+       'Hero spotlight must appear before the navigation');
+assert.equal((rendered.match(/class="nav-icon"/g)||[]).length,7,
+       'All main and advanced tabs require their own icon');
+assert(rendered.includes('font-size:15px')&&rendered.includes('.radar-page-card-name{font-size:14px}'),
+       'Readability improvements must apply to body and subsection cards');
+const ui=rendered.slice(rendered.indexOf('function spotlightSocialWhaleCandidates('),
+  rendered.indexOf('function renderAll(){'));
+const pureUi=ui.slice(0,ui.indexOf('function renderTopSpotlight(){'));
+const selection=new Function(pureUi+'return {spotlightSocialWhaleCandidates,spotlightVerifiedPrePump};')();
+const aToken={mint:'mint-1',symbol:'GOOD',socialHeat:{score:75},security:{tier:'HIGH',holderPolicyPassed:true}};
+const risky={mint:'mint-2',symbol:'RISK',socialHeat:{score:97},security:{tier:'REJECT'}};
+const noSocial={mint:'mint-3',symbol:'QUIET',socialHeat:{score:10},security:{tier:'HIGH'}};
+const w=mint=>mint==='mint-1'?{count:2,usd:15000}:{count:0,usd:0};
+assert.deepEqual(selection.spotlightSocialWhaleCandidates([aToken,risky,noSocial],w)
+  .map(x=>x.token.mint),['mint-1'],
+  'Only tokens with both social evidence and whale buys may be featured');
+const onset=Date.UTC(2026,10,11,12,0,0);
+const post=(at,id)=>({handle:'verifiedAccount',postAt:at,
+  postUrl:'https://x.com/verifiedAccount/status/'+id});
+const historical=selection.spotlightVerifiedPrePump([
+  {mint:'mint-1',symbol:'PUMP',onsetAt:onset,growth1hPct:55,accounts:[
+    post(onset-3600000,'12345'),post(onset+60000,'12346'),
+    post(onset-25*3600000,'12347'),{postAt:onset-50000,postUrl:'https://example.com/fake'}]},
+  {mint:'mint-2',symbol:'NO-EVIDENCE',onsetAt:onset,accounts:[post(onset+1000,'12348')]}
+]);
+assert.equal(historical.length,1,'Future or unverified posts must not become historical proof');
+assert.equal(historical[0].evidence.length,1,
+  'Only timestamped original X posts inside the 24h pre-pump window count');
+assert.equal(historical[0].evidence[0].postUrl,
+  'https://x.com/verifiedAccount/status/12345');
+console.log('Top spotlight, 7 nav icons, joint social/whale filter and verified pre-pump timing: PASS');
+
 console.log('Rendered scripts + responsive grouped navigation + navigation state: PASS');
