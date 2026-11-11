@@ -3382,6 +3382,7 @@ html,body,.shell,.panel,.list{overflow-anchor:none}
 <label>میان‌مدت<select class="signal-filter" data-filter="medium"><option value="">همه</option><option value="STRONG">قوی</option><option value="POSITIVE">مثبت</option><option value="NEUTRAL">خنثی</option><option value="WAIT_DATA">داده ناکافی</option><option value="AVOID">ورود نکن</option><option value="BLOCKED">مسدود امنیتی</option></select></label>
 <label>بلندمدت<select class="signal-filter" data-filter="long"><option value="">همه</option><option value="STRONG">قوی</option><option value="POSITIVE">مثبت</option><option value="NEUTRAL">خنثی</option><option value="WAIT_DATA">داده ناکافی</option><option value="AVOID">ورود نکن</option><option value="BLOCKED">مسدود امنیتی</option></select></label>
 <label>امنیت<select class="signal-filter" data-filter="security"><option value="">همه</option><option value="MAX SECURITY">خیلی بالا</option><option value="HIGH">بالا</option><option value="REVIEW">نیاز به بررسی</option><option value="REJECT">رد</option></select></label>
+<label>تعداد کل هولدرهای توکن<select class="signal-filter" data-filter="totalholders"><option value="1000" selected>حداقل ۱۰۰۰ هولدر (پیش‌فرض)</option><option value="">همه (فقط مشاهده، بدون مجوز ورود)</option><option value="2000">حداقل ۲۰۰۰ هولدر</option><option value="5000">حداقل ۵۰۰۰ هولدر</option></select></label>
 </div><div class="list" id="featuredList"></div></div>
   </details>
 <div class="featured-only-secondary">
@@ -3454,6 +3455,7 @@ html,body,.shell,.panel,.list{overflow-anchor:none}
 <label>میان‌مدت<select class="signal-filter" data-filter="medium"><option value="">همه</option><option value="STRONG">قوی</option><option value="POSITIVE">مثبت</option><option value="NEUTRAL">خنثی</option><option value="WAIT_DATA">داده ناکافی</option><option value="AVOID">ورود نکن</option><option value="BLOCKED">مسدود امنیتی</option></select></label>
 <label>بلندمدت<select class="signal-filter" data-filter="long"><option value="">همه</option><option value="STRONG">قوی</option><option value="POSITIVE">مثبت</option><option value="NEUTRAL">خنثی</option><option value="WAIT_DATA">داده ناکافی</option><option value="AVOID">ورود نکن</option><option value="BLOCKED">مسدود امنیتی</option></select></label>
 <label>امنیت<select class="signal-filter" data-filter="security"><option value="">همه</option><option value="MAX SECURITY">خیلی بالا</option><option value="HIGH">بالا</option><option value="REVIEW">نیاز به بررسی</option><option value="REJECT">رد</option></select></label>
+<label>تعداد کل هولدرهای توکن<select class="signal-filter" data-filter="totalholders"><option value="1000" selected>حداقل ۱۰۰۰ هولدر (پیش‌فرض)</option><option value="">همه (فقط مشاهده، بدون مجوز ورود)</option><option value="2000">حداقل ۲۰۰۰ هولدر</option><option value="5000">حداقل ۵۰۰۰ هولدر</option></select></label>
 </div><div class="list" id="whaleList"></div></div>
   </details>
 </section>
@@ -3466,6 +3468,7 @@ html,body,.shell,.panel,.list{overflow-anchor:none}
 <label>میان‌مدت<select class="signal-filter" data-filter="medium"><option value="">همه</option><option value="STRONG">قوی</option><option value="POSITIVE">مثبت</option><option value="NEUTRAL">خنثی</option><option value="WAIT_DATA">داده ناکافی</option><option value="AVOID">ورود نکن</option><option value="BLOCKED">مسدود امنیتی</option></select></label>
 <label>بلندمدت<select class="signal-filter" data-filter="long"><option value="">همه</option><option value="STRONG">قوی</option><option value="POSITIVE">مثبت</option><option value="NEUTRAL">خنثی</option><option value="WAIT_DATA">داده ناکافی</option><option value="AVOID">ورود نکن</option><option value="BLOCKED">مسدود امنیتی</option></select></label>
 <label>امنیت<select class="signal-filter" data-filter="security"><option value="">همه</option><option value="MAX SECURITY">خیلی بالا</option><option value="HIGH">بالا</option><option value="REVIEW">نیاز به بررسی</option><option value="REJECT">رد</option></select></label>
+<label>تعداد کل هولدرهای توکن<select class="signal-filter" data-filter="totalholders"><option value="1000" selected>حداقل ۱۰۰۰ هولدر (پیش‌فرض)</option><option value="">همه (فقط مشاهده، بدون مجوز ورود)</option><option value="2000">حداقل ۲۰۰۰ هولدر</option><option value="5000">حداقل ۵۰۰۰ هولدر</option></select></label>
 </div><div class="list" id="smartList"></div></div>
   </details>
 </section>
@@ -3619,6 +3622,7 @@ html,body,.shell,.panel,.list{overflow-anchor:none}
 <label>میان‌مدت<select class="signal-filter" data-filter="medium"><option value="">همه</option><option value="STRONG">قوی</option><option value="POSITIVE">مثبت</option><option value="NEUTRAL">خنثی</option><option value="WAIT_DATA">داده ناکافی</option><option value="AVOID">ورود نکن</option><option value="BLOCKED">مسدود امنیتی</option></select></label>
 <label>بلندمدت<select class="signal-filter" data-filter="long"><option value="">همه</option><option value="STRONG">قوی</option><option value="POSITIVE">مثبت</option><option value="NEUTRAL">خنثی</option><option value="WAIT_DATA">داده ناکافی</option><option value="AVOID">ورود نکن</option><option value="BLOCKED">مسدود امنیتی</option></select></label>
 <label>امنیت<select class="signal-filter" data-filter="security"><option value="">همه</option><option value="MAX SECURITY">خیلی بالا</option><option value="HIGH">بالا</option><option value="REVIEW">نیاز به بررسی</option><option value="REJECT">رد</option></select></label>
+<label>تعداد کل هولدرهای توکن<select class="signal-filter" data-filter="totalholders"><option value="1000" selected>حداقل ۱۰۰۰ هولدر (پیش‌فرض)</option><option value="">همه (فقط مشاهده، بدون مجوز ورود)</option><option value="2000">حداقل ۲۰۰۰ هولدر</option><option value="5000">حداقل ۵۰۰۰ هولدر</option></select></label>
 <label>هولدر ردیابی‌شده ۱۰۰۰$+<select class="signal-filter" data-filter="holders"><option value="">همه</option><option value="1">حداقل ۱ هولدر</option><option value="2">حداقل ۲ هولدر</option><option value="3">حداقل ۳ هولدر</option></select></label>
 <label>خریدار ۵۰۰$+ بیشتر از فروشنده (فقط فیلتر نمایش)<select class="signal-filter" data-filter="bigbuyers"><option value="">همه</option><option value="yes">فقط خریدار غالب</option></select></label>
 </div><p class="muted" style="font-size:11px">قانون اجباری هولدر: هولدر #1 باید کمتر از 10% باشد و تک‌تک هولدرهای #2 تا #10 کمتر از 5%. برای سیگنال ورود امن، هر 10 هولدر باید با مالک تجمیع‌شده قابل بررسی باشند؛ Mint/Freeze، Sellability، RugCheck، LP Lock/Burn، Dev/Insider و Token-2022 نیز باید بدون رد یا داده نامشخص بحرانی باشند.</p></div>
@@ -3654,7 +3658,8 @@ html,body,.shell,.panel,.list{overflow-anchor:none}
 </dialog>
 
 <script>
-var tokens=[],smart=null,live=null,tracked=null,conviction=null,prelaunch=null,prelaunchLive=null,topTraders=null,activeTab='featured',signalFilters={short:'',medium:'',long:'',security:'',holders:'',bigbuyers:''};
+var TOTAL_HOLDERS_MIN=1000;
+var tokens=[],smart=null,live=null,tracked=null,conviction=null,prelaunch=null,prelaunchLive=null,topTraders=null,activeTab='featured',signalFilters={short:'',medium:'',long:'',security:'',holders:'',bigbuyers:'',totalholders:'1000'};
 try{
   if(localStorage.getItem('priceCacheSchemaV7')!=='dexscreener-primary-v7'){
     localStorage.removeItem('livePriceCache');
@@ -4953,8 +4958,9 @@ function renderConviction(){
 
 function renderSocialTrends(){
   var el=document.getElementById('socialList');
+  var minHolders=Number(signalFilters.totalholders||0);
   var r=tokens.slice()
-    .filter(function(t){return Number(t.socialHeat?.score||0)>0})
+    .filter(function(t){return Number(t.socialHeat?.score||0)>0&&(!minHolders||(Number.isInteger(t.totalHolderCount)&&t.totalHolderCount>=minHolders))})
     .sort(function(a,b){return Number(b.socialHeat?.score||0)-Number(a.socialHeat?.score||0)||tokenStrength(b)-tokenStrength(a)})
     .slice(0,20);
 
@@ -4978,6 +4984,7 @@ function renderSocialTrends(){
         (hist?'<small>اولین سیگنال اجتماعی: '+new Date(hist.introducedAt).toLocaleString('fa-IR')+' · قیمت '+fmtPrice(hist.introducedPrice)+'</small>':'')+
         socialButtons(t)+'</div>'+
         '<div class="cell"><small>Social Heat</small><b><span class="badge '+socialHeatClass(h.label)+'">'+esc(faSocialHeat(h.label))+' '+Number(h.score||0)+'</span></b></div>'+
+        '<div class="cell"><small>👥 هولدر کل</small><b>'+(Number.isInteger(t.totalHolderCount)?Number(t.totalHolderCount).toLocaleString('fa-IR'):'نامشخص')+'</b></div>'+
         '<div class="cell"><small>💵 قیمت ورود</small><b>'+fmtPrice(hist&&hist.introducedPrice)+'</b></div>'+
         '<div class="cell"><small>⚡ قیمت لحظه‌ای</small><b data-live-price-mint="'+esc(t.mint)+'">'+(liveNow?fmtPrice(liveNow):'—')+'</b></div>'+
         '<div class="cell"><small>💰 سود لحظه‌ای</small><b data-live-profit-mint="'+esc(t.mint)+'" data-live-profit-base="'+Number(hist&&hist.introducedPrice||0)+'" class="'+pnlClass+'">'+pnlText+'</b></div>'+
@@ -5146,6 +5153,8 @@ function filteredTokens(){
   var sf=sfe?String(sfe.value||''):'',af=afe?String(afe.value||''):'';
   return (Array.isArray(tokens)?tokens:[]).filter(function(t){
     try{
+      var minHolders=Number(signalFilters.totalholders||0);
+      if(minHolders>0&&!(Number.isInteger(t.totalHolderCount)&&t.totalHolderCount>=minHolders))return false;
       return (!q||[t.name,t.symbol,t.mint].join(' ').toLowerCase().includes(q))&&
         (!sf||(t.security&&t.security.tier===sf))&&
         (!af||(t.activity&&t.activity.label===af))&&
@@ -5279,7 +5288,8 @@ function renderTokens(){
 
   function rowsHtml(rows,bucket){
     return rows.length?rows.slice(0,30).map(function(t){
-      var badge='<span class="badge '+tokenSecurityBucketClass(bucket)+'">'+tokenSecurityBucketLabel(bucket)+'</span>';
+      var badge='<span class="badge '+tokenSecurityBucketClass(bucket)+'">'+tokenSecurityBucketLabel(bucket)+'</span>'+
+        '<span class="badge '+(Number.isInteger(t.totalHolderCount)&&t.totalHolderCount>=1000?'good':'mid')+'">👥 کل هولدرها: '+(Number.isInteger(t.totalHolderCount)?Number(t.totalHolderCount).toLocaleString('fa-IR'):'نامشخص')+'</span>';
       try{
         var row=tokenRow(t,ageBucket(t));
         return row.replace('<div class="asset"><b>','<div class="asset">'+badge+'<b>');
@@ -5693,7 +5703,7 @@ function startLivePush(){
 }
 document.addEventListener('click',function(e){var d=e.target.closest('.detail-btn');if(!d)return;openDetail(d.getAttribute('data-mint')||'')});
 document.getElementById('tabs').addEventListener('click',function(e){var b=e.target.closest('[data-tab]');if(!b)return;activeTab=b.dataset.tab;document.querySelectorAll('.tab').forEach(function(x){x.classList.toggle('active',x===b)});document.querySelectorAll('.panel').forEach(function(x){x.classList.remove('active')});document.getElementById(activeTab+'Panel').classList.add('active');renderActivePanel()});
-document.addEventListener('change',function(e){var sfel=e.target.closest('.signal-filter');if(!sfel)return;signalFilters[sfel.dataset.filter]=sfel.value;document.querySelectorAll('.signal-filter[data-filter="'+sfel.dataset.filter+'"]').forEach(function(x){if(x!==sfel)x.value=sfel.value});renderChampion();renderFeatured();renderWhales();renderSmart();renderTokens()});
+document.addEventListener('change',function(e){var sfel=e.target.closest('.signal-filter');if(!sfel)return;signalFilters[sfel.dataset.filter]=sfel.value;document.querySelectorAll('.signal-filter[data-filter="'+sfel.dataset.filter+'"]').forEach(function(x){if(x!==sfel)x.value=sfel.value});renderChampion();renderFeatured();renderWhales();renderSmart();renderTokens();renderSocialTrends()});
 var mintLookupTimer=null;
 document.getElementById('search').addEventListener('input',function(e){
   renderTokens();
