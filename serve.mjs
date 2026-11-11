@@ -3671,16 +3671,12 @@ function currentPriceForMint(mint){
   var tokenPair=String(t&&t.pairAddress||'');
 
   // Exact DEXScreener lookup is authoritative even for historical rows that are no longer in the current token scan.
-  if(cached&&hit&&['dexscreener-exact','pumpfun-fallback'].includes(hit.source)&&Date.now()-cachedAt<=15000)return cached;
+  if(cached&&hit&&['dexscreener-exact','jupiter-verified','pumpfun-fallback'].includes(hit.source)&&Date.now()-cachedAt<=15000)return cached;
   // Market-live cache is authoritative only for the same pinned pair.
-  if(cached&&Date.now()-cachedAt<=15000&&(!tokenPair||!cachedPair||tokenPair===cachedPair))return cached;
+  if(cached&&hit&&hit.source==='dexscreener'&&Date.now()-cachedAt<=5000&&(!tokenPair||!cachedPair||tokenPair===cachedPair))return cached;
 
-  // Full-scan price is from the same DEXScreener pair and is the fallback.
-  if(tokenPrice>0){
-    rememberLivePrice(mint,tokenPrice,'dexscreener-snapshot',Date.now(),tokenPair);
-    return tokenPrice;
-  }
-  return cached;
+  // Never treat a stale full scan as a fresh live quote.
+  return null;
 }
 
 function livePnlPct(mint,base){
@@ -3696,7 +3692,7 @@ function updateLiveProfitDom(){
     var hit=livePriceCache.get(mint);
     // Never show stale prices as live trader PnL.
     var fresh=hit&&Number(hit.price)>0&&Date.now()-Number(hit.at||0)<15000&&
-      ['dexscreener-exact','pumpfun-fallback'].includes(hit.source);
+      ['dexscreener-exact','jupiter-verified','pumpfun-fallback'].includes(hit.source);
     var ret=fresh&&entry>0?((Number(hit.price)-entry)/entry)*100:null;
     var val=ret===null?null:buyUsd*ret/100;
     el.textContent=val===null?'قیمت زنده در دسترس نیست':((val>=0?'+':'')+money(val)+' ('+(ret>=0?'+':'')+ret.toFixed(2)+'%)');
@@ -3710,7 +3706,7 @@ function updateLiveProfitDom(){
     var amount=Number(el.getAttribute('data-trader-position-amount')||0);
     var hit=livePriceCache.get(mint);
     var fresh=hit&&Number(hit.price)>0&&Date.now()-Number(hit.at||0)<15000&&
-      ['dexscreener-exact','pumpfun-fallback'].includes(hit.source);
+      ['dexscreener-exact','jupiter-verified','pumpfun-fallback'].includes(hit.source);
     var pnl=fresh&&entry>0&&amount>0?(Number(hit.price)-entry)*amount:null;
     el.textContent=pnl===null?'—':(pnl>=0?'+':'')+money(pnl);
     el.classList.remove('return-pos','return-neg','return-flat');
@@ -3753,6 +3749,7 @@ function rememberTokenRadar(t){
       mint:t.mint,name:t.name||'',symbol:t.symbol||'',
       introducedAt:new Date().toISOString(),
       introducedPrice:Number(t.priceUsd||0)||null,
+      entrySignalAtIntroduction:tradePlan(t).status==='ENTRY',
       introducedSecurity:t.security?.tier||'',
       introducedScore:bucketScore(t,ageBucket(t)),
       dexUrl:t.dexUrl||''
@@ -3790,6 +3787,7 @@ function rememberSocialSignal(t){
   var heat=Number(t.socialHeat?.score||0);
   if(heat<=0)return;
   var old=socialSignalHistory.get(t.mint);
+  var isEntry=tradePlan(t).status==='ENTRY';
   if(!old){
     socialSignalHistory.set(t.mint,{
       mint:t.mint,
@@ -3797,6 +3795,7 @@ function rememberSocialSignal(t){
       symbol:t.symbol||'',
       introducedAt:new Date().toISOString(),
       introducedPrice:Number(t.priceUsd||0)||null,
+      isEntrySignal:isEntry,signalClassification:isEntry?'ENTRY':'DISCOVERY_ONLY',
       introducedSocialHeat:heat,
       introducedSocialLabel:t.socialHeat?.label||'',
       introducedSecurity:t.security?.tier||'',
@@ -4163,6 +4162,15 @@ function entryQualityGate(t){
   var botBlocked=act.label==='BOT RISK'||
     (act.flags||[]).some(function(x){return /wash محتمل|ربات|فرکانس بسیار بالا/i.test(String(x))});
   if(botBlocked)reasons.push('ریسک Bot/Wash بالا تشخیص داده شده');
+  // Entry is withheld on a falling 5-minute candle, thin liquidity,
+  // exhausted pump or weak organic transaction participation.
+  var buys=Number(t.buys5m||0),sells=Number(t.sells5m||0);
+  var pc5=Number(t.priceChange5m||0),pc1=Number(t.priceChange1h||0);
+  var priceRisk=Number(t.liquidity||0)<25000||Number(t.volume5m||0)<2000||
+    Number(t.txns5m||0)<15||buys<8||(buys+1)/(sells+1)<1.25||
+    pc5<0||pc5>12||pc1>35||pc1< -12||
+    t.chart?.pumpDumpRisk==='HIGH'||t.chart?.fomoRisk==='HIGH';
+  if(priceRisk)reasons.push('حجم/مومنتوم نامناسب یا ریسک ورود پس از پامپ');
 
   // $100 tracked buyers are a confidence booster, not a hard requirement,
   // because tracked-wallet coverage is not complete for every token.
@@ -4170,8 +4178,8 @@ function entryQualityGate(t){
   var buyer100Ok=buyers100.length>=1;
 
   return {
-    ok:buyerDominant&&!botBlocked,
-    buyerDominant,botBlocked,buyer100Ok,
+    ok:buyerDominant&&!botBlocked&&!priceRisk,
+    buyerDominant,botBlocked,priceRisk,buyer100Ok,
     buyers100Count:buyers100.length,
     buyers100Usd:buyers100.reduce(function(a,x){return a+Number(x.buyUsd||0)},0),
     momentum,
@@ -4936,12 +4944,12 @@ function renderSocialTrends(){
   var perfSum=document.getElementById('socialPerformanceSummary');
   if(perfList&&perfSum){
     var rows=socialSignalPerformanceRows();
-    var valid=rows.filter(function(x){return x.pnlPct!=null});
+    var valid=rows.filter(function(x){return x.history.isEntrySignal===true&&x.pnlPct!=null});
     var wins=valid.filter(function(x){return x.pnlPct>0});
     var avg=valid.length?valid.reduce(function(a,x){return a+Number(x.pnlPct||0)},0)/valid.length:null;
     var best=valid.slice().sort(function(a,b){return b.pnlPct-a.pnlPct})[0]||null;
     perfSum.innerHTML='<div class="perf-summary">'+
-      '<div class="perf-stat"><small>کل سیگنال اجتماعی</small><b>'+rows.length+'</b></div>'+
+      '<div class="perf-stat"><small>ترندهای کشف‌شده (نه الزاماً سیگنال خرید)</small><b>'+rows.length+'</b></div>'+
       '<div class="perf-stat"><small>در سود</small><b class="return-pos">'+wins.length+'</b></div>'+
       '<div class="perf-stat"><small>میانگین بازده</small><b class="'+(avg==null?'return-flat':avg>=0?'return-pos':'return-neg')+'">'+(avg==null?'—':(avg>0?'+':'')+avg.toFixed(1)+'%')+'</b></div>'+
       '<div class="perf-stat"><small>بهترین سیگنال</small><b class="return-pos">'+(best?esc(best.history.symbol||best.history.name)+' '+(best.pnlPct>0?'+':'')+best.pnlPct.toFixed(1)+'%':'—')+'</b></div>'+
@@ -5238,12 +5246,12 @@ function renderTokens(){
   var perfSum=document.getElementById('tokenRadarPerformanceSummary');
   if(perfList&&perfSum){
     var perfRows=tokenRadarPerformanceRows();
-    var valid=perfRows.filter(function(x){return x.pnlPct!=null});
+    var valid=perfRows.filter(function(x){return x.history.entrySignalAtIntroduction===true&&x.pnlPct!=null});
     var wins=valid.filter(function(x){return x.pnlPct>0});
     var avg=valid.length?valid.reduce(function(a,x){return a+Number(x.pnlPct||0)},0)/valid.length:null;
     var best=valid.slice().sort(function(a,b){return b.pnlPct-a.pnlPct})[0]||null;
     perfSum.innerHTML='<div class="perf-summary">'+
-      '<div class="perf-stat"><small>کل توکن‌های ثبت‌شده</small><b>'+perfRows.length+'</b></div>'+
+      '<div class="perf-stat"><small>توکن‌های کشف‌شده (نه سیگنال خرید)</small><b>'+perfRows.length+'</b></div>'+
       '<div class="perf-stat"><small>در سود</small><b class="return-pos">'+wins.length+'</b></div>'+
       '<div class="perf-stat"><small>میانگین بازده</small><b class="'+(avg==null?'return-flat':avg>=0?'return-pos':'return-neg')+'">'+(avg==null?'—':(avg>0?'+':'')+avg.toFixed(1)+'%')+'</b></div>'+
       '<div class="perf-stat"><small>بهترین توکن</small><b class="return-pos">'+(best?esc(best.history.symbol||best.history.name)+' '+(best.pnlPct>0?'+':'')+best.pnlPct.toFixed(1)+'%':'—')+'</b></div>'+
@@ -5493,12 +5501,12 @@ async function pollVisibleDexPrices(){
 
     var exactUpdated=0;
     rows.forEach(function(p){
-      if(!p||!p.ok||!(Number(p.priceUsd)>0))return;
+      if(!p||!p.ok||!(Number(p.priceUsd)>0)||p.status==='price-source-disagreement')return;
       exactUpdated++;
       rememberLivePrice(
         p.mint,
         p.priceUsd,
-        String(p.source||'').startsWith('DEXScreener')?'dexscreener-exact':'pumpfun-fallback',
+        String(p.source||'').startsWith('Jupiter')?'jupiter-verified':String(p.source||'').startsWith('DEXScreener')?'dexscreener-exact':'pumpfun-fallback',
         Number(p.observedAt||Date.now()),
         p.pairAddress||''
       );
