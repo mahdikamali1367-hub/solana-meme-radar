@@ -97,7 +97,15 @@ const SUBMITTED_PUMP_CASES=[
       {handle:'iAmNihaoCat',postUrl:'https://x.com/iAmNihaoCat/status/2120317299341349020',note:'بازنشر تصویر، نه سیگنال خرید'},
       {handle:'blknoiz06',postUrl:'https://x.com/blknoiz06/status/2120363216043704466',note:'اشاره به روایت مرتبط، بدون اثبات اشاره به کانترکت'},
       {handle:'durki0h',postUrl:'https://x.com/durki0h/status/2120376082444779621',note:'آواتار، نه سیگنال خرید'}
-    ]}
+    ]},
+  {mint:'KMifrkYmDdAKtVXAVBEPEQxJ7qP2iLgUcfZjUZipump',
+    symbol:'RAMBO',name:'RAMBO',
+    reportedOnset:null,reportedTimezone:'UTC',source:'public-market-reports',verifiedOnset:false,
+    contextualPeak:null,
+    contextualArticle:'https://pumpdata.fun/check/KMifrkYmDdAKtVXAVBEPEQxJ7qP2iLgUcfZjUZipump',
+    contextualAccounts:[],
+    historicalSecurityWarning:'تمرکز اولیه عرضه: ۲۳ کیف پول حدود ۸۷٫۸٪ عرضه در ۱۰ ثانیه نخست'},
+    historicalPeakMarketCapUsd:9500000}
 ];
 async function reviewSubmittedPumpCases(){
   const now=Date.now(),items=[];
@@ -108,6 +116,7 @@ async function reviewSubmittedPumpCases(){
       items.push({mint:item.mint,symbol:item.symbol,name:item.name,
         reportedOnset:null,verifiedOnset:false,windowStart:null,windowEnd:null,
         contextualPeak:item.contextualPeak||null,contextualArticle:item.contextualArticle||null,
+        historicalSecurityWarning:item.historicalSecurityWarning||null,
         contextualAccounts:item.contextualAccounts||[],status:'needs-onset',
         checkedAt:new Date(now).toISOString(),accounts:[],
         note:'زمان آغاز پامپ از کندل تاریخی تأیید نشده؛ پست‌های اشاره‌شده در گزارش رسانه‌ای سیگنال خرید با کانترکت دقیق نیستند.'});
@@ -6183,6 +6192,7 @@ function renderPumpXMonitor(){
         '<small>زمان اوج گزارش‌شده: '+(x.contextualPeak?new Date(x.contextualPeak).toLocaleString('fa-IR'):'نامشخص')+
         ' · زمان آغاز رشد نامشخص است؛ بازه ۲۴ساعته دقیق هنوز تعیین نشده.</small>')+
       '<small>وضعیت: '+esc(code)+' · '+esc(x.note||'')+'</small>'+
+      (x.historicalSecurityWarning?'<small style="color:#ffd18d">⚠️ '+esc(x.historicalSecurityWarning)+'</small>':'')+
       '<small>تعداد نویسنده‌های دارای پست مستند: '+Number(x.accounts?.length||0)+
       (x.partial?' · نتایج API ممکن است ناقص باشد':'')+'</small></div>'+
       '<div class="actions">'+refs+contextual+
