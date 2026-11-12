@@ -6402,14 +6402,14 @@ function renderSocialTrends(){
   var minHolders=Number(signalFilters.totalholders||0);
   // Keep fresh social introductions at the top without losing first-seen history.
   var candidates=tokens.slice()
-    .filter(function(t){return corroboratedSocialMentions(t)&&(!minHolders||(Number.isInteger(t.totalHolderCount)&&t.totalHolderCount>=minHolders))})
-    .sort(function(a,b){return Number(b.socialHeat?.score||0)-Number(a.socialHeat?.score||0)||tokenStrength(b)-tokenStrength(a)})
+    .filter(function(t){return t&&t.mint&&Number(t.priceUsd)>0&&Number(t.liquidity)>0&&t.security?.tier!=='REJECT'&&(!minHolders||(Number.isInteger(t.totalHolderCount)&&t.totalHolderCount>=minHolders))})
+    .sort(function(a,b){return Number(corroboratedSocialMentions(b))-Number(corroboratedSocialMentions(a))||Number(b.trend?.score||0)-Number(a.trend?.score||0)||tokenStrength(b)-tokenStrength(a)})
     .slice(0,40);
   candidates.forEach(rememberSocialSignal);
   var r=candidates.sort(function(a,b){
     var at=Date.parse(socialSignalHistory.get(a.mint)?.introducedAt||'')||0;
     var bt=Date.parse(socialSignalHistory.get(b.mint)?.introducedAt||'')||0;
-    return bt-at||Number(b.socialHeat?.score||0)-Number(a.socialHeat?.score||0)||tokenStrength(b)-tokenStrength(a);
+    return Number(corroboratedSocialMentions(b))-Number(corroboratedSocialMentions(a))||bt-at||Number(b.trend?.score||0)-Number(a.trend?.score||0)||tokenStrength(b)-tokenStrength(a);
   }).slice(0,20);
 
   if(el){
@@ -6417,16 +6417,16 @@ function renderSocialTrends(){
     // discoveries visible WITHOUT representing them as verified social calls.
     if(!r.length){
       var marketCandidates=tokens.slice()
-        .filter(function(t){return t&&t.mint&&Number(t.liquidity)>0&&Number(t.priceUsd)>0})
+        .filter(function(t){return t&&t.mint&&Number(t.liquidity)>0&&Number(t.priceUsd)>0&&t.security?.tier!=='REJECT'})
         .sort(function(a,b){return Number(b.trend?.score||0)-Number(a.trend?.score||0)||Number(a.ageMinutes||999999)-Number(b.ageMinutes||999999)})
         .slice(0,20);
       marketCandidates.forEach(rememberTokenRadar);
       el.innerHTML=marketCandidates.length?
-        '<div class="empty" style="margin-bottom:12px">📡 فعلاً داده اجتماعی مستقلی برای تأیید وجود ندارد؛ توکن‌های زیر فقط <b>گزینه‌های رصد بازار</b> هستند، نه سیگنال اجتماعی یا توصیه خرید. برای تأیید باید منشن واقعی X/Bluesky/YouTube ثبت شود.</div>'+
+        '<div class="empty" style="margin-bottom:12px">📡 توکن‌های در حال رصد بدون نیاز به تأیید اجتماعی نمایش داده می‌شوند. نمایش به معنای مجوز خرید نیست.</div>'+
         marketCandidates.map(function(t,i){
           var h=tokenRadarHistory.get(t.mint),price=currentPriceForMint(t.mint),seen=h&&h.introducedAt;
           return '<div class="row"><div class="asset"><b>#'+(i+1)+' 🔎 '+esc(t.symbol||'?')+' · '+esc(t.name||'')+'</b>'+
-            '<span class="badge blue">در انتظار تأیید اجتماعی</span>'+
+            '<span class="badge blue">رصد بازار · نه سیگنال خرید</span>'+
             '<small>شناسه: '+esc(t.mint)+' · اولین رصد: '+(seen?new Date(seen).toLocaleString('fa-IR'):'نامشخص')+'</small>'+
             '<small>امتیاز بازار '+Number(t.trend?.score||0).toFixed(0)+' · تعداد منشن تأییدشده: نامشخص</small></div>'+
             '<div class="cell"><small>نقدینگی</small><b>'+money(t.liquidity)+'</b></div>'+
@@ -6450,7 +6450,8 @@ function renderSocialTrends(){
       var pnlClass=pnl==null?'return-flat':pnl>=0?'return-pos':'return-neg';
       var introducedMs=Date.parse(hist?.introducedAt||'')||0;
       var isNew=introducedMs>0&&Date.now()-introducedMs>=0&&Date.now()-introducedMs<60*60*1000;
-      return '<div class="row"><div class="asset"><b>#'+(i+1)+' 📣 '+esc(t.symbol||'?')+' · '+esc(t.name||'')+'</b>'+(isNew?'<span class="badge good">🆕 تازه معرفی‌شده</span>':'')+socialMoneyBadges(t)+socialTrendBadges(t)+topTraderBadge(t)+pumpXBadge(t)+tradePlanChips(t)+
+      return '<div class="row"><div class="asset"><b>#'+(i+1)+' 📣 '+esc(t.symbol||'?')+' · '+esc(t.name||'')+'</b>'+
+        (corroboratedSocialMentions(t)?'<span class="badge good">منشن ثبت‌شده</span>':'<span class="badge blue">رصد بازار · بدون شرط اجتماعی</span>')+(isNew?'<span class="badge good">🆕 تازه معرفی‌شده</span>':'')+socialMoneyBadges(t)+socialTrendBadges(t)+topTraderBadge(t)+pumpXBadge(t)+tradePlanChips(t)+
         '<small>'+esc((h.reasons||[]).slice(0,3).join(' • '))+'</small>'+
         (hist?'<small>اولین سیگنال اجتماعی: '+new Date(hist.introducedAt).toLocaleString('fa-IR')+' · قیمت '+fmtPrice(hist.introducedPrice)+'</small>':'')+
         socialButtons(t)+'</div>'+
