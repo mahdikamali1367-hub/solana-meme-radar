@@ -5809,7 +5809,7 @@ function featuredRows(){
 function tokenRow(t,bucket){
   var s=t.security||{},sg=t.signals||{},sh=sg.short||{},md=sg.medium||{},lg=sg.long||{},fl=t.flow||{},bs=bucketScore(t,bucket||ageBucket(t));
   return '<div class="row">'+
-  '<div class="asset"><b>'+esc(t.symbol||'?')+' · '+esc(t.name||'')+'</b>'+rugcheckBadge(t)<span class="age-chip">'+esc(ageText(t))+'</span>'+(t.kolTrend?'<span class="age-chip">👑 '+Number(t.kolTrend.kolCount||0)+' KOL</span>':'')+siteTrendBadges(t)+whaleTrendBadge(t)+socialTrendBadges(t)+topTraderBadge(t)+momentumChip(t)+tradePlanChips(t)+'<small>'+esc(short(t.mint))+'</small>'+socialButtons(t)+'</div>'+
+  '<div class="asset"><b>'+esc(t.symbol||'?')+' · '+esc(t.name||'')+'</b>'+rugcheckBadge(t)+'<span class="age-chip">'+esc(ageText(t))+'</span>'+(t.kolTrend?'<span class="age-chip">👑 '+Number(t.kolTrend.kolCount||0)+' KOL</span>':'')+siteTrendBadges(t)+whaleTrendBadge(t)+socialTrendBadges(t)+topTraderBadge(t)+momentumChip(t)+tradePlanChips(t)+'<small>'+esc(short(t.mint))+'</small>'+socialButtons(t)+'</div>'+
   '<div class="cell"><small>امتیاز گروه</small><b><span class="badge '+bucketSignalClass(bs,t)+'">'+bs+'/100</span></b></div>'+'<div class="cell"><small>ترند سایت‌ها</small><b><span class="badge '+(siteTrendScore(t)>=50?'good':siteTrendScore(t)>=20?'mid':'blue')+'">'+siteTrendScore(t)+'/100</span></b></div>'+
   '<div class="cell"><small>کوتاه / میان / بلند</small><b>'+Number(sh.score||0)+' / '+Number(md.score||0)+' / '+Number(lg.score||0)+'</b></div>'+
   '<div class="cell"><small>قدرت خریدار</small><b><span class="badge '+pressureClass(t)+'">'+(fl.buyerPower==null?'—':Number(fl.buyerPower)+'%')+'</span></b></div>'+
