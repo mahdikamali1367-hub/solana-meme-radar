@@ -4053,7 +4053,7 @@ body{font-size:15px}
 <label>میان‌مدت<select class="signal-filter" data-filter="medium"><option value="">همه</option><option value="STRONG">قوی</option><option value="POSITIVE">مثبت</option><option value="NEUTRAL">خنثی</option><option value="WAIT_DATA">داده ناکافی</option><option value="AVOID">ورود نکن</option><option value="BLOCKED">مسدود امنیتی</option></select></label>
 <label>بلندمدت<select class="signal-filter" data-filter="long"><option value="">همه</option><option value="STRONG">قوی</option><option value="POSITIVE">مثبت</option><option value="NEUTRAL">خنثی</option><option value="WAIT_DATA">داده ناکافی</option><option value="AVOID">ورود نکن</option><option value="BLOCKED">مسدود امنیتی</option></select></label>
 <label>امنیت<select class="signal-filter" data-filter="security"><option value="">همه</option><option value="MAX SECURITY">خیلی بالا</option><option value="HIGH">بالا</option><option value="REVIEW">نیاز به بررسی</option><option value="REJECT">رد</option></select></label>
-<label>تعداد کل هولدرهای توکن<select class="signal-filter" data-filter="totalholders"><option value="1000" selected>حداقل ۱۰۰۰ هولدر (پیش‌فرض)</option><option value="">همه (فقط مشاهده، بدون مجوز ورود)</option><option value="2000">حداقل ۲۰۰۰ هولدر</option><option value="5000">حداقل ۵۰۰۰ هولدر</option></select></label>
+<label>تعداد کل هولدرهای توکن<select class="signal-filter" data-filter="totalholders"><option value="" selected>همه توکن‌ها (بدون فیلتر هولدر)</option><option value="1000">حداقل ۱۰۰۰ هولدر</option><option value="2000">حداقل ۲۰۰۰ هولدر</option><option value="5000">حداقل ۵۰۰۰ هولدر</option></select></label>
 </div><div class="list" id="featuredList"></div></div>
   </details>
 <div class="featured-only-secondary">
@@ -4129,7 +4129,7 @@ body{font-size:15px}
 <label>میان‌مدت<select class="signal-filter" data-filter="medium"><option value="">همه</option><option value="STRONG">قوی</option><option value="POSITIVE">مثبت</option><option value="NEUTRAL">خنثی</option><option value="WAIT_DATA">داده ناکافی</option><option value="AVOID">ورود نکن</option><option value="BLOCKED">مسدود امنیتی</option></select></label>
 <label>بلندمدت<select class="signal-filter" data-filter="long"><option value="">همه</option><option value="STRONG">قوی</option><option value="POSITIVE">مثبت</option><option value="NEUTRAL">خنثی</option><option value="WAIT_DATA">داده ناکافی</option><option value="AVOID">ورود نکن</option><option value="BLOCKED">مسدود امنیتی</option></select></label>
 <label>امنیت<select class="signal-filter" data-filter="security"><option value="">همه</option><option value="MAX SECURITY">خیلی بالا</option><option value="HIGH">بالا</option><option value="REVIEW">نیاز به بررسی</option><option value="REJECT">رد</option></select></label>
-<label>تعداد کل هولدرهای توکن<select class="signal-filter" data-filter="totalholders"><option value="1000" selected>حداقل ۱۰۰۰ هولدر (پیش‌فرض)</option><option value="">همه (فقط مشاهده، بدون مجوز ورود)</option><option value="2000">حداقل ۲۰۰۰ هولدر</option><option value="5000">حداقل ۵۰۰۰ هولدر</option></select></label>
+<label>تعداد کل هولدرهای توکن<select class="signal-filter" data-filter="totalholders"><option value="" selected>همه توکن‌ها (بدون فیلتر هولدر)</option><option value="1000">حداقل ۱۰۰۰ هولدر</option><option value="2000">حداقل ۲۰۰۰ هولدر</option><option value="5000">حداقل ۵۰۰۰ هولدر</option></select></label>
 </div><div class="list" id="whaleList"></div></div>
   </details>
 </section>
@@ -4143,7 +4143,7 @@ body{font-size:15px}
 <label>میان‌مدت<select class="signal-filter" data-filter="medium"><option value="">همه</option><option value="STRONG">قوی</option><option value="POSITIVE">مثبت</option><option value="NEUTRAL">خنثی</option><option value="WAIT_DATA">داده ناکافی</option><option value="AVOID">ورود نکن</option><option value="BLOCKED">مسدود امنیتی</option></select></label>
 <label>بلندمدت<select class="signal-filter" data-filter="long"><option value="">همه</option><option value="STRONG">قوی</option><option value="POSITIVE">مثبت</option><option value="NEUTRAL">خنثی</option><option value="WAIT_DATA">داده ناکافی</option><option value="AVOID">ورود نکن</option><option value="BLOCKED">مسدود امنیتی</option></select></label>
 <label>امنیت<select class="signal-filter" data-filter="security"><option value="">همه</option><option value="MAX SECURITY">خیلی بالا</option><option value="HIGH">بالا</option><option value="REVIEW">نیاز به بررسی</option><option value="REJECT">رد</option></select></label>
-<label>تعداد کل هولدرهای توکن<select class="signal-filter" data-filter="totalholders"><option value="1000" selected>حداقل ۱۰۰۰ هولدر (پیش‌فرض)</option><option value="">همه (فقط مشاهده، بدون مجوز ورود)</option><option value="2000">حداقل ۲۰۰۰ هولدر</option><option value="5000">حداقل ۵۰۰۰ هولدر</option></select></label>
+<label>تعداد کل هولدرهای توکن<select class="signal-filter" data-filter="totalholders"><option value="" selected>همه توکن‌ها (بدون فیلتر هولدر)</option><option value="1000">حداقل ۱۰۰۰ هولدر</option><option value="2000">حداقل ۲۰۰۰ هولدر</option><option value="5000">حداقل ۵۰۰۰ هولدر</option></select></label>
 </div><div class="list" id="smartList"></div></div>
   </details>
 </section>
@@ -4325,7 +4325,7 @@ body{font-size:15px}
 <label>میان‌مدت<select class="signal-filter" data-filter="medium"><option value="">همه</option><option value="STRONG">قوی</option><option value="POSITIVE">مثبت</option><option value="NEUTRAL">خنثی</option><option value="WAIT_DATA">داده ناکافی</option><option value="AVOID">ورود نکن</option><option value="BLOCKED">مسدود امنیتی</option></select></label>
 <label>بلندمدت<select class="signal-filter" data-filter="long"><option value="">همه</option><option value="STRONG">قوی</option><option value="POSITIVE">مثبت</option><option value="NEUTRAL">خنثی</option><option value="WAIT_DATA">داده ناکافی</option><option value="AVOID">ورود نکن</option><option value="BLOCKED">مسدود امنیتی</option></select></label>
 <label>امنیت<select class="signal-filter" data-filter="security"><option value="">همه</option><option value="MAX SECURITY">خیلی بالا</option><option value="HIGH">بالا</option><option value="REVIEW">نیاز به بررسی</option><option value="REJECT">رد</option></select></label>
-<label>تعداد کل هولدرهای توکن<select class="signal-filter" data-filter="totalholders"><option value="1000" selected>حداقل ۱۰۰۰ هولدر (پیش‌فرض)</option><option value="">همه (فقط مشاهده، بدون مجوز ورود)</option><option value="2000">حداقل ۲۰۰۰ هولدر</option><option value="5000">حداقل ۵۰۰۰ هولدر</option></select></label>
+<label>تعداد کل هولدرهای توکن<select class="signal-filter" data-filter="totalholders"><option value="" selected>همه توکن‌ها (بدون فیلتر هولدر)</option><option value="1000">حداقل ۱۰۰۰ هولدر</option><option value="2000">حداقل ۲۰۰۰ هولدر</option><option value="5000">حداقل ۵۰۰۰ هولدر</option></select></label>
 <label>هولدر ردیابی‌شده ۱۰۰۰$+<select class="signal-filter" data-filter="holders"><option value="">همه</option><option value="1">حداقل ۱ هولدر</option><option value="2">حداقل ۲ هولدر</option><option value="3">حداقل ۳ هولدر</option></select></label>
 <label>خریدار ۵۰۰$+ بیشتر از فروشنده (فقط فیلتر نمایش)<select class="signal-filter" data-filter="bigbuyers"><option value="">همه</option><option value="yes">فقط خریدار غالب</option></select></label>
 </div><p class="muted" style="font-size:11px">قانون اجباری هولدر: هولدر #1 باید کمتر از 10% باشد و تک‌تک هولدرهای #2 تا #10 کمتر از 5%. برای سیگنال ورود امن، هر 10 هولدر باید با مالک تجمیع‌شده قابل بررسی باشند؛ Mint/Freeze، Sellability، RugCheck، LP Lock/Burn، Dev/Insider و Token-2022 نیز باید بدون رد یا داده نامشخص بحرانی باشند.</p></div>
@@ -4581,7 +4581,7 @@ async function pollSourcesHealth(){
 
 var TOTAL_HOLDERS_MIN=1000;
 var pumpXMonitor=null,pumpXBusy=false,famousXMonitor=null,famousXBusy=false;
-var tokens=[],smart=null,live=null,tracked=null,conviction=null,prelaunch=null,prelaunchLive=null,topTraders=null,activeTab='featured',signalFilters={short:'',medium:'',long:'',security:'',holders:'',bigbuyers:'',totalholders:'1000'};
+var tokens=[],smart=null,live=null,tracked=null,conviction=null,prelaunch=null,prelaunchLive=null,topTraders=null,activeTab='featured',signalFilters={short:'',medium:'',long:'',security:'',holders:'',bigbuyers:'',totalholders:''};
 try{
   if(localStorage.getItem('priceCacheSchemaV7')!=='dexscreener-primary-v7'){
     localStorage.removeItem('livePriceCache');
