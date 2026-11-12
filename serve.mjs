@@ -7031,7 +7031,15 @@ async function loadAll(){
   if(b){b.disabled=true;b.textContent='در حال دریافت…'}
   var sx=window.scrollX,sy=window.scrollY;
   try{
-    var r=await Promise.all([safeJson('/api/v1/tokens'),safeJson('/api/v1/smart-money'),safeJson('/api/v1/smart-money-live'),safeJson('/api/v1/tracked-wallets'),safeJson('/api/v1/conviction-wallets'),safeJson('/api/v1/prelaunch'),safeJson('/api/v1/top-traders')]);
+    // Load the token list independently. Other slow wallet/leaderboard APIs
+    // must not keep the main radar empty while they respond.
+    var remaining=Promise.all([
+      safeJson('/api/v1/smart-money'),safeJson('/api/v1/smart-money-live'),
+      safeJson('/api/v1/tracked-wallets'),safeJson('/api/v1/conviction-wallets'),
+      safeJson('/api/v1/prelaunch'),safeJson('/api/v1/top-traders')
+    ]);
+    var first=await safeJson('/api/v1/tokens');
+    var r=[first,null,null,null,null,null,null];
     if(r[0]&&Array.isArray(r[0].tokens)){
       if(r[0].tokens.length){
         tokens=r[0].tokens;
@@ -7043,12 +7051,15 @@ async function loadAll(){
         if(u)u.textContent=r[0].scanWarning||'اسکن موقتاً توکن نداد؛ تلاش بعدی خودکار انجام می‌شود';
       }
     }
-    if(r[1])smart=r[1];
-    if(r[2])live=r[2];
-    if(r[3])tracked=r[3];
-    if(r[4])conviction=r[4];
-    if(r[5])prelaunch=r[5];
-    if(r[6])topTraders=r[6];
+    // Immediate render of available tokens, including partial safe scans.
+    preserveViewport(renderAll);
+    var more=await remaining;
+    if(more[0])smart=more[0];
+    if(more[1])live=more[1];
+    if(more[2])tracked=more[2];
+    if(more[3])conviction=more[3];
+    if(more[4])prelaunch=more[4];
+    if(more[5])topTraders=more[5];
     document.getElementById('updated').textContent=(r[0]?.scanning?'در حال تکمیل اسکن امنیتی · ':'آخرین اسکن کامل: ')+
       new Date().toLocaleTimeString('fa-IR')+
       (r[0]?.scanWarning?' · '+r[0].scanWarning:'')+
