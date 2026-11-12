@@ -2621,7 +2621,9 @@ async function buildFresh(){
   if(cache.data&&Date.now()-cache.at<CACHE_MS)return cache.data;
   const seeds=await discovery();
   const out=[];
-  const selectedSeeds=seeds.slice(0,100);
+  // Bounded deep scan: large serial Rugcheck/RPC audits used to block the UI.
+  // This preserves full audit rigor for every displayed entry candidate.
+  const selectedSeeds=seeds.slice(0,24);
   const exactPairs=new Map();
   // Direct token-pairs lookup is the authoritative fallback. Run in small chunks
   // to avoid a single DEXScreener batch failure emptying the entire radar.
@@ -2667,7 +2669,15 @@ async function buildFresh(){
     t.holderBehavior=holderBehaviorAudit(t);
     t.preSignalGuard=preSignalConfirmation(t);
     t.signals=multiHorizonSignals(t);
-    t.verdict=verdict(t); out.push(t); await sleep(55);
+    t.verdict=verdict(t);out.push(t);
+    // Serve partially audited results promptly; unfinished tokens are never
+    // entered into the public list or misrepresented as approved.
+    cache={at:Date.now(),data:{
+      ok:true,partial:true,generatedAt:new Date().toISOString(),
+      refreshSeconds:20,count:out.length,tokens:out.slice(),
+      scanWarning:'اسکن امنیتی در حال تکمیل است؛ فقط توکن‌های بررسی‌شده نمایش داده شده‌اند'
+    }};
+    await sleep(55);
   }
   // Holder count is independently sourced from Jupiter Token API. Missing data
   // is UNKNOWN and must not be fabricated from the top 10 or tracked wallets.
@@ -7030,7 +7040,7 @@ async function loadAll(){
       }else if(tokens.length===0){
         // Keep UI explicit if the very first scan is empty, but never erase a valid list.
         var u=document.getElementById('updated');
-        if(u)u.textContent='اسکن موقتاً توکن نداد؛ تلاش بعدی خودکار انجام می‌شود';
+        if(u)u.textContent=r[0].scanWarning||'اسکن موقتاً توکن نداد؛ تلاش بعدی خودکار انجام می‌شود';
       }
     }
     if(r[1])smart=r[1];
@@ -7039,7 +7049,10 @@ async function loadAll(){
     if(r[4])conviction=r[4];
     if(r[5])prelaunch=r[5];
     if(r[6])topTraders=r[6];
-    document.getElementById('updated').textContent='آخرین اسکن کامل: '+new Date().toLocaleTimeString('fa-IR');
+    document.getElementById('updated').textContent=(r[0]?.scanning?'در حال تکمیل اسکن امنیتی · ':'آخرین اسکن کامل: ')+
+      new Date().toLocaleTimeString('fa-IR')+
+      (r[0]?.scanWarning?' · '+r[0].scanWarning:'')+
+      (!r[0]?' · دریافت فهرست ناموفق؛ تلاش مجدد':'');
     preserveViewport(renderAll);
   }finally{
     window.scrollTo(sx,sy);
@@ -7351,9 +7364,18 @@ createServer(async(req,res)=>{
       return res.end(JSON.stringify({ok:true,token:t}));
     }
     if(url.pathname==='/api/v1/tokens'||url.pathname==='/api/radar'||url.pathname==='/api/v1/trending'){
-      const d=await build(); let body=d;
-      if(url.pathname==='/api/v1/trending')body={...d,tokens:[...d.tokens].sort((a,b)=>b.trend.score-a.trend.score)};
-      res.writeHead(200,{'content-type':'application/json; charset=utf-8','cache-control':'no-store',...headers});return res.end(JSON.stringify(body));
+      // Never hold a browser request waiting on dozens of RPC/Rugcheck calls.
+      // A single shared background scan publishes completed security audits
+      // incrementally. On cold start, return an honest "scanning" response.
+      if(!buildInFlight&&(!cache.data||Date.now()-cache.at>=CACHE_MS)){
+        build().catch(err=>{console.error('radar-token-scan:',err?.message||err)});
+      }
+      const d=cache.data||{ok:true,partial:true,scanning:true,generatedAt:new Date().toISOString(),
+        tokens:[],count:0,scanWarning:'اولین اسکن منابع بازار و امنیت آغاز شده است'};
+      let body={...d,scanning:!!buildInFlight,partial:!!buildInFlight||!!d.partial};
+      if(url.pathname==='/api/v1/trending')body={...body,tokens:[...(d.tokens||[])].sort((a,b)=>Number(b.trend?.score||0)-Number(a.trend?.score||0))};
+      res.writeHead(200,{'content-type':'application/json; charset=utf-8','cache-control':'no-store',...headers});
+      return res.end(JSON.stringify(body));
     }
     if(url.pathname==='/radar-filters.js'){
       res.writeHead(200,{'content-type':'application/javascript; charset=utf-8','cache-control':'no-store',...headers});
