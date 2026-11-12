@@ -2249,14 +2249,16 @@ async function externalSecurityAudit(t){
   const risky=(re)=>risks.filter(r=>re.test(textRisk(r)));
 
   // LP lock: summary endpoint is the most direct RugCheck field.
-  let lpLockedPct=num(pick(summary,'lpLockedPct','lp_locked_pct'),NaN);
-  if(!Number.isFinite(lpLockedPct))lpLockedPct=num(pick(report,'lpLockedPct','lp_locked_pct'),NaN);
+  // Missing Rugcheck fields must stay UNKNOWN, not become zero.
+  const optionalRugNumber=v=>(v===null||v===undefined||v==='')?NaN:num(v,NaN);
+  let lpLockedPct=optionalRugNumber(pick(summary,'lpLockedPct','lp_locked_pct'));
+  if(!Number.isFinite(lpLockedPct))lpLockedPct=optionalRugNumber(pick(report,'lpLockedPct','lp_locked_pct'));
   if(!Number.isFinite(lpLockedPct)){
     const markets=Array.isArray(report?.markets)?report.markets:[];
     const vals=markets.flatMap(m=>[
       pick(m,'lpLockedPct','lp_locked_pct'),
       pick(m?.lp,'lpLockedPct','lp_locked_pct','lockedPct','locked_pct')
-    ]).map(v=>num(v,NaN)).filter(Number.isFinite);
+    ]).map(optionalRugNumber).filter(Number.isFinite);
     if(vals.length)lpLockedPct=Math.max(...vals);
   }
   let lp;
@@ -2338,8 +2340,8 @@ async function externalSecurityAudit(t){
     auditState('unknown','وضعیت mutable metadata گزارش نشد','RugCheck');
 
   // RugCheck overall score.
-  let rugScore=num(pick(report,'score_normalised','scoreNormalised'),NaN);
-  if(!Number.isFinite(rugScore))rugScore=num(pick(summary,'score_normalised','scoreNormalised'),NaN);
+  let rugScore=optionalRugNumber(pick(report,'score_normalised','scoreNormalised'));
+  if(!Number.isFinite(rugScore))rugScore=optionalRugNumber(pick(summary,'score_normalised','scoreNormalised'));
   const rugged=pick(report,'rugged')===true;
   let overall;
   if(rugged)overall=auditState('fail','RugCheck: rugged=true','RugCheck');
@@ -2623,7 +2625,15 @@ async function buildFresh(){
   const out=[];
   // Bounded deep scan: large serial Rugcheck/RPC audits used to block the UI.
   // This preserves full audit rigor for every displayed entry candidate.
-  const selectedSeeds=seeds.slice(0,24);
+  // Revisit previously scanned mints so genuine follow-up holder/liquidity
+  // observations can be collected instead of constantly cycling fresh mints.
+  // Favor mints present in current discovery; always leave room for newcomers.
+  const previousMints=new Set((cache.data?.tokens||[]).map(t=>t.mint));
+  const recurring=seeds.filter(t=>previousMints.has(t.mint)).slice(0,10);
+  const newcomers=seeds.filter(t=>!previousMints.has(t.mint)).slice(0,14);
+  const selectedSeeds=[...recurring,...newcomers,
+    ...seeds.filter(t=>!recurring.includes(t)&&!newcomers.includes(t))
+      .slice(0,Math.max(0,24-recurring.length-newcomers.length))].slice(0,24);
   const exactPairs=new Map();
   // Direct token-pairs lookup is the authoritative fallback. Run in small chunks
   // to avoid a single DEXScreener batch failure emptying the entire radar.
