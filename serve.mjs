@@ -1,4 +1,5 @@
 import {createServer} from 'node:http';
+import {officialListingFeed} from './cex-listings.mjs';
 import {readFileSync} from 'node:fs';
 
 const PORT=Number(process.env.PORT||4173);
@@ -4146,6 +4147,7 @@ body{font-size:15px}
   <button type="button" class="tab active" data-tab="featured" aria-selected="true"><svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="8"/><path d="M12 7v10M7 12h10"/></svg> ◈ نمای کلی</button>
   <button type="button" class="tab" data-tab="tokens" aria-selected="false"><svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 17l6-6 4 4 8-9"/><path d="M16 6h5v5"/></svg> ◉ بازار و توکن‌ها</button>
   <button type="button" class="tab" data-tab="social" aria-selected="false"><svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6A8.38 8.38 0 0 1 12.5 3h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg> ◎ شبکه‌های اجتماعی</button>
+  <button type="button" class="tab" data-tab="cex" aria-selected="false">🏦 لیست‌شدن صرافی‌ها</button>
   <button type="button" class="tab" data-tab="wallets" aria-selected="false"><svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="15" rx="2"/><path d="M16 14h5M3 9h18"/><circle cx="16" cy="14" r="1"/></svg> ▣ کیف‌پول‌ها</button>
   <details class="nav-more" id="advancedMenu">
     <summary>ابزارهای پیشرفته <span aria-hidden="true">⌄</span></summary>
@@ -4156,6 +4158,7 @@ body{font-size:15px}
     </div>
   </details>
 </nav>
+<div id="cexUpcomingBanner" class="note" style="margin:10px 0;display:none" aria-live="polite"></div>
 <details class="accordion" id="sourcesHealthPanel">
   <summary>⚙️ تنظیمات و سلامت اتصال منابع داده (پیشرفته)</summary>
   <div class="accordion-body">
@@ -4393,6 +4396,25 @@ body{font-size:15px}
   </details>
 </section>
 
+<section class="panel" id="cexPanel">
+  <h2>🏦 رادار لیست‌شدن صرافی‌ها</h2>
+  <p class="muted">Binance، Bybit و OKX؛ فقط اعلام رسمی صرافی مبنای «لیست قطعی» است. لیست Spot با فیوچرز، مارجین و شایعه متفاوت است. تاریخ و شمارش معکوس فقط با زمان رسمی قابل‌استناد نمایش داده می‌شود.</p>
+  <details class="accordion highlight" open><summary>📣 اطلاعیه‌های رسمی و زمان‌بندی لیست</summary>
+    <div class="accordion-body">
+      <div class="note" id="cexListingStatus">در حال دریافت اطلاعیه‌های رسمی...</div>
+      <div class="list" id="cexOfficialListings"></div>
+      <div id="cexSources" class="actions"></div>
+    </div>
+  </details>
+  <details class="accordion highlight" open><summary>🐋 جریان نهنگ، اسمارت‌مانی و تحلیل تکنیکال</summary>
+    <div class="accordion-body">
+      <p class="muted">این‌ها فقط گزینه‌های رصد بازار با شواهد واقعی ورود سرمایه‌اند؛ هیچ‌کدام صرفاً به دلیل فشار خرید، «کاندید قطعی بایننس» محسوب نمی‌شوند. برای نقطه ورود باید تمام بررسی‌های امنیتی رادار نیز پاس شوند.</p>
+      <div class="list" id="cexCapitalCandidates"></div>
+    </div>
+  </details>
+  <div class="note">⚠️ «تا چند روز دیگر در بایننس لیست می‌شود» بدون اطلاعیه رسمی و ساعت شروع معاملات قابل‌اعلام نیست. لیست‌شدن تضمین رشد قیمت نیست؛ حتی ممکن است باعث فروش خبری شود.</div>
+</section>
+
 <section class="panel" id="walletsPanel">
 <details class="section-index" data-index-for="wallets"><summary>راهنمای زیرمجموعه‌های این بخش <span class="section-index-count">مشاهده همه قسمت‌ها</span></summary><div class="section-index-content"></div></details>
   <details class="accordion highlight" open>
@@ -4522,6 +4544,7 @@ body{font-size:15px}
       tokens:['بازار و توکن‌ها','کشف توکن‌های سولانا، قیمت لحظه‌ای، فیلتر امنیت و بررسی آدرس قرارداد.'],
       social:['رادار اجتماعی','رصد X و اکانت‌های مشهور، پست‌های پیش از پامپ و شواهد قابل بررسی.'],
       wallets:['ردیابی کیف‌پول‌ها','تریدرهای برتر، خریدهای مشترک، پوزیشن‌ها و عملکرد تخمینی.'],
+      cex:['رادار لیست‌شدن صرافی‌ها','اطلاعیه رسمی بایننس و سایر صرافی‌ها؛ نهنگ، اسمارت‌مانی و نقطه ورود فقط با شواهد امنیتی.'],
       whales:['ردیابی نهنگ‌ها','ورود و خروج سرمایه بزرگ، جریان خرید و نشانه‌های هشدار.'],
       smart:['اسمارت‌مانی','رفتار کیف‌پول‌های منتخب و مقایسه سیگنال‌های سرمایه هوشمند.'],
       prelaunch:['رادار پیش‌لانچ','پروژه‌های پیش از عرضه و شواهد امنیتی؛ صرفاً برای بررسی.']
@@ -6977,6 +7000,87 @@ function safeUiRender(name,fn){
   }
 }
 
+var cexNews=null;
+var cexNewsBusy=false;
+function cexHtmlUrl(url){
+  // Only display https links delivered by the official-source allowlist.
+  return /^https:\/\/(www\.binance\.com|announcements\.bybit\.com|www\.okx\.com)\//.test(String(url||''))?url:'#';
+}
+function cexDaysUntil(at){
+  var ms=Date.parse(at)-Date.now();
+  if(!Number.isFinite(ms)||ms<=0)return null;
+  var days=Math.floor(ms/86400000),hours=Math.floor(ms%86400000/3600000);
+  return days+' روز و '+hours+' ساعت';
+}
+function renderCexDashboard(){
+  var status=document.getElementById('cexListingStatus'),
+      list=document.getElementById('cexOfficialListings'),
+      sources=document.getElementById('cexSources'),
+      capital=document.getElementById('cexCapitalCandidates'),
+      banner=document.getElementById('cexUpcomingBanner');
+  if(!status||!list||!sources||!capital)return;
+  var rows=cexNews&&Array.isArray(cexNews.announcements)?cexNews.announcements:[];
+  var spot=rows.filter(function(a){return a.market==='SPOT_CANDIDATE'});
+  var timed=spot.filter(function(a){return a.listingAt&&cexDaysUntil(a.listingAt)}).sort(function(a,b){return Date.parse(a.listingAt)-Date.parse(b.listingAt)});
+  if(banner){
+    if(timed.length){
+      var first=timed[0];
+      banner.style.display='';
+      banner.textContent='🏦 '+first.exchange+' · '+first.title+' · '+cexDaysUntil(first.listingAt)+' تا ساعت رسمی شروع معاملات (UTC)؛ قرارداد توکن باید جداگانه احراز شود.';
+    }else{banner.style.display='none';banner.textContent=''}
+  }
+  status.textContent=cexNews?'بازبینی منابع رسمی: '+new Date(cexNews.checkedAt).toLocaleString('fa-IR')+' · '+spot.length+' اطلاعیه نامزد Spot (تطبیق قرارداد و نوع بازار لازم است)':'در حال دریافت یا عدم دسترسی به منابع رسمی؛ هیچ لیست آینده‌ای تأیید نشده است.';
+  sources.innerHTML=(cexNews?.sources||[]).map(function(a){
+    return '<a class="action" href="'+cexHtmlUrl(a.url)+'" target="_blank" rel="noopener">'+esc(a.exchange)+' · '+(a.status==='ok'?'اطلاعیه‌ها دریافت شد':'دسترسی/استخراج ناقص')+'</a>';
+  }).join('')+
+  '<a class="action" target="_blank" rel="noopener" href="https://www.coinbase.com/exchange/asset-listings">Coinbase · معیارهای رسمی لیست</a>'+
+  '<a class="action" target="_blank" rel="noopener" href="https://x.com/CoinbaseAssets">CoinbaseAssets · اطلاعیه‌ها</a>';
+  list.innerHTML=spot.length?spot.slice(0,20).map(function(a){
+    var remaining=a.listingAt?cexDaysUntil(a.listingAt):null;
+    return '<div class="row"><div class="asset"><b>'+esc(a.exchange)+' · '+esc(a.title)+'</b>'+
+      '<span class="badge blue">اطلاعیه رسمی؛ قرارداد توکن هنوز تطبیق داده نشده</span>'+
+      '<small>'+(remaining?'شروع معاملات اعلام‌شده: '+new Date(a.listingAt).toLocaleString('fa-IR')+' · '+remaining:'زمان شروع معامله در داده قابل‌تأیید موجود نیست')+'</small></div>'+
+      '<div class="actions"><a class="action" target="_blank" rel="noopener" href="'+cexHtmlUrl(a.url)+'">اصل اطلاعیه</a></div></div>';
+  }).join(''):'<div class="empty">فعلاً اطلاعیه Spot با لینک مستقیم از صفحات رسمی استخراج نشد. این به معنی نبودن لیست جدید نیست. لینک منبع هر صرافی در بالا قرار دارد؛ تاریخ تخمینی نمایش داده نمی‌شود.</div>';
+  // CEX research/watch candidates, NOT listing predictions. Require both
+  // wallet-flow confirmation and positive buy pressure.
+  var candidates=tokens.filter(function(t){
+    if(!t||!t.mint||t.security?.tier==='REJECT'||!rugcheckVerified(t))return false;
+    var whale=whaleFor(t.mint),sm=smartFor(t.mint),tr=findTracked(t.mint);
+    var smartOk=Number(sm?.smartMoneyCount||sm?.buyers||0)>0||Number(tr?.netFlowUsd||0)>0&&Number(tr?.uniqueBuyers||0)>0;
+    return whale.count>=1&&whale.usd>0&&smartOk&&Number(t.flow?.buyerPower||0)>=60&&
+      Number(t.liquidity||0)>=25000&&t.poolHealth?.status!=='RISK';
+  }).sort(function(a,b){
+    return Number(b.flow?.buyerPower||0)-Number(a.flow?.buyerPower||0)||Number(b.volume5m||0)-Number(a.volume5m||0)
+  }).slice(0,12);
+  capital.innerHTML=candidates.length?candidates.map(function(t){
+    var whale=whaleFor(t.mint),sm=smartFor(t.mint),tr=findTracked(t.mint),plan=tradePlan(t);
+    var entry=plan.status==='ENTRY';
+    return '<div class="row" data-mint="'+esc(t.mint)+'"><div class="asset"><b>'+esc(t.symbol||'?')+' · '+esc(t.name||'')+'</b>'+
+      '<span class="badge blue">رصد جریان سرمایه · لیست صرافی تأیید نشده</span>'+
+      (entry?'<span class="badge good">شرایط ورود فعلاً تأیید</span>':'<span class="badge mid">در انتظار شرایط ورود</span>')+
+      '<small>قرارداد: '+esc(t.mint)+'</small>'+
+      '<small>مومنتوم ۵دقیقه '+Number(t.priceChange5m||0).toFixed(1)+'٪ · یک‌ساعته '+Number(t.priceChange1h||0).toFixed(1)+'٪ · نقدینگی '+money(t.liquidity)+'</small>'+
+      '<small>نقطه ورود: '+(entry?fmtPrice(plan.entry):'صادر نشده')+
+      ' · حد ضرر: '+(entry?fmtPrice(plan.stopLoss):'—')+
+      ' · هدف اول: '+(entry?fmtPrice(plan.takeProfit1):'—')+'</small></div>'+
+      '<div class="cell"><small>قدرت خریدار</small><b>'+Number(t.flow?.buyerPower||0).toFixed(0)+'٪</b></div>'+
+      '<div class="cell"><small>نهنگ</small><b>'+whale.count+' خرید · '+money(whale.usd)+'</b></div>'+
+      '<div class="cell"><small>اسمارت‌مانی</small><b>'+Number(sm?.smartMoneyCount||sm?.buyers||tr?.uniqueBuyers||0)+'</b></div>'+
+      '<div class="actions"><a class="action" href="'+esc(dexUrl(t.mint,t.dexUrl))+'" target="_blank" rel="noopener">چارت DEX</a>'+
+      '<a class="action" href="https://rugcheck.xyz/tokens/'+encodeURIComponent(t.mint)+'" target="_blank" rel="noopener">Rugcheck</a>'+
+      '<button class="detail-btn" data-mint="'+esc(t.mint)+'">جزئیات</button></div></div>';
+  }).join(''):'<div class="empty">در داده‌های فعلی، توکنی با خرید مثبت نهنگ + اسمارت‌مانی + قدرت خریدار حداقل ۶۰٪ و Rugcheck معتبر پیدا نشد. سیگنال یا زمان لیست‌شدن ساخته نمی‌شود.</div>';
+}
+async function pollCexNews(){
+  if(cexNewsBusy)return;
+  cexNewsBusy=true;
+  try{
+    var result=await safeJson('/api/v1/cex-listings');
+    if(result&&result.ok)cexNews=result;
+    renderCexDashboard();
+  }finally{cexNewsBusy=false}
+}
 function renderActivePanel(){
   preserveViewport(function(){
     if(activeTab==='featured'){
@@ -7001,6 +7105,8 @@ function renderActivePanel(){
       safeUiRender('مشاهیر X',renderFamousXMonitor);
       safeUiRender('اکانت‌های پیش از پامپ',renderPumpXMonitor);
       safeUiRender('ترند اجتماعی',renderSocialTrends);
+    }else if(activeTab==='cex'){
+      safeUiRender('لیست‌شدن صرافی',renderCexDashboard);
     }else if(activeTab==='wallets'){
       safeUiRender('کیف‌پول‌ها',renderWallets);
       safeUiRender('Conviction',renderConviction);
@@ -7307,6 +7413,8 @@ setInterval(pollSourcesHealth,5*60*1000);
 setTimeout(pollFamousXMonitor,3500);
 setInterval(pollFamousXMonitor,60*60*1000);
 setTimeout(pollPumpXMonitor,6000);
+setTimeout(pollCexNews,2500);
+setInterval(pollCexNews,15*60*1000);
 setInterval(pollPumpXMonitor,15*60*1000);
 </script>
 <script src="/radar-filters.js"></script>
@@ -7316,6 +7424,11 @@ setInterval(pollPumpXMonitor,15*60*1000);
 createServer(async(req,res)=>{
   const url=new URL(req.url,'http://localhost');
   try{
+    if(url.pathname==='/api/v1/cex-listings'){
+      const data=await officialListingFeed();
+      res.writeHead(200,{'content-type':'application/json; charset=utf-8','cache-control':'no-store',...headers});
+      return res.end(JSON.stringify(data));
+    }
     if(url.pathname==='/api/v1/sources-health'){
       const d=await sourcesHealth();res.writeHead(200,{'content-type':'application/json; charset=utf-8','cache-control':'no-store',...headers});
       return res.end(JSON.stringify(d));
