@@ -3,19 +3,19 @@ import {createServer} from 'node:http';
 const PORT=Number(process.env.PORT||4173);
 const RPC=process.env.SOLANA_RPC_URL||'https://api.mainnet.solana.com';
 const CACHE_MS=15_000;
-const SOCIAL_QUERY_CACHE_MS=2*60*60*1000;
+const SOCIAL_QUERY_CACHE_MS=10*60*1000;
 const socialQueryCache=new Map();
 
 
 const X_FAMOUS_ACCOUNTS=[
-  {handle:'elonmusk',name:'Elon Musk',group:'public figure'},
-  {handle:'BillyM2k',name:'Billy Markus / Shibetoshi Nakamoto',group:'Dogecoin co-creator'},
-  {handle:'dogecoin',name:'Dogecoin',group:'community account'},
-  {handle:'cb_doge',name:'DogeDesigner',group:'Dogecoin / X commentary'},
-  {handle:'itsALLrisky',name:'Its ALL Risky',group:'Dogecoin commentator'},
-  {handle:'mcuban',name:'Mark Cuban',group:'public figure'}
+  {handle:'blknoiz06',name:'Ansem',group:'Solana meme commentator'},
+  {handle:'theunipcs',name:'Unipcs',group:'meme coin commentator'},
+  {handle:'MustStopMurad',name:'Murad',group:'meme coin commentator'},
+  {handle:'CryptoKaduna',name:'Crypto Kaduna',group:'meme coin commentator'},
+  {handle:'BillyM2k',name:'Billy Markus',group:'Dogecoin co-creator'},
+  {handle:'cb_doge',name:'DogeDesigner',group:'meme coin commentator'}
 ];
-const X_FAMOUS_POLL_MS=60*60*1000; // at most one search per hour; X API credits are not free by default
+const X_FAMOUS_POLL_MS=15*60*1000; // at most one search per hour; X API credits are not free by default
 let xFamousCache={at:0,data:null},xFamousInFlight=null;
 function famousXTextKind(text){
   const t=String(text||'');
@@ -31,16 +31,16 @@ async function buildFamousXMonitor(){
   xFamousInFlight=(async()=>{
     const accounts=X_FAMOUS_ACCOUNTS.map(a=>({...a,url:'https://x.com/'+a.handle}));
     const base={ok:true,generatedAt:new Date().toISOString(),accounts,posts:[],
-      source:'X API recent search',intervalMinutes:60,
+      source:'X API recent search',intervalMinutes:15,
       note:'Public posts only; this is radar monitoring, not a follow action on your personal X account. An account mention is not a buy recommendation.'};
     const bearer=process.env.X_BEARER_TOKEN;
     if(!bearer)return {...base,status:'not-configured',
       message:'X_BEARER_TOKEN is not configured for this service.'};
     try{
       const handles=X_FAMOUS_ACCOUNTS.map(a=>'from:'+a.handle).join(' OR ');
-      const query='('+handles+') (doge OR dogecoin OR memecoin OR "meme coin" OR shib OR pepe OR bonk OR solana OR "pump.fun") -is:retweet';
+      const query='('+handles+') -is:retweet -is:reply';
       const url='https://api.x.com/2/tweets/search/recent?query='+encodeURIComponent(query)+
-        '&max_results=30&tweet.fields=created_at,author_id,public_metrics,referenced_tweets'+
+        '&max_results=100&tweet.fields=created_at,author_id,public_metrics,referenced_tweets'+
         '&expansions=author_id&user.fields=username,name';
       const payload=await jfetch(url,{headers:{authorization:'Bearer '+bearer}},12000);
       const users=new Map((payload?.includes?.users||[]).map(u=>[String(u.id),u]));
@@ -6101,13 +6101,17 @@ async function pollPumpXMonitor(){
 function renderSocialTrends(){
   var el=document.getElementById('socialList');
   var minHolders=Number(signalFilters.totalholders||0);
-  var r=tokens.slice()
+  // Keep fresh social introductions at the top without losing first-seen history.
+  var candidates=tokens.slice()
     .filter(function(t){return Number(t.socialHeat?.score||0)>0&&(!minHolders||(Number.isInteger(t.totalHolderCount)&&t.totalHolderCount>=minHolders))})
     .sort(function(a,b){return Number(b.socialHeat?.score||0)-Number(a.socialHeat?.score||0)||tokenStrength(b)-tokenStrength(a)})
-    .slice(0,20);
-
-  // First appearance in Social Trend becomes the fixed performance baseline.
-  r.forEach(rememberSocialSignal);
+    .slice(0,40);
+  candidates.forEach(rememberSocialSignal);
+  var r=candidates.sort(function(a,b){
+    var at=Date.parse(socialSignalHistory.get(a.mint)?.introducedAt||'')||0;
+    var bt=Date.parse(socialSignalHistory.get(b.mint)?.introducedAt||'')||0;
+    return bt-at||Number(b.socialHeat?.score||0)-Number(a.socialHeat?.score||0)||tokenStrength(b)-tokenStrength(a);
+  }).slice(0,20);
 
   if(el){
     el.innerHTML=r.length?r.map(function(t,i){
@@ -6121,7 +6125,9 @@ function renderSocialTrends(){
       }
       var pnlText=pnl==null?'—':(pnl>0?'+':'')+pnl.toFixed(1)+'%';
       var pnlClass=pnl==null?'return-flat':pnl>=0?'return-pos':'return-neg';
-      return '<div class="row"><div class="asset"><b>#'+(i+1)+' 📣 '+esc(t.symbol||'?')+' · '+esc(t.name||'')+'</b>'+socialMoneyBadges(t)+socialTrendBadges(t)+topTraderBadge(t)+pumpXBadge(t)+tradePlanChips(t)+
+      var introducedMs=Date.parse(hist?.introducedAt||'')||0;
+      var isNew=introducedMs>0&&Date.now()-introducedMs>=0&&Date.now()-introducedMs<60*60*1000;
+      return '<div class="row"><div class="asset"><b>#'+(i+1)+' 📣 '+esc(t.symbol||'?')+' · '+esc(t.name||'')+'</b>'+(isNew?'<span class="badge good">🆕 تازه معرفی‌شده</span>':'')+socialMoneyBadges(t)+socialTrendBadges(t)+topTraderBadge(t)+pumpXBadge(t)+tradePlanChips(t)+
         '<small>'+esc((h.reasons||[]).slice(0,3).join(' • '))+'</small>'+
         (hist?'<small>اولین سیگنال اجتماعی: '+new Date(hist.introducedAt).toLocaleString('fa-IR')+' · قیمت '+fmtPrice(hist.introducedPrice)+'</small>':'')+
         socialButtons(t)+'</div>'+
