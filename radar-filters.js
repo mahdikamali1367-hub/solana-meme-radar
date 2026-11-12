@@ -1,10 +1,11 @@
 /* Advanced signal filters. Loaded after the main radar client. */
 (function(){
   'use strict';
-  const KEY='radar:filters:v5'; // reset old date ranges that obscured the entire radar
+  const KEY='radar:filters:v5'; // keep existing confirmed filters
   const defaults={q:'',from:'',to:'',minPnl:'',maxPnl:'',minScore:'',minLiquidity:'',minVolume:'',minHolders:'',security:'',entry:'',whales:'',smart:'',sort:'default'};
   let state={...defaults};
   try{const saved=JSON.parse(localStorage.getItem(KEY)||'{}');if(saved&&typeof saved==='object')state={...state,...saved}}catch(_){}
+  let draft={...state};
   const fields=[
     ['q','نام / کانترکت','search'],
     ['from','تاریخ شمسی از','jalali'],['to','تاریخ شمسی تا','jalali'],
@@ -19,7 +20,8 @@
     ['sort','مرتب‌سازی','select',[['default','پیش‌فرض'],['new','جدیدترین'],['old','قدیمی‌ترین'],['pnlDown','بیشترین سود'],['pnlUp','کمترین سود'],['scoreDown','بیشترین امتیاز']]]
   ];
   const css='.signal-filters{border:1px solid #405b77;border-radius:12px;background:#132238;padding:13px;margin:12px 0;color:#ecf4ff;direction:rtl}.signal-filters h3{font-size:14px;margin:0 0 11px}.signal-filters-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(145px,1fr));gap:8px}.signal-filters-grid label{display:flex;flex-direction:column;gap:4px;font-size:12px}.signal-filters-grid input,.signal-filters-grid select{width:100%;min-width:0;box-sizing:border-box;padding:8px;border:1px solid #4b6b8c;border-radius:7px;background:#0a172b;color:white}.signal-filters-foot{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:10px}.signal-filters button{background:#264b6b;color:white;border:1px solid #4a7195;border-radius:8px;padding:7px 12px;cursor:pointer}.signal-filter-hide{display:none!important}.signal-filter-date-error{font-size:12px;color:#ffc681;margin-top:8px}.signal-filters small{display:block;margin-top:9px;color:#b9d5ee}';
-  const sty=document.createElement('style');sty.textContent=css;document.head.appendChild(sty);
+  const extraCss='.jalali-wrap{display:flex;gap:5px;align-items:center;position:relative}.jalali-wrap input{flex:1}.jalali-open{flex:none;padding:8px!important;min-width:38px}.jalali-popover{position:absolute;right:0;top:calc(100% + 4px);z-index:500;background:#15283e;border:1px solid #6583a3;box-shadow:0 12px 28px #000a;border-radius:12px;width:min(310px,84vw);padding:12px;direction:rtl}.jalali-toolbar{display:flex;align-items:center;justify-content:space-between;gap:5px;margin-bottom:10px}.jalali-toolbar button{padding:5px 9px}.jalali-days,.jalali-weekdays{display:grid;grid-template-columns:repeat(7,1fr);gap:3px;text-align:center}.jalali-weekdays span{font-size:11px;color:#b5cadf;padding:5px 0}.jalali-days button{padding:7px 0;border-radius:7px;background:#203651;border:1px solid transparent}.jalali-days button.jalali-selected{background:#226f8a;border-color:#8be7ff}.jalali-days button.jalali-today{border-color:#d3b064}.jalali-days button:focus-visible{outline:2px solid #fff}.jalali-actions{display:flex;justify-content:space-between;margin-top:9px}.signal-filter-apply{background:#1d826e!important;font-weight:800}.signal-filter-pending{font-size:12px;color:#ffe2a4;margin:7px 0}.signal-filter-date-error{min-height:16px}';
+  const sty=document.createElement('style');sty.textContent=css+extraCss;document.head.appendChild(sty);
   const number=(v)=>{if(v==null||v==='')return null;const n=Number(v);return Number.isFinite(n)?n:null};
   const western=v=>String(v??'').replace(/[۰-۹]/g,c=>String(c.charCodeAt(0)-1776)).replace(/[٠-٩]/g,c=>String(c.charCodeAt(0)-1632));
   const jalaliParts=new Intl.DateTimeFormat('en-US-u-ca-persian',{timeZone:'Asia/Tehran',year:'numeric',month:'2-digit',day:'2-digit'});
@@ -38,6 +40,81 @@
     const y=Number(m[1]),mo=Number(m[2]),d=Number(m[3]);
     if(mo<1||mo>12||d<1||d>31||(mo>6&&d>30))return null;
     return y*10000+mo*100+d;
+  }
+  const months=['فروردین','اردیبهشت','خرداد','تیر','مرداد','شهریور','مهر','آبان','آذر','دی','بهمن','اسفند'];
+  const weekdays=['ش','ی','د','س','چ','پ','ج'];
+  const persianNumber=n=>String(n).replace(/[0-9]/g,c=>'۰۱۲۳۴۵۶۷۸۹'[Number(c)]);
+  const fmtJalali=(y,m,d)=>persianNumber(y+'/'+String(m).padStart(2,'0')+'/'+String(d).padStart(2,'0'));
+  function monthCells(y,m){
+    // Locate Persian month boundaries using the browser's Persian calendar.
+    // Approximate Iranian new year near March 20, then find the exact day.
+    const approx=Date.UTC(y+621,2,20)+((m<=7?(m-1)*31:186+(m-7)*30))*86400000;
+    let start=null;
+    for(let offset=-5;offset<=5;offset++){
+      const day=approx+offset*86400000;
+      if(jalaliDay(day)===y*10000+m*100+1){start=day;break}
+    }
+    if(start===null)return {start:0,days:[]};
+    const days=[];
+    for(let i=0;i<31;i++){
+      const ms=start+i*86400000,code=jalaliDay(ms);
+      if(Math.floor(code/100)!==y*100+m)break;
+      days.push({date:code,day:i+1});
+    }
+    return {start,days};
+  }
+  function monthShift(y,m,step){
+    const n=y*12+(m-1)+step;
+    return {y:Math.floor(n/12),m:((n%12)+12)%12+1};
+  }
+  let calendar=null;
+  function closeCalendar(){
+    if(calendar){calendar.remove();calendar=null}
+  }
+  function openCalendar(key,anchor){
+    closeCalendar();
+    const base=jalaliInput(draft[key])||jalaliDay(Date.now());
+    let y=Math.floor(base/10000),m=Math.floor(base/100)%100;
+    const pop=document.createElement('div');
+    pop.className='jalali-popover';
+    pop.setAttribute('role','dialog');pop.setAttribute('aria-label','تقویم شمسی '+(key==='from'?'از تاریخ':'تا تاریخ'));
+    pop.addEventListener('click',e=>e.stopPropagation());
+    anchor.appendChild(pop);calendar=pop;
+    function draw(){
+      pop.replaceChildren();
+      const toolbar=document.createElement('div');toolbar.className='jalali-toolbar';
+      const prev=document.createElement('button');prev.type='button';prev.textContent='ماه قبل ❯';prev.onclick=()=>{({y,m}=monthShift(y,m,-1));draw()};
+      const title=document.createElement('b');title.textContent=months[m-1]+' '+persianNumber(y);
+      const next=document.createElement('button');next.type='button';next.textContent='❮ ماه بعد';next.onclick=()=>{({y,m}=monthShift(y,m,1));draw()};
+      toolbar.append(prev,title,next);pop.appendChild(toolbar);
+      const heads=document.createElement('div');heads.className='jalali-weekdays';
+      weekdays.forEach(x=>{const h=document.createElement('span');h.textContent=x;heads.appendChild(h)});pop.appendChild(heads);
+      const daysEl=document.createElement('div');daysEl.className='jalali-days';
+      const data=monthCells(y,m),offset=(new Date(data.start).getUTCDay()+1)%7;
+      for(let i=0;i<offset;i++)daysEl.appendChild(document.createElement('span'));
+      data.days.forEach(({date,day})=>{
+        const b=document.createElement('button');b.type='button';b.textContent=persianNumber(day);
+        if(date===jalaliInput(draft[key]))b.classList.add('jalali-selected');
+        if(date===jalaliDay(Date.now()))b.classList.add('jalali-today');
+        b.setAttribute('aria-label',fmtJalali(y,m,day));
+        b.onclick=()=>{
+          draft[key]=fmtJalali(y,m,day);
+          sync();markPending();closeCalendar();
+        };
+        daysEl.appendChild(b);
+      });
+      pop.appendChild(daysEl);
+      const actions=document.createElement('div');actions.className='jalali-actions';
+      const today=document.createElement('button');today.type='button';today.textContent='امروز';
+      today.onclick=()=>{const code=jalaliDay(Date.now());draft[key]=fmtJalali(Math.floor(code/10000),Math.floor(code/100)%100,code%100);sync();markPending();closeCalendar()};
+      const clear=document.createElement('button');clear.type='button';clear.textContent='پاک کردن تاریخ';
+      clear.onclick=()=>{draft[key]='';sync();markPending();closeCalendar()};
+      actions.append(today,clear);pop.appendChild(actions);
+    }
+    draw();
+  }
+  function markPending(){
+    document.querySelectorAll('.signal-filter-pending').forEach(el=>el.textContent=JSON.stringify(draft)===JSON.stringify(state)?'':'تغییرات انتخاب شده‌اند؛ برای اعمال، «تأیید و نمایش نتایج» را بزن.');
   }
   function tokenInfo(mint){try{return (typeof tokens!=='undefined'&&Array.isArray(tokens)?tokens:[]).find(t=>t&&t.mint===mint)||null}catch(_){return null}}
   function recordFor(mint){try{return (typeof socialSignalHistory!=='undefined'&&socialSignalHistory.get(mint))||(typeof tokenRadarHistory!=='undefined'&&tokenRadarHistory.get(mint))||null}catch(_){return null}}
@@ -94,16 +171,29 @@
       ctrl.dataset.filterKey=key;
       if(type==='select')options.forEach(([val,title])=>{const op=document.createElement('option');op.value=val;op.textContent=title;ctrl.appendChild(op)});
       else {ctrl.type=type==='jalali'?'text':type;if(type==='number')ctrl.step='any';if(type==='jalali'){ctrl.placeholder='۱۴۰۵/۰۸/۲۱';ctrl.inputMode='numeric';ctrl.dir='ltr';ctrl.maxLength=10;}}
-      ctrl.value=state[key]??'';wrap.appendChild(ctrl);grid.appendChild(wrap);
+      ctrl.value=draft[key]??'';
+      if(type==='jalali'){
+        const group=document.createElement('span');group.className='jalali-wrap';
+        const trigger=document.createElement('button');trigger.type='button';trigger.className='jalali-open';
+        trigger.textContent='📅';trigger.setAttribute('aria-label','باز کردن تقویم شمسی '+label);
+        trigger.onclick=e=>{e.stopPropagation();if(calendar&&calendar.parentElement===group)closeCalendar();else openCalendar(key,group)};
+        group.append(ctrl,trigger);wrap.appendChild(group);
+      }else wrap.appendChild(ctrl);
+      grid.appendChild(wrap);
     });
     bar.appendChild(grid);
     const dateHelp=document.createElement('small');dateHelp.textContent='تاریخ به شمسی (مثلاً ۱۴۰۵/۰۸/۲۱). فیلتر تاریخ روی زمان ثبت سیگنال اعمال می‌شود؛ سیگنال بدون تاریخ معتبر فقط هنگام فعال بودن فیلتر تاریخ حذف می‌شود.';bar.appendChild(dateHelp);
     const validation=document.createElement('div');validation.className='signal-filter-date-error';validation.setAttribute('role','status');bar.appendChild(validation);
+    const pending=document.createElement('div');pending.className='signal-filter-pending';bar.appendChild(pending);
     const foot=document.createElement('div');foot.className='signal-filters-foot';
     const count=document.createElement('span');count.className='signal-filter-count';count.setAttribute('aria-live','polite');foot.appendChild(count);
-    const reset=document.createElement('button');reset.type='button';reset.textContent='پاک‌کردن فیلترها';reset.dataset.filterReset='1';foot.appendChild(reset);
+    const btns=document.createElement('div');btns.style.display='flex';btns.style.gap='7px';
+    const applyButton=document.createElement('button');applyButton.type='button';applyButton.className='signal-filter-apply';
+    applyButton.textContent='✓ تأیید و نمایش نتایج';applyButton.dataset.filterApply='1';btns.appendChild(applyButton);
+    const reset=document.createElement('button');reset.type='button';reset.textContent='پاک‌کردن فیلترها';reset.dataset.filterReset='1';btns.appendChild(reset);
+    foot.appendChild(btns);
     bar.appendChild(foot);
-    panel.insertBefore(bar,panel.firstChild);return bar;
+    panel.insertBefore(bar,panel.firstChild);markPending();return bar;
   }
   function apply(){
     const panel=activePanel();if(!panel)return;
@@ -140,22 +230,37 @@
     }else if(empty)empty.remove();
   }
   function sync(){
-    document.querySelectorAll('[data-filter-key]').forEach(ctrl=>{if(ctrl.value!==(state[ctrl.dataset.filterKey]??''))ctrl.value=state[ctrl.dataset.filterKey]??''});
+    document.querySelectorAll('[data-filter-key]').forEach(ctrl=>{if(ctrl.value!==(draft[ctrl.dataset.filterKey]??''))ctrl.value=draft[ctrl.dataset.filterKey]??''});
   }
   document.addEventListener('input',e=>{
     const c=e.target.closest('[data-filter-key]');if(!c)return;
-    state[c.dataset.filterKey]=c.value;try{localStorage.setItem(KEY,JSON.stringify(state))}catch(_){}
-    sync();apply();
+    draft[c.dataset.filterKey]=c.value;
+    markPending();
   });
   document.addEventListener('change',e=>{
     const c=e.target.closest('[data-filter-key]');if(!c)return;
-    state[c.dataset.filterKey]=c.value;try{localStorage.setItem(KEY,JSON.stringify(state))}catch(_){}
-    sync();apply();
+    draft[c.dataset.filterKey]=c.value;
+    markPending();
   });
   document.addEventListener('click',e=>{
-    if(!e.target.closest('[data-filter-reset]'))return;
-    state={...defaults};try{localStorage.setItem(KEY,JSON.stringify(state))}catch(_){}
-    sync();apply();
+    if(calendar&&!e.target.closest('.jalali-popover,.jalali-open'))closeCalendar();
+    if(e.target.closest('[data-filter-apply]')){
+      const bad=['from','to'].filter(k=>draft[k]&&jalaliInput(draft[k])===null);
+      const panel=activePanel(),warning=panel?.querySelector('.signal-filter-date-error');
+      if(bad.length){if(warning)warning.textContent='تاریخ شمسی واردشده معتبر نیست. نمونه: ۱۴۰۵/۰۸/۲۱';return}
+      const from=jalaliInput(draft.from),to=jalaliInput(draft.to);
+      if(from&&to&&from>to){if(warning)warning.textContent='تاریخ شروع باید قبل از تاریخ پایان باشد.';return}
+      state={...draft};
+      try{localStorage.setItem(KEY,JSON.stringify(state))}catch(_){}
+      if(warning)warning.textContent='';
+      closeCalendar();markPending();apply();
+      return;
+    }
+    if(e.target.closest('[data-filter-reset]')){
+      state={...defaults};draft={...defaults};
+      try{localStorage.setItem(KEY,JSON.stringify(state))}catch(_){}
+      closeCalendar();sync();markPending();apply();
+    }
   });
   if(typeof renderActivePanel==='function'){
     const previous=renderActivePanel;
