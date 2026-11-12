@@ -5919,12 +5919,36 @@ function renderChampion(){
   '</div></div>';
 }
 
+function radarSignalDiagnostics(){
+  var rows=Array.isArray(tokens)?tokens:[];
+  if(!rows.length)return 'هنوز توکنی از API بازار دریافت نشده است؛ این وضعیت با رد امنیتی متفاوت است.';
+  var counts={rug:0,holders:0,lp:0,pool:0,entry:0,waiting:0},
+    examples=new Map();
+  rows.forEach(function(t){
+    var rug=t.externalSecurity?.rugcheck;
+    if(!rugcheckVerified(t)){counts.rug++;examples.set('rug',rug?.state||'UNKNOWN')}
+    if(!(Number.isInteger(t.totalHolderCount)&&t.totalHolderCount>=1000&&holderPolicyOk(t)))counts.holders++;
+    var lp=t.externalSecurity?.lp;
+    if(lp?.state!=='pass')counts.lp++;
+    if(t.poolHealth?.status!=='CLEAR')counts.pool++;
+    var plan=tradePlan(t);
+    if(plan.status==='ENTRY')counts.entry++;
+    else counts.waiting++;
+  });
+  return 'وضعیت '+rows.length+' توکن بررسی‌شده: ورود تأییدشده '+counts.entry+
+    ' | بدون تأیید Rugcheck '+counts.rug+
+    ' | شرط هولدر کامل نیست '+counts.holders+
+    ' | LP تأییدنشده '+counts.lp+
+    ' | استخر در انتظار/پرریسک '+counts.pool+
+    ' | بدون مجوز ورود '+counts.waiting+
+    '. ممکن است یک توکن در چند دسته باشد؛ توکن رصدشده به‌معنای سیگنال خرید نیست.';
+}
 function renderTopQuick(){
   var f=document.getElementById('topFeaturedQuick');
   if(f){
     var rows=featuredRows().filter(function(x){return passesSignalFilters(x.token)}).slice(0,6);
     f.innerHTML=rows.length?
-      '<div class="empty">🔎 گزینه‌های تحت بررسی؛ فقط «ورود فعال» سیگنال خرید است. وضعیت «صبر» پیشنهاد ورود نیست.</div>'+
+      '<div class="empty">🔎 گزینه‌های تحت بررسی؛ فقط «ورود فعال» سیگنال خرید است. وضعیت «صبر» پیشنهاد ورود نیست.<small>'+esc(radarSignalDiagnostics())+'</small></div>'+
       rows.map(function(x,i){
       var t=x.token,tp=tradePlan(t),sec=t.security||{};
       return '<div class="row"><div class="asset"><b>#'+(i+1)+' 🔥 '+esc(t.symbol||'?')+' · '+esc(t.name||'')+'</b>'+(x.sticky?'<span class="badge blue">📌 حفظ‌شده</span>':'')+whaleTrendBadge(t)+socialTrendBadges(t)+tradePlanChips(t)+'<small>'+esc(x.why.slice(0,3).join(' • '))+'</small></div>'+
@@ -5934,7 +5958,7 @@ function renderTopQuick(){
       '<div class="cell hide-sm"><small>حجم</small><b>'+esc(faVolume(t.flow?.volumeLabel))+'</b></div>'+
       '<div class="cell hide-md"><small>ورود</small><b>'+(tp.status==='ENTRY'?(tp.confidence==='HIGH'?'قوی':'قابل‌بررسی'):'صبر')+'</b></div>'+
       '<div class="actions"><a class="action" target="_blank" rel="noopener" href="'+esc(dexUrl(t.mint,t.dexUrl))+'">📈 DEX</a><a class="action" target="_blank" rel="noopener" href="https://pump.fun/coin/'+esc(t.mint)+'">🟢 Pump</a><button class="detail-btn" data-mint="'+esc(t.mint)+'">جزئیات</button></div></div>';
-    }).join(''):'<div class="empty">فعلاً نقطه ورود تأییدشده‌ای پیدا نشده؛ توکن‌های پرریسک عمداً بالا نمی‌آیند.</div>';
+    }).join(''):'<div class="empty">فعلاً نقطه ورود تأییدشده‌ای پیدا نشده؛ توکن‌های پرریسک عمداً بالا نمی‌آیند.<small>'+esc(radarSignalDiagnostics())+'</small></div>';
   }
 
   var q=document.getElementById('topTokenQuick');
@@ -5963,7 +5987,7 @@ function renderFeatured(){
     return !any||passesSignalFilters(x.token);
   }).sort(function(a,b){return (b.score-a.score)||(tokenStrength(b.token)-tokenStrength(a.token))});document.getElementById('kFeatured').textContent=r.length;
   document.getElementById('featuredList').innerHTML=r.length?
-    '<div class="empty">⚠️ این فهرست واچ‌لیست است، نه پیشنهاد خرید. صدور ورود نیازمند عبور از همه شروط امنیت، بازار و قیمت زنده است.</div>'+
+    '<div class="empty">⚠️ این فهرست واچ‌لیست است، نه پیشنهاد خرید. صدور ورود نیازمند عبور از همه شروط امنیت، بازار و قیمت زنده است.<small>'+esc(radarSignalDiagnostics())+'</small></div>'+
     r.map(function(x){
     var t=x.token;
     return '<div class="row"><div class="asset"><b>🔥 '+esc(t.symbol||'?')+' · '+esc(t.name||'')+'</b>'+(x.sticky?'<span class="badge blue">📌 حفظ‌شده</span>':'')+whaleTrendBadge(t)+socialTrendBadges(t)+tradePlanChips(t)+'<small>'+esc(x.why.slice(0,3).join(' • '))+'</small>'+socialButtons(t)+'</div>'+
@@ -5973,7 +5997,7 @@ function renderFeatured(){
     '<div class="cell hide-sm"><small>کیف‌پول برتر</small><b>'+(x.tracked?Number(x.tracked.uniqueBuyers||0):0)+'</b></div>'+
     '<div class="cell hide-md"><small>خریدار / حجم</small><b>'+Number(t.flow?.buyerPower||0)+'% · '+esc(faVolume(t.flow?.volumeLabel))+'</b></div>'+
     '<div class="actions"><a class="action" target="_blank" rel="noopener" href="'+esc(dexUrl(t.mint,t.dexUrl))+'">📈 DEX</a><a class="action" target="_blank" rel="noopener" href="https://pump.fun/coin/'+esc(t.mint)+'">🟢 Pump</a><button class="detail-btn" data-mint="'+esc(t.mint)+'">جزئیات</button></div></div>';
-  }).join(''):'<div class="empty">فعلاً پیشنهاد فعالی ثبت نشده؛ پیشنهادهای ثبت‌شده در بروزرسانی‌های بعدی حفظ می‌شوند تا زمانی که خروج/ریسک جدی تأیید شود.</div>';
+  }).join(''):'<div class="empty">فعلاً گزینه‌ای با تأییدهای امنیتی و فنی کافی برای پیشنهاد وجود ندارد.<small>'+esc(radarSignalDiagnostics())+'</small></div>';
 }
 function whaleVerification(t){
   if(!t)return {score:0,passed:0,total:6,checks:[]};
