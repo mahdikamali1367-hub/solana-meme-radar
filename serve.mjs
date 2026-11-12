@@ -4147,7 +4147,7 @@ body{font-size:15px}
   <button type="button" class="tab active" data-tab="featured" aria-selected="true"><svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="8"/><path d="M12 7v10M7 12h10"/></svg> ◈ نمای کلی</button>
   <button type="button" class="tab" data-tab="tokens" aria-selected="false"><svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 17l6-6 4 4 8-9"/><path d="M16 6h5v5"/></svg> ◉ بازار و توکن‌ها</button>
   <button type="button" class="tab" data-tab="social" aria-selected="false"><svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6A8.38 8.38 0 0 1 12.5 3h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg> ◎ شبکه‌های اجتماعی</button>
-  <button type="button" class="tab" data-tab="cex" aria-selected="false">🏦 لیست‌شدن صرافی‌ها</button>
+  <button type="button" class="tab" data-tab="cex" aria-selected="false"><svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="8" width="18" height="12" rx="2"/><path d="M3 8l9-5 9 5M8 20v-8M16 20v-8"/></svg> 🏦 لیست‌شدن صرافی‌ها</button>
   <button type="button" class="tab" data-tab="wallets" aria-selected="false"><svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="15" rx="2"/><path d="M16 14h5M3 9h18"/><circle cx="16" cy="14" r="1"/></svg> ▣ کیف‌پول‌ها</button>
   <details class="nav-more" id="advancedMenu">
     <summary>ابزارهای پیشرفته <span aria-hidden="true">⌄</span></summary>
@@ -4397,6 +4397,7 @@ body{font-size:15px}
 </section>
 
 <section class="panel" id="cexPanel">
+<details class="section-index" data-index-for="cex"><summary>راهنمای بخش لیست‌شدن صرافی‌ها</summary><div class="section-index-content"></div></details>
   <h2>🏦 رادار لیست‌شدن صرافی‌ها</h2>
   <p class="muted">Binance، Bybit و OKX؛ فقط اعلام رسمی صرافی مبنای «لیست قطعی» است. لیست Spot با فیوچرز، مارجین و شایعه متفاوت است. تاریخ و شمارش معکوس فقط با زمان رسمی قابل‌استناد نمایش داده می‌شود.</p>
   <details class="accordion highlight" open><summary>📣 اطلاعیه‌های رسمی و زمان‌بندی لیست</summary>
