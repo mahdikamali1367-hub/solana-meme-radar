@@ -4974,14 +4974,17 @@ function rememberRecommendation(t,score){
       introducedPrice:Number(currentPriceForMint(t.mint)||0)||null,
       introducedScore:Number(score||0),
       introducedSecurity:t.security?.tier||'',
-      strategyVersion:'confirmed-entry-v1',
+      strategyVersion:'conservative-entry-v2',
       entrySnapshot:{
         holders:t.totalHolderCount,liquidity:t.liquidity,marketCap:t.marketCap,
         volume5m:t.volume5m,txns5m:t.txns5m,buys5m:t.buys5m,sells5m:t.sells5m,
         change5m:t.priceChange5m,change1h:t.priceChange1h,
         buyerPower:t.flow?.buyerPower,activity:t.activity?.label,
         security:t.security?.tier,confirmation:t.preSignalGuard?.status,
-        socialHeat:t.socialHeat?.score
+        socialHeat:t.socialHeat?.score,
+        marketQuality:t.marketQuality?.score,poolHealth:t.poolHealth?.status,
+        verifiedPriceAtEntry:currentPriceForMint(t.mint),
+        entryGate:'conservative-v2'
       },
       dexUrl:t.dexUrl||''
     });
@@ -5433,6 +5436,36 @@ function antiRugGate(t){
   return {ok,reasons,holderOk,holdersComplete,criticalFail,criticalUnknown,complete:criticalUnknown.length===0};
 }
 
+// Prospective conservative entry rules: reduces risky calls, not a claimed historical win-rate improvement.
+function conservativeEntryCheck(t){
+  var reasons=[],fl=t.flow||{},mq=t.marketQuality||{},sec=t.security||{};
+  var pc5=Number(t.priceChange5m),pc1=Number(t.priceChange1h),
+    pc6=Number(t.priceChange6h),pc24=Number(t.priceChange24h);
+  var buys=Number(t.buys5m),sells=Number(t.sells5m),
+    buyer=Number(fl.buyerPower),liq=Number(t.liquidity),
+    vol=Number(t.volume5m),tx=Number(t.txns5m);
+  if(!(Number.isFinite(liq)&&liq>=75000))reasons.push('نقدینگی حداقل ۷۵ هزار دلار');
+  if(!(Number.isFinite(vol)&&vol>=8000&&liq>0&&vol/liq<=2))reasons.push('حجم معتبر و غیرجهشی نسبت به نقدینگی');
+  if(!(Number.isFinite(tx)&&tx>=50&&Number.isFinite(buys)&&buys>=25&&
+    Number.isFinite(sells)&&buys>=1.6*Math.max(1,sells)))reasons.push('مشارکت خریداران و نسبت خرید/فروش کافی نیست');
+  if(!(Number.isFinite(buyer)&&buyer>=62))reasons.push('قدرت خرید کمتر از ۶۲٪');
+  if(!(Number.isFinite(pc5)&&pc5>=1&&pc5<=6&&Number.isFinite(pc1)&&pc1>=2&&pc1<=18))
+    reasons.push('مومنتوم پنج‌دقیقه/یک ساعت خارج از بازه محافظه‌کارانه');
+  if((Number.isFinite(pc6)&&pc6>45)||(Number.isFinite(pc24)&&pc24>110))
+    reasons.push('رشد شدید قبلی و ریسک ورود دیرهنگام');
+  if(!(Number.isFinite(Number(mq.score))&&Number(mq.score)>=75))
+    reasons.push('کیفیت بازار حداقل ۷۵ تأیید نشده');
+  if(t.activity?.label!=='PROBABLE ORGANIC')reasons.push('فعالیت طبیعی هنوز تأیید نشده');
+  if(fl.volumeLabel!=='GOOD'&&fl.volumeLabel!=='STRONG')reasons.push('کیفیت حجم معاملات کافی نیست');
+  if(t.chart?.fomoRisk==='HIGH'||t.chart?.pumpDumpRisk==='HIGH')
+    reasons.push('ریسک FOMO یا پامپ و دامپ');
+  if(sec.tier!=='HIGH'&&sec.tier!=='MAX SECURITY')reasons.push('امنیت HIGH/MAX نیست');
+  var ws=whaleSellsFor(t.mint),ex=exitFor(t.mint),tr=findTracked(t.mint);
+  if(ws.count>0||ex.length>0||Number(tr?.netFlowUsd||0)<-250||
+     Number(tr?.uniqueSellers||0)>=2)reasons.push('فروش نهنگ یا جریان منفی کیف‌پول‌های ردیابی‌شده');
+  if(!(currentPriceForMint(t.mint)>0))reasons.push('قیمت زنده تأییدشده در دسترس نیست');
+  return {ok:reasons.length===0,reasons};
+}
 function tradePlan(t){
   if(!t)return {status:'WAIT',entry:null,entryLow:null,entryHigh:null,stopLoss:null,takeProfit1:null,takeProfit2:null,takeProfit3:null,reason:'داده کافی نیست'};
 
@@ -5478,6 +5511,14 @@ function tradePlan(t){
       reason:q.reasons.slice(0,3).join(' • ')||'در انتظار برتری خریدار',
       riskPct:riskPct*100,buyerPower,sellerPower,quality:q,safety:safe
     };
+  }
+
+  var conservative=conservativeEntryCheck(t);
+  if(!conservative.ok){
+    return {status:'WAIT',entry:null,entryLow:null,entryHigh:null,
+      stopLoss,takeProfit1,takeProfit2,takeProfit3,
+      reason:'فیلتر محافظه‌کارانه: '+conservative.reasons.slice(0,3).join(' • '),
+      riskPct:riskPct*100,buyerPower,sellerPower,quality:q,safety:safe};
   }
 
   // A single bullish snapshot often precedes a reversal. For new entry calls,
@@ -5703,8 +5744,8 @@ function featuredRows(){
         }));
       }
     }else{
-      // Token temporarily missing from discovery: preserve last known recommendation.
-      stickyFeatured.set(mint,Object.assign({},old,{sticky:true}));
+      // Do not display a stale token as an active recommendation.
+      stickyFeatured.delete(mint);
     }
   }
 
@@ -5817,7 +5858,9 @@ function renderTopQuick(){
   var f=document.getElementById('topFeaturedQuick');
   if(f){
     var rows=featuredRows().filter(function(x){return passesSignalFilters(x.token)}).slice(0,6);
-    f.innerHTML=rows.length?rows.map(function(x,i){
+    f.innerHTML=rows.length?
+      '<div class="empty">🔎 گزینه‌های تحت بررسی؛ فقط «ورود فعال» سیگنال خرید است. وضعیت «صبر» پیشنهاد ورود نیست.</div>'+
+      rows.map(function(x,i){
       var t=x.token,tp=tradePlan(t),sec=t.security||{};
       return '<div class="row"><div class="asset"><b>#'+(i+1)+' 🔥 '+esc(t.symbol||'?')+' · '+esc(t.name||'')+'</b>'+(x.sticky?'<span class="badge blue">📌 حفظ‌شده</span>':'')+whaleTrendBadge(t)+socialTrendBadges(t)+tradePlanChips(t)+'<small>'+esc(x.why.slice(0,3).join(' • '))+'</small></div>'+
       '<div class="cell"><small>امتیاز</small><b>'+x.score+'/100</b></div>'+
@@ -5854,7 +5897,9 @@ function renderFeatured(){
     var any=signalFilters.short||signalFilters.medium||signalFilters.long||signalFilters.security||signalFilters.holders||signalFilters.bigbuyers;
     return !any||passesSignalFilters(x.token);
   }).sort(function(a,b){return (b.score-a.score)||(tokenStrength(b.token)-tokenStrength(a.token))});document.getElementById('kFeatured').textContent=r.length;
-  document.getElementById('featuredList').innerHTML=r.length?r.map(function(x){
+  document.getElementById('featuredList').innerHTML=r.length?
+    '<div class="empty">⚠️ این فهرست واچ‌لیست است، نه پیشنهاد خرید. صدور ورود نیازمند عبور از همه شروط امنیت، بازار و قیمت زنده است.</div>'+
+    r.map(function(x){
     var t=x.token;
     return '<div class="row"><div class="asset"><b>🔥 '+esc(t.symbol||'?')+' · '+esc(t.name||'')+'</b>'+(x.sticky?'<span class="badge blue">📌 حفظ‌شده</span>':'')+whaleTrendBadge(t)+socialTrendBadges(t)+tradePlanChips(t)+'<small>'+esc(x.why.slice(0,3).join(' • '))+'</small>'+socialButtons(t)+'</div>'+
     '<div class="cell"><small>امتیاز</small><b><span class="badge good">'+x.score+'/100</span></b></div>'+
@@ -6530,6 +6575,8 @@ function renderRecommendationPerformance(){
   sum.innerHTML='<div class="perf-summary">'+
     '<div class="perf-stat"><small>سیگنال‌های ورود ثبت‌شده</small><b>'+rows.length+'</b></div>'+
     '<div class="perf-stat"><small>در سود</small><b class="return-pos">'+wins.length+'</b></div>'+
+    '<div class="perf-stat"><small>در زیان (قیمت تازه)</small><b class="return-neg">'+valid.filter(function(x){return x.pnlPct<0}).length+'</b></div>'+
+    '<div class="perf-stat"><small>نرخ مثبت (قیمت تازه)</small><b>'+(valid.length?(100*wins.length/valid.length).toFixed(1)+'٪':'—')+'</b></div>'+
     '<div class="perf-stat"><small>میانگین بازده ناخالص مشاهده‌شده</small><b class="'+(avg==null?'return-flat':avg>=0?'return-pos':'return-neg')+'">'+(avg==null?'—':(avg>0?'+':'')+avg.toFixed(1)+'%')+'</b></div>'+
     '<div class="perf-stat"><small>بهترین عملکرد</small><b class="return-pos">'+(best?esc(best.history.symbol||best.history.name)+' '+(best.pnlPct>0?'+':'')+best.pnlPct.toFixed(1)+'%':'—')+'</b></div>'+
   '</div>';
