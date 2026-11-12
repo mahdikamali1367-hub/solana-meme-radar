@@ -4336,14 +4336,14 @@ body{font-size:15px}
   <details class="accordion">
     <summary>💰 عملکرد سیگنال‌های ترند اجتماعی از زمان معرفی</summary>
     <div class="accordion-body">
-      <p class="muted" style="font-size:11px">مبنای هر توکن اولین Social Trend است؛ قیمت ورود ثابت و سود لحظه‌ای زنده است. ورود نهنگ و اسمارت‌مانی روی همان Mint نیز کنار هر سیگنال نمایش داده می‌شود.</p>
+      <p class="muted" style="font-size:11px">فقط توکن‌های دارای منشن مستقل X/Bluesky یا ویدیوی قابل‌شمارش هنگام ثبت، ترند اجتماعی محسوب می‌شوند. سابقه‌های قبلی بدون این شواهد جدا نگهداری شده‌اند. بازده، تغییر قیمت است نه سود تضمین‌شده.</p>
       <div id="socialPerformanceSummary"></div>
       <div class="list" id="socialPerformanceList"></div>
     </div>
   </details>
   <details class="accordion">
     <summary>📣 داغ‌ترین توکن‌ها در شبکه‌های اجتماعی</summary>
-    <div class="accordion-body"><p class="muted" style="font-size:11px">Social Heat از mentionهای قابل‌شمارش + حضور رسمی چندشبکه‌ای ساخته می‌شود. امنیت همچنان شرط مستقل است.</p><div class="list" id="socialList"></div></div>
+    <div class="accordion-body"><p class="muted" style="font-size:11px">امتیاز Social Heat به‌تنهایی سیگنال نیست. فقط با منشن شمارش‌شده مستقل نمایش داده می‌شود. امنیت و خطر تخلیه استخر همچنان شرط جداگانه ورود هستند.</p><div class="list" id="socialList"></div></div>
   </details>
 </section>
 
@@ -4887,10 +4887,24 @@ function saveSocialSignalHistory(){
     localStorage.setItem('socialSignalHistory',JSON.stringify([...socialSignalHistory.values()].slice(-300)));
   }catch(e){}
 }
+function corroboratedSocialMentions(t){
+  if(!t)return false;
+  const x=Number(t.xSocial?.posts2h||0),b=Number(t.bluesky?.mentions2h||0),
+    y=Number(t.youtubeSocial?.videos24h||0);
+  // Linked social profiles or a DEX boost are NOT evidence of live mentions.
+  return Number(t.socialHeat?.score||0)>=20&&(x>=2||b>=2||y>=2);
+}
+function verifiedSocialHistory(h){
+  if(!h)return false;
+  // Preserve legacy history but never retroactively upgrade it without a
+  // timestamped snapshot of actual social activity.
+  return h.evidenceVerified===true &&
+    (Number(h.xPosts2h||0)>=2||Number(h.youtubeVideos24h||0)>=2||Number(h.blueskyMentions2h||0)>=2);
+}
 function rememberSocialSignal(t){
   if(!t||!t.mint)return;
   var heat=Number(t.socialHeat?.score||0);
-  if(heat<=0)return;
+  if(!corroboratedSocialMentions(t))return;
   var old=socialSignalHistory.get(t.mint);
   var isEntry=tradePlan(t).status==='ENTRY';
   if(!old){
@@ -4900,7 +4914,8 @@ function rememberSocialSignal(t){
       symbol:t.symbol||'',
       introducedAt:new Date().toISOString(),
       introducedPrice:Number(currentPriceForMint(t.mint)||0)||null,
-      isEntrySignal:isEntry,signalClassification:isEntry?'ENTRY':'DISCOVERY_ONLY',
+      evidenceVerified:true,
+      isEntrySignal:isEntry,signalClassification:isEntry?'CONFIRMED_ENTRY':'VERIFIED_SOCIAL_WATCH',
       introducedSocialHeat:heat,
       introducedSocialLabel:t.socialHeat?.label||'',
       introducedSecurity:t.security?.tier||'',
@@ -4923,7 +4938,7 @@ function rememberSocialSignal(t){
   }
 }
 function socialSignalPerformanceRows(){
-  return [...socialSignalHistory.values()].map(function(h){
+  return [...socialSignalHistory.values()].filter(verifiedSocialHistory).map(function(h){
     var t=findToken(h.mint);
     var current=currentPriceForMint(h.mint);
     var base=Number(h.introducedPrice||0);
@@ -6241,7 +6256,7 @@ function renderSocialTrends(){
   var minHolders=Number(signalFilters.totalholders||0);
   // Keep fresh social introductions at the top without losing first-seen history.
   var candidates=tokens.slice()
-    .filter(function(t){return Number(t.socialHeat?.score||0)>0&&(!minHolders||(Number.isInteger(t.totalHolderCount)&&t.totalHolderCount>=minHolders))})
+    .filter(function(t){return corroboratedSocialMentions(t)&&(!minHolders||(Number.isInteger(t.totalHolderCount)&&t.totalHolderCount>=minHolders))})
     .sort(function(a,b){return Number(b.socialHeat?.score||0)-Number(a.socialHeat?.score||0)||tokenStrength(b)-tokenStrength(a)})
     .slice(0,40);
   candidates.forEach(rememberSocialSignal);
@@ -6315,24 +6330,28 @@ function renderSocialTrends(){
   var perfSum=document.getElementById('socialPerformanceSummary');
   if(perfList&&perfSum){
     var rows=socialSignalPerformanceRows();
+    var archived=[...socialSignalHistory.values()].filter(function(h){return !verifiedSocialHistory(h)});
     var valid=rows.filter(function(x){return x.history.isEntrySignal===true&&x.pnlPct!=null});
     var wins=valid.filter(function(x){return x.pnlPct>0});
     var avg=valid.length?valid.reduce(function(a,x){return a+Number(x.pnlPct||0)},0)/valid.length:null;
     var best=valid.slice().sort(function(a,b){return b.pnlPct-a.pnlPct})[0]||null;
     perfSum.innerHTML='<div class="perf-summary">'+
-      '<div class="perf-stat"><small>ترندهای کشف‌شده (نه الزاماً سیگنال خرید)</small><b>'+rows.length+'</b></div>'+
+      '<div class="perf-stat"><small>سیگنال‌های اجتماعی با شواهد هنگام ثبت</small><b>'+rows.length+'</b></div>'+
+      '<div class="perf-stat"><small>آرشیو قدیمی فاقد شواهد کافی</small><b>'+archived.length+'</b></div>'+
       '<div class="perf-stat"><small>سیگنال ورود قابل‌ارزیابی</small><b>'+valid.length+'</b></div>'+
       '<div class="perf-stat"><small>در سود</small><b class="return-pos">'+wins.length+'</b></div>'+
       '<div class="perf-stat"><small>میانگین بازده</small><b class="'+(avg==null?'return-flat':avg>=0?'return-pos':'return-neg')+'">'+(avg==null?'—':(avg>0?'+':'')+avg.toFixed(1)+'%')+'</b></div>'+
       '<div class="perf-stat"><small>بهترین سیگنال</small><b class="return-pos">'+(best?esc(best.history.symbol||best.history.name)+' '+(best.pnlPct>0?'+':'')+best.pnlPct.toFixed(1)+'%':'—')+'</b></div>'+
     '</div>';
 
-    perfList.innerHTML=rows.length?rows.map(function(x,i){
+    perfList.innerHTML='<div class="empty">سودهای این بخش تغییر قیمت از زمان ثبت هستند، نه سود معامله انجام‌شده. فقط منشن‌های شمارش‌شده هنگام ثبت به‌عنوان ترند تأیید می‌شوند. رکوردهای قدیمی بدون سند در آمار سیگنال دخالت ندارند.</div>'+
+      (rows.length?rows.map(function(x,i){
       var h=x.history,t=x.token,p=x.pnlPct;
       var currentFlow=t?socialMoneyFlow(t):{whale:{count:0,usd:0},smart:null,tracked:null};
       var cls=p==null?'return-flat':p>=0?'return-pos':'return-neg';
       var txt=p==null?'—':(p>0?'+':'')+p.toFixed(1)+'%';
-      return '<div class="row"><div class="asset"><b>#'+(i+1)+' 📣 '+esc(h.symbol||'?')+' · '+esc(h.name||'')+'</b>'+
+      return '<div class="row" data-mint="'+esc(h.mint)+'"><div class="asset"><b>#'+(i+1)+' 📣 '+esc(h.symbol||'?')+' · '+esc(h.name||'')+'</b>'+
+        '<span class="badge '+(h.isEntrySignal===true?'good':'blue')+'">'+(h.isEntrySignal===true?'ورود ثبت‌شده':'رصد اجتماعی؛ نه سیگنال خرید')+'</span>'+
         '<small>معرفی '+new Date(h.introducedAt).toLocaleString('fa-IR')+' · Social Heat اولیه '+Number(h.introducedSocialHeat||0)+' · امنیت '+esc(faSec(h.introducedSecurity))+'</small></div>'+
         '<div class="cell"><small>💵 قیمت ورود</small><b>'+fmtPrice(h.introducedPrice)+'</b></div>'+
         '<div class="cell"><small>⚡ قیمت لحظه‌ای</small><b data-live-price-mint="'+esc(h.mint)+'">'+(x.currentPrice?fmtPrice(x.currentPrice):'—')+'</b></div>'+
@@ -6342,7 +6361,14 @@ function renderSocialTrends(){
         '<div class="cell"><small>🧠 اسمارت‌مانی الان</small><b class="'+(currentFlow.smart||(currentFlow.tracked&&Number(currentFlow.tracked.netFlowUsd||0)>0)?'return-pos':'return-flat')+'">'+
           (currentFlow.smart?'فعال':currentFlow.tracked&&Number(currentFlow.tracked.netFlowUsd||0)>0?money(currentFlow.tracked.netFlowUsd):'ندارد')+'</b></div>'+
         '<div class="actions"><a class="action" target="_blank" rel="noopener" href="'+esc(dexUrl(h.mint,h.dexUrl||t&&t.dexUrl))+'">📈 چارت</a></div></div>';
-    }).join(''):'<div class="empty">هنوز سیگنال اجتماعی ثبت‌شده‌ای برای محاسبه عملکرد وجود ندارد.</div>';
+    }).join(''):'<div class="empty">هنوز سیگنال اجتماعی با شواهد معتبر هنگام ثبت وجود ندارد.</div>')+
+      (archived.length?'<details class="accordion"><summary>🗂️ آرشیو موارد قدیمی بدون تأیید اجتماعی ('+archived.length+')</summary><div class="accordion-body"><p class="muted">این رکوردها پیش از سخت‌گیری جدید بر اساس امتیاز ضعیف یا لینک شبکه ثبت شده‌اند؛ سود و زیان آن‌ها عملکرد سیگنال معتبر محسوب نمی‌شود.</p><div class="list">'+
+      archived.slice().sort(function(a,b){return Date.parse(b.introducedAt||'')-Date.parse(a.introducedAt||'')}).slice(0,300).map(function(h){
+        return '<div class="row" data-mint="'+esc(h.mint)+'"><div class="asset"><b>'+esc(h.symbol||'?')+' · '+esc(h.name||'')+'</b>'+
+          '<small>ثبت قدیمی: '+(h.introducedAt?new Date(h.introducedAt).toLocaleString('fa-IR'):'نامشخص')+
+          ' · امتیاز '+Number(h.introducedSocialHeat||0)+'/100 · بدون مدرک کافی</small></div>'+
+          '<div class="actions"><a class="action" href="'+esc(dexUrl(h.mint,h.dexUrl))+'" rel="noopener" target="_blank">چارت</a></div></div>';
+      }).join('')+'</div></div></details>':'');
   }
 }
 
