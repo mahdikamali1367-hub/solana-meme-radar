@@ -101,12 +101,15 @@ assert(rendered.includes('font-size:15px')&&rendered.includes('.radar-page-card-
 const ui=rendered.slice(rendered.indexOf('function spotlightSocialWhaleCandidates('),
   rendered.indexOf('function renderAll(){'));
 const pureUi=ui.slice(0,ui.indexOf('function renderTopSpotlight(){'));
-const selection=new Function(pureUi+'return {spotlightSocialWhaleCandidates,spotlightVerifiedPrePump};')();
-const aToken={mint:'mint-1',symbol:'GOOD',socialHeat:{score:75},security:{tier:'HIGH',holderPolicyPassed:true}};
+const selection=new Function(
+  'function rugcheckVerified(t){return t.externalSecurity?.rugcheck?.state==="PASS" && t.externalSecurity.rugcheck.mint===t.mint;}\n'+
+  pureUi+'return {spotlightSocialWhaleCandidates,spotlightVerifiedPrePump};')();
+const aToken={mint:'mint-1',symbol:'GOOD',socialHeat:{score:75},security:{tier:'HIGH',holderPolicyPassed:true},externalSecurity:{rugcheck:{mint:'mint-1',state:'PASS'}}};
 const risky={mint:'mint-2',symbol:'RISK',socialHeat:{score:97},security:{tier:'REJECT'}};
+const noRugcheck={mint:'mint-4',symbol:'UNVERIFIED',socialHeat:{score:95},security:{tier:'HIGH',holderPolicyPassed:true}};
 const noSocial={mint:'mint-3',symbol:'QUIET',socialHeat:{score:10},security:{tier:'HIGH'}};
 const w=mint=>mint==='mint-1'?{count:2,usd:15000}:{count:0,usd:0};
-assert.deepEqual(selection.spotlightSocialWhaleCandidates([aToken,risky,noSocial],w)
+assert.deepEqual(selection.spotlightSocialWhaleCandidates([aToken,risky,noSocial,noRugcheck],w)
   .map(x=>x.token.mint),['mint-1'],
   'Only tokens with both social evidence and whale buys may be featured');
 const onset=Date.UTC(2026,10,11,12,0,0);
