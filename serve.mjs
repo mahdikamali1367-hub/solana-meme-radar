@@ -85,13 +85,35 @@ const SUBMITTED_PUMP_CASES=[
     symbol:'HUNG',name:'Jensen Hung',
     reportedOnset:'2026-11-11T20:30:00.000Z',
     reportedTimezone:'Asia/Tehran',
-    source:'user-reported',verifiedOnset:false}
+    source:'user-reported',verifiedOnset:false},
+  {mint:'4CxjZyMNoF1p6eXHXHv1TWpS2X47CuUmLwtGe18spump',
+    symbol:'MIHAO',name:'ni hao cat',
+    reportedOnset:null,reportedTimezone:'Europe/Paris',
+    source:'historical-public-report',verifiedOnset:false,
+    contextualPeak:'2026-11-11T05:41:00.000Z',
+    contextualArticle:'https://trenches-on.com/en/runners/2026-11-11-mihao/',
+    contextualAccounts:[
+      {handle:'Dior100x',postUrl:'https://x.com/Dior100x/status/2120315999882985979',note:'تصویر گربه؛ صرفاً اشاره فرهنگی'},
+      {handle:'iAmNihaoCat',postUrl:'https://x.com/iAmNihaoCat/status/2120317299341349020',note:'بازنشر تصویر، نه سیگنال خرید'},
+      {handle:'blknoiz06',postUrl:'https://x.com/blknoiz06/status/2120363216043704466',note:'اشاره به روایت مرتبط، بدون اثبات اشاره به کانترکت'},
+      {handle:'durki0h',postUrl:'https://x.com/durki0h/status/2120376082444779621',note:'آواتار، نه سیگنال خرید'}
+    ]}
 ];
 async function reviewSubmittedPumpCases(){
   const now=Date.now(),items=[];
   for(const item of SUBMITTED_PUMP_CASES){
-    const onsetAt=Date.parse(item.reportedOnset),startAt=onsetAt-24*60*60*1000;
-    if(!Number.isFinite(onsetAt)||!PUMP_X_MINT_RE.test(item.mint))continue;
+    if(!PUMP_X_MINT_RE.test(item.mint))continue;
+    const onsetAt=item.reportedOnset?Date.parse(item.reportedOnset):NaN;
+    if(!Number.isFinite(onsetAt)){
+      items.push({mint:item.mint,symbol:item.symbol,name:item.name,
+        reportedOnset:null,verifiedOnset:false,windowStart:null,windowEnd:null,
+        contextualPeak:item.contextualPeak||null,contextualArticle:item.contextualArticle||null,
+        contextualAccounts:item.contextualAccounts||[],status:'needs-onset',
+        checkedAt:new Date(now).toISOString(),accounts:[],
+        note:'زمان آغاز پامپ از کندل تاریخی تأیید نشده؛ پست‌های اشاره‌شده در گزارش رسانه‌ای سیگنال خرید با کانترکت دقیق نیستند.'});
+      continue;
+    }
+    const startAt=onsetAt-24*60*60*1000;
     const q=await queryXPostsForMint(item.mint,startAt,onsetAt);
     const posts=q.status==='ok'?[...new Map((q.posts||[]).map(p=>[p.authorId,p])).values()]
       .filter(p=>p.postedAt>=startAt&&p.postedAt<onsetAt):[];
@@ -6142,20 +6164,29 @@ function renderPumpXMonitor(){
     var code=x.status==='not-configured'?'اتصال X API روی سرور تنظیم نشده':
       x.status==='api-error'?'خطای جستجوی X API':
       x.status==='full-archive-required'?'نیازمند دسترسی آرشیوی X':
-      x.status==='ok'?'جستجوی X انجام شد':'جستجو کامل نیست';
+      x.status==='ok'?'جستجوی X انجام شد':
+      x.status==='needs-onset'?'در انتظار تعیین زمان شروع پامپ':'جستجو کامل نیست';
     var refs=(x.accounts||[]).map(function(a){
       return '<a class="action" target="_blank" rel="noopener" href="'+esc(a.postUrl)+'">'+
         '@'+esc(a.handle)+' · '+new Date(a.postAt).toLocaleString('fa-IR')+'</a>';
     }).join('');
+    var contextual=(x.contextualAccounts||[]).map(function(a){
+      return '<a class="action" target="_blank" rel="noopener" href="'+esc(a.postUrl)+'">@'+
+        esc(a.handle)+' · فقط اشاره اجتماعی</a>';
+    }).join('');
     return '<div class="row"><div class="asset"><b>🕵️ '+esc(x.symbol)+' · '+esc(x.name)+'</b>'+
-      '<span class="badge mid">شروع پامپ: اعلام کاربر، تأییدنشده</span>'+
+      '<span class="badge mid">شروع پامپ تأیید نشده</span>'+
       '<small>CA: '+esc(x.mint)+'</small>'+
-      '<small>پنجره بررسی: '+new Date(x.windowStart).toLocaleString('fa-IR')+
-      ' تا '+new Date(x.windowEnd).toLocaleString('fa-IR')+'</small>'+
+      (x.windowStart&&x.windowEnd?
+        '<small>پنجره بررسی: '+new Date(x.windowStart).toLocaleString('fa-IR')+
+        ' تا '+new Date(x.windowEnd).toLocaleString('fa-IR')+'</small>':
+        '<small>زمان اوج گزارش‌شده: '+(x.contextualPeak?new Date(x.contextualPeak).toLocaleString('fa-IR'):'نامشخص')+
+        ' · زمان آغاز رشد نامشخص است؛ بازه ۲۴ساعته دقیق هنوز تعیین نشده.</small>')+
       '<small>وضعیت: '+esc(code)+' · '+esc(x.note||'')+'</small>'+
       '<small>تعداد نویسنده‌های دارای پست مستند: '+Number(x.accounts?.length||0)+
       (x.partial?' · نتایج API ممکن است ناقص باشد':'')+'</small></div>'+
-      '<div class="actions">'+refs+
+      '<div class="actions">'+refs+contextual+
+      (x.contextualArticle?'<a class="action" href="'+esc(x.contextualArticle)+'" target="_blank" rel="noopener">گزارش زمینه‌ای</a>':'')+
       '<a class="action" target="_blank" rel="noopener" href="https://x.com/search?q='+encodeURIComponent(x.mint)+'&f=live">جستجوی دستی X</a>'+
       '<a class="action" target="_blank" rel="noopener" href="'+esc(dexUrl(x.mint,''))+'">چارت</a></div></div>';
   }).join('')||'<div class="empty">هنوز کانترکتی برای بررسی تاریخی ثبت نشده است.</div>';
