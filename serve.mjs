@@ -2236,8 +2236,12 @@ async function externalSecurityAudit(t){
     jfetch('https://api.rugcheck.xyz/v1/tokens/'+encodeURIComponent(mint)+'/report/summary',{},12000),
     jfetch('https://api.gopluslabs.io/api/v1/solana/token_security?contract_addresses='+encodeURIComponent(mint),{headers:goHeaders},12000)
   ]);
-  const report=fullR.status==='fulfilled'?fullR.value:null;
-  const summary=summaryR.status==='fulfilled'?summaryR.value:null;
+  const rawReport=fullR.status==='fulfilled'?fullR.value:null;
+  const rawSummary=summaryR.status==='fulfilled'?summaryR.value:null;
+  const report=rawReport&&typeof rawReport==='object'&&!rawReport.error&&
+    (!rawReport.mint||rawReport.mint===mint)?rawReport:null;
+  const summary=rawSummary&&typeof rawSummary==='object'&&!rawSummary.error&&
+    (!rawSummary.mint||rawSummary.mint===mint)?rawSummary:null;
   const goRaw=goR.status==='fulfilled'?goR.value:null;
   const goResult=goRaw?.result?.[mint]||goRaw?.result?.[String(mint).toLowerCase()]||goRaw?.result||null;
   const sourceObj=report||summary||{};
@@ -2396,8 +2400,25 @@ async function externalSecurityAudit(t){
     else goPlus=auditState('pass','GoPlus Solana بدون ریسک بحرانی'+(Number.isFinite(score)?' · Score '+score:''),'GoPlus Solana Token Security');
   }
 
+  const rugcheckAvailable=!!(report||summary);
+  const severeRisks=risks.filter(r=>{
+    const level=String(r.level||'').toLowerCase();
+    const detail=textRisk(r);
+    return /danger|critical|high/.test(level)||
+      /honeypot|fake token|scam|rug pull|rugged|cannot sell|freeze authority|mint authority|unlocked liquidity|insider network|wash trading/.test(detail);
+  });
+  const rugcheckState=!rugcheckAvailable?'UNKNOWN':
+    rugged||severeRisks.length>0||overall.state==='fail'?'REJECT':
+    overall.state==='pass'&&lp.state==='pass'?'PASS':'REVIEW';
+  const rugcheck={state:rugcheckState,checkedAt:new Date().toISOString(),
+    mint,url:'https://rugcheck.xyz/tokens/'+encodeURIComponent(mint),
+    score:Number.isFinite(rugScore)?rugScore:null,
+    lpLockedPct:Number.isFinite(lpLockedPct)?lpLockedPct:null,
+    severeRiskCount:severeRisks.length,
+    reasons:severeRisks.slice(0,5).map(r=>String(r.name||r.description||'High risk')),
+    reportAvailable:rugcheckAvailable};
   const available=!!(report||summary||goResult||t.security);
-  const data={available,goPlus,lp,dev,insider,sell,overall,creatorHistory,metadata,extensions,rugcheckScore:Number.isFinite(rugScore)?rugScore:null,lpLockedPct:Number.isFinite(lpLockedPct)?lpLockedPct:null,creator,creatorPct,rawRiskCount:risks.length,tokenProgram:pick(summary,'tokenProgram')||pick(report,'tokenProgram')||t.security?.tokenProgram||null};
+  const data={available,rugcheck,goPlus,lp,dev,insider,sell,overall,creatorHistory,metadata,extensions,rugcheckScore:Number.isFinite(rugScore)?rugScore:null,lpLockedPct:Number.isFinite(lpLockedPct)?lpLockedPct:null,creator,creatorPct,rawRiskCount:risks.length,tokenProgram:pick(summary,'tokenProgram')||pick(report,'tokenProgram')||t.security?.tokenProgram||null};
   externalSecurityCache.set(mint,{at:Date.now(),data});return data;
 }
 
@@ -5470,6 +5491,12 @@ function tradePlan(t){
   if(!t)return {status:'WAIT',entry:null,entryLow:null,entryHigh:null,stopLoss:null,takeProfit1:null,takeProfit2:null,takeProfit3:null,reason:'داده کافی نیست'};
 
   var sec=t.security||{},fl=t.flow||{},q=entryQualityGate(t),safe=antiRugGate(t);
+  if(!rugcheckVerified(t)){
+    const st=t.externalSecurity?.rugcheck?.state||'UNKNOWN';
+    return {status:st==='REJECT'?'EXIT':'WAIT',entry:null,entryLow:null,entryHigh:null,
+      stopLoss:null,takeProfit1:null,takeProfit2:null,takeProfit3:null,
+      reason:'بررسی Rugcheck برای این قرارداد تأیید نشده: '+st};
+  }
   var ws=whaleSellsFor(t.mint),ex=exitFor(t.mint);
   var p=Number(t.priceUsd||0);
   var buyerPower=Number(fl.buyerPower||0);
@@ -5568,15 +5595,15 @@ function tradePlanChips(t){
     var zone=(p.entryLow&&p.entryHigh)?fmtPrice(p.entryLow)+' تا '+fmtPrice(p.entryHigh):fmtPrice(p.entry);
     var label=p.confidence==='HIGH'?'🟢 ورود قوی':p.confidence==='MEDIUM'?'🟢 ورود فعال':'🟡 ورود زودهنگام';
     var liveNow=currentPriceForMint(t.mint)||Number(t.priceUsd||0);
-    return '<span class="entry-chip entry-ready">'+label+' · '+zone+'</span>'+
+    return rugcheckBadge(t)+'<span class="entry-chip entry-ready">'+label+' · '+zone+'</span>'+
       '<span class="entry-chip entry-ready">⚡ قیمت لحظه‌ای · <b data-live-price-mint="'+esc(t.mint)+'">'+fmtPrice(liveNow)+'</b></span>'+
       '<span class="entry-chip entry-exit">🛑 حد ضرر · '+fmtPrice(p.stopLoss)+'</span>'+
       '<span class="entry-chip entry-ready">🎯 سود 1 · '+fmtPrice(p.takeProfit1)+'</span>'+
       '<span class="entry-chip entry-ready">🎯 سود 2 · '+fmtPrice(p.takeProfit2)+'</span>'+
       '<span class="entry-chip entry-ready">🚀 سود 3 · '+fmtPrice(p.takeProfit3)+'</span>';
   }
-  if(p.status==='EXIT')return '<span class="entry-chip entry-exit">🔴 ورود نکن / خروج'+(p.stopLoss?' · مرجع '+fmtPrice(p.stopLoss):'')+'</span>';
-  return '<span class="entry-chip entry-wait">⏳ '+esc(p.reason||'در انتظار تأیید')+'</span>';
+  if(p.status==='EXIT')return rugcheckBadge(t)+'<span class="entry-chip entry-exit">🔴 ورود نکن / خروج'+(p.stopLoss?' · مرجع '+fmtPrice(p.stopLoss):'')+'</span>';
+  return rugcheckBadge(t)+'<span class="entry-chip entry-wait">⏳ '+esc(p.reason||'در انتظار تأیید')+'</span>';
 }
 
 
@@ -5648,8 +5675,24 @@ function highestSecurityTrendOk(t){
     siteTrendSources(t).length>=1;
 }
 
+function rugcheckVerified(t){
+  const r=t?.externalSecurity?.rugcheck;
+  if(!r||r.mint!==t.mint||r.state!=='PASS'||!r.reportAvailable)return false;
+  const checked=Date.parse(r.checkedAt||'');
+  return Number.isFinite(checked)&&Date.now()-checked<=15*60*1000;
+}
+function rugcheckBadge(t){
+  if(!t?.mint)return '';
+  const r=t.externalSecurity?.rugcheck,st=r?.state||'UNKNOWN';
+  const color=st==='PASS'?'good':st==='REJECT'?'bad':'mid';
+  const label=st==='PASS'?'Rugcheck: کم‌ریسک در بررسی':
+    st==='REJECT'?'Rugcheck: ریسک بالا / رد':
+    st==='REVIEW'?'Rugcheck: بررسی بیشتر':'Rugcheck: نامشخص';
+  return '<a class="badge '+color+'" rel="noopener" target="_blank" href="https://rugcheck.xyz/tokens/'+
+    encodeURIComponent(t.mint)+'">🛡️ '+label+'</a>';
+}
 function verifiedRecommendation(t){
-  if(!t)return false;
+  if(!t||!rugcheckVerified(t))return false;
   const s=t.security||{},lp=(t.academy?.checks||[]).find(x=>x.name==='Liquidity Lock/Burn خودکار');
   return (s.tier==='MAX SECURITY'||s.tier==='HIGH')&&
     s.mintDisabled===true&&s.freezeDisabled===true&&
@@ -5659,7 +5702,7 @@ function verifiedRecommendation(t){
     Number(t.liquidity)>=25000&&antiRugGate(t).ok===true;
 }
 function featuredWatchOk(t){
-  if(!t)return false;
+  if(!t||!rugcheckVerified(t))return false;
   var sec=t.security||{},rug=antiRugGate(t),tp=tradePlan(t);
   return verifiedRecommendation(t)&&
     (sec.tier==='MAX SECURITY'||sec.tier==='HIGH')&&
