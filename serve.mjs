@@ -269,6 +269,29 @@ async function buildPumpXMonitor(){
 const SECURITY_CACHE_MS=2*60*1000;
 const EXTERNAL_SECURITY_CACHE_MS=10*60*1000;
 let cache={at:0,data:null};
+// Pool-liquidity history is tracked by pair, not token symbol. Missing history
+// is WAIT, never silently treated as proof of pool safety.
+const poolLiquidityHistory=new Map();
+function poolLiquidityAudit(t){
+  const pair=String(t?.pairAddress||'');
+  const liquidity=Number(t?.liquidity);
+  if(!pair||!Number.isFinite(liquidity)||liquidity<=0)return {status:'WAIT',reason:'نقدینگی/استخر قابل تأیید نیست'};
+  const now=Date.now(),key=String(t.mint||'')+':'+pair;
+  const previous=(poolLiquidityHistory.get(key)||[]).filter(x=>now-x.at<=30*60*1000);
+  const baseline=previous.length?Math.max(...previous.map(x=>x.liquidity)):liquidity;
+  const dropPct=baseline>0?(baseline-liquidity)/baseline*100:0;
+  if(!previous.length||now-previous[previous.length-1].at>=45*1000){
+    previous.push({at:now,liquidity});
+    poolLiquidityHistory.set(key,previous.slice(-30));
+  }
+  if(poolLiquidityHistory.size>700){
+    for(const [k,v] of poolLiquidityHistory)if(!v.length||now-v[v.length-1].at>45*60*1000)poolLiquidityHistory.delete(k);
+  }
+  if(previous.length<2)return {status:'WAIT',reason:'هنوز دو نمونه زمانی از نقدینگی ثبت نشده',dropPct:0};
+  if(dropPct>=20)return {status:'RISK',reason:'کاهش دست‌کم ۲۰٪ نقدینگی استخر در ۳۰ دقیقه',dropPct:+dropPct.toFixed(1)};
+  return {status:'CLEAR',reason:'افت سریع نقدینگی در نمونه‌های موجود مشاهده نشده',dropPct:+dropPct.toFixed(1)};
+}
+
 let buildInFlight=null;
 let marketLiveCache={at:0,data:null};
 const exactDexPriceCache=new Map();
@@ -2567,6 +2590,7 @@ async function buildFresh(){
   // is UNKNOWN and must not be fabricated from the top 10 or tracked wallets.
   const allHolderCounts=await fetchTokenHolderCounts(out.map(t=>t.mint));
   for(const t of out){
+    t.poolHealth=poolLiquidityAudit(t);
     const hc=allHolderCounts.get(t.mint);
     t.totalHolderCount=Number.isInteger(hc)?hc:null;
     t.totalHolderCountSource=Number.isInteger(hc)?'Jupiter Token API V2':'unavailable';
@@ -5286,7 +5310,10 @@ function antiRugGate(t){
   if(sec.mintDisabled!==true)reasons.push('Mint authority باید لغو شده باشد');
   if(sec.freezeDisabled!==true)reasons.push('Freeze authority باید غیرفعال باشد');
   if(sec.tokenExtensions?.hardFail===true)reasons.push('Token-2022 پرریسک');
-  if(Number(t.liquidity||0)<10000)reasons.push('نقدینگی کمتر از 10k');
+  if(Number(t.liquidity||0)<25000)reasons.push('نقدینگی کمتر از ۲۵ هزار دلار');
+  const lpCheck=Array.isArray(ac.checks)?ac.checks.find(x=>x.name==='Liquidity Lock/Burn خودکار'):null;
+  if(lpCheck?.state!=='pass')reasons.push('قفل/سوزاندن حداقل ۹۰٪ LP تأیید نشده');
+  if(t.poolHealth?.status!=='CLEAR')reasons.push(t.poolHealth?.reason||'پایداری نقدینگی استخر تأیید نشده');
 
   var criticalNames=[
     'Liquidity Lock/Burn خودکار',
@@ -5315,8 +5342,11 @@ function antiRugGate(t){
     sec.mintDisabled===true&&
     sec.freezeDisabled===true&&
     sec.tokenExtensions?.hardFail!==true&&
-    Number(t.liquidity||0)>=10000&&
+    Number(t.liquidity||0)>=25000&&
+    lpCheck?.state==='pass'&&
+    t.poolHealth?.status==='CLEAR'&&
     criticalFail.length===0&&
+    criticalUnknown.length===0&&
     t.activity?.label!=='BOT RISK'&&
     t.chart?.pumpDumpRisk!=='HIGH'&&
     ac.blocked!==true;
@@ -5498,10 +5528,21 @@ function highestSecurityTrendOk(t){
     siteTrendSources(t).length>=1;
 }
 
+function verifiedRecommendation(t){
+  if(!t)return false;
+  const s=t.security||{},lp=(t.academy?.checks||[]).find(x=>x.name==='Liquidity Lock/Burn خودکار');
+  return (s.tier==='MAX SECURITY'||s.tier==='HIGH')&&
+    s.mintDisabled===true&&s.freezeDisabled===true&&
+    s.ownerAggregationComplete===true&&Array.isArray(s.topHolders)&&s.topHolders.length>=10&&
+    s.holderPolicyPassed===true&&Number(s.largestHolder)<10&&Number(s.maxOtherHolder)<5&&
+    lp?.state==='pass'&&t.poolHealth?.status==='CLEAR'&&
+    Number(t.liquidity)>=25000&&antiRugGate(t).ok===true;
+}
 function featuredWatchOk(t){
   if(!t)return false;
   var sec=t.security||{},rug=antiRugGate(t),tp=tradePlan(t);
-  return (sec.tier==='MAX SECURITY'||sec.tier==='HIGH')&&
+  return verifiedRecommendation(t)&&
+    (sec.tier==='MAX SECURITY'||sec.tier==='HIGH')&&
     sec.mintDisabled===true&&sec.freezeDisabled===true&&
     sec.holderPolicyPassed===true&&
     sec.tokenExtensions?.hardFail!==true&&
@@ -5711,7 +5752,7 @@ function renderTopQuick(){
 
   var q=document.getElementById('topTokenQuick');
   if(q){
-    var rows2=tokens.slice().sort(function(a,b){
+    var rows2=tokens.filter(verifiedRecommendation).sort(function(a,b){
       var sa=a.security?.tier==='MAX SECURITY'?3:a.security?.tier==='HIGH'?2:a.security?.tier==='REVIEW'?1:0;
       var sb=b.security?.tier==='MAX SECURITY'?3:b.security?.tier==='HIGH'?2:b.security?.tier==='REVIEW'?1:0;
       return (sb-sa)||(siteTrendScore(b)-siteTrendScore(a))||(bucketScore(b,ageBucket(b))-bucketScore(a,ageBucket(a)));
@@ -5725,7 +5766,7 @@ function renderTopQuick(){
       '<div class="cell hide-sm"><small>حجم</small><b>'+esc(faVolume(t.flow?.volumeLabel))+'</b></div>'+
       '<div class="cell hide-md"><small>نهنگ</small><b>'+whaleFor(t.mint).count+'</b></div>'+
       '<div class="actions"><a class="action" target="_blank" rel="noopener" href="'+esc(dexUrl(t.mint,t.dexUrl))+'">📈 DEX</a><a class="action" target="_blank" rel="noopener" href="https://pump.fun/coin/'+esc(t.mint)+'">🟢 Pump</a><button class="detail-btn" data-mint="'+esc(t.mint)+'">جزئیات</button></div></div>';
-    }).join(''):'<div class="empty">هنوز توکنی دریافت نشده.</div>';
+    }).join(''):'<div class="empty">فعلاً هیچ توکنی هم‌زمان قانون ۱۰ هولدر، قفل یا سوزاندن حداقل ۹۰٪ LP، نقدینگی ۲۵ هزار دلار و پایداری استخر را تأیید نکرده است. موارد ردشده فقط در بخش بررسی توکن‌ها قابل مشاهده‌اند.</div>';
   }
 }
 
@@ -6342,7 +6383,9 @@ function filteredTokens(){
 function renderBucketBest(id,rows,bucket,title){
   var el=document.getElementById(id);if(!el)return;
   if(!rows.length){el.innerHTML='<div class="empty">فعلاً توکنی در این بازه پیدا نشده.</div>';return}
-  var t=rows[0],bs=bucketScore(t,bucket),sg=t.signals||{},fl=t.flow||{};
+  var candidates=rows.filter(verifiedRecommendation);
+  if(!candidates.length){el.innerHTML='<div class="empty">در این بازه هیچ توکن واجد شرایط امنیتی برای معرفی وجود ندارد.</div>';return}
+  var t=candidates[0],bs=bucketScore(t,bucket),sg=t.signals||{},fl=t.flow||{};
   el.innerHTML='<div class="bucket-best"><div class="bucket-best-title">🏆 بهترین توکن '+esc(title)+' — رتبه ۱ این گروه</div><div class="bucket-best-main">'+
     '<div class="asset"><b>'+esc(t.symbol||'?')+' · '+esc(t.name||'')+'</b><span class="age-chip">'+esc(ageText(t))+'</span>'+whaleTrendBadge(t)+socialTrendBadges(t)+tradePlanChips(t)+'<small>'+esc(bucketSignalLabel(bs,t))+'</small>'+socialButtons(t)+'</div>'+
     '<div><small class="muted">امتیاز نهایی</small><div class="bucket-score">'+bs+'/100</div></div>'+
@@ -6439,7 +6482,7 @@ function tokenSecurityBucket(t){
   if(!t)return 'low';
   var sec=t.security||{},gate=t.securityGate||{},rug;
   try{rug=antiRugGate(t)}catch(e){rug={ok:false,reasons:['خطای ارزیابی امنیت']}}
-  if((sec.tier==='MAX SECURITY'||sec.tier==='HIGH')&&rug.ok===true&&sec.mintDisabled===true&&sec.freezeDisabled===true&&sec.holderPolicyPassed===true)return 'high';
+  if(verifiedRecommendation(t)&&rug.ok===true&&sec.mintDisabled===true&&sec.freezeDisabled===true&&sec.holderPolicyPassed===true)return 'high';
   if(sec.tier==='REVIEW'&&gate.blocked!==true&&sec.holderPolicyPassed!==false&&sec.mintDisabled!==false&&sec.freezeDisabled!==false)return 'medium';
   return 'low';
 }
@@ -7087,6 +7130,7 @@ createServer(async(req,res)=>{
       t.totalHolderCountSource=holderCounts.has(mint)?'Jupiter Token API V2':'unavailable';
       t.activity=activityScore(t);t.trend={score:0,reasons:[]};t.socialHeat={score:0,label:'LOW',reasons:[]};
       t.marketQuality=marketQualityScore(t);t.chart=chartDiscipline(t);t.externalSecurity=await externalSecurityAudit(t);
+      t.poolHealth=poolLiquidityAudit(t);
       t.academy=academyGuard(t);t.holderBehavior=holderBehaviorAudit(t);t.preSignalGuard=preSignalConfirmation(t);
       t.signals=multiHorizonSignals(t);t.verdict=verdict(t);
       res.writeHead(200,{'content-type':'application/json; charset=utf-8','cache-control':'no-store',...headers});
