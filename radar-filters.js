@@ -1,7 +1,7 @@
 /* Advanced signal filters. Loaded after the main radar client. */
 (function(){
   'use strict';
-  const KEY='radar:filters:v4'; // reset potentially over-restrictive legacy filters
+  const KEY='radar:filters:v5'; // reset old date ranges that obscured the entire radar
   const defaults={q:'',from:'',to:'',minPnl:'',maxPnl:'',minScore:'',minLiquidity:'',minVolume:'',minHolders:'',security:'',entry:'',whales:'',smart:'',sort:'default'};
   let state={...defaults};
   try{const saved=JSON.parse(localStorage.getItem(KEY)||'{}');if(saved&&typeof saved==='object')state={...state,...saved}}catch(_){}
@@ -113,7 +113,12 @@
     if(warning)warning.textContent=badDates.length?'تاریخ شمسی معتبر وارد کن (مثل ۱۴۰۵/۰۸/۲۱). تا اصلاح تاریخ، این شرط اعمال نمی‌شود.':'';
     let count=0,visible=0;
     panel.querySelectorAll('.list').forEach(list=>{
-      const rows=Array.from(list.children).filter(el=>el.classList?.contains('row')).map((el,i)=>({el,i,d:facts(el)}));
+      // Only filter actual token/signal cards, never X-profile cards, status
+      // messages, or other rows without a contract address.
+      const children=Array.from(list.children).filter(el=>el.classList?.contains('row'));
+      children.filter(el=>!el.querySelector('[data-mint]')).forEach(el=>el.classList.remove('signal-filter-hide'));
+      if(list.closest('details:not([open])'))return;
+      const rows=children.filter(el=>el.querySelector('[data-mint]')).map((el,i)=>({el,i,d:facts(el)}));
       if(state.sort!=='default'){
         const ascending=state.sort==='old'||state.sort==='pnlUp';
         const field=state.sort==='old'||state.sort==='new'?'when':state.sort==='scoreDown'?'score':'pnl';
@@ -127,7 +132,7 @@
       }
       rows.forEach(r=>{count++;const show=pass(r.d);r.el.classList.toggle('signal-filter-hide',!show);if(show)visible++});
     });
-    const tally=bar.querySelector('.signal-filter-count');if(tally)tally.textContent='نمایش '+visible+' از '+count+' ردیف'+(count===0?' — منتظر دریافت داده از منابع':'');
+    const tally=bar.querySelector('.signal-filter-count');if(tally)tally.textContent='نمایش '+visible+' از '+count+' ردیف دارای کانترکت'+(count===0?' — برای نمایش لیست، زیرمجموعه را باز کن یا داده بازار را بررسی کن':'');
     let empty=bar.querySelector('.signal-filter-empty');
     if(count>0&&visible===0){
       if(!empty){empty=document.createElement('p');empty.className='signal-filter-empty';empty.style.margin='9px 0 0';bar.appendChild(empty)}
@@ -156,5 +161,6 @@
     const previous=renderActivePanel;
     renderActivePanel=function(){const result=previous.apply(this,arguments);apply();return result};
   }
+  document.addEventListener('toggle',function(e){if(e.target.tagName==='DETAILS')apply()},true);
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',apply);else apply();
 })();
