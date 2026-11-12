@@ -119,7 +119,7 @@
   function tokenInfo(mint){try{return (typeof tokens!=='undefined'&&Array.isArray(tokens)?tokens:[]).find(t=>t&&t.mint===mint)||null}catch(_){return null}}
   function recordFor(mint){try{return (typeof socialSignalHistory!=='undefined'&&socialSignalHistory.get(mint))||(typeof tokenRadarHistory!=='undefined'&&tokenRadarHistory.get(mint))||null}catch(_){return null}}
   function facts(row){
-    const node=row.querySelector('[data-mint]'),mint=node?node.getAttribute('data-mint'):'';
+    const node=row.hasAttribute('data-mint')?row:row.querySelector('[data-mint]'),mint=node?node.getAttribute('data-mint'):'';
     const t=tokenInfo(mint),h=recordFor(mint);
     const when=h&&h.introducedAt?Date.parse(h.introducedAt):NaN;
     const day=jalaliDay(when);
@@ -206,9 +206,9 @@
       // Only filter actual token/signal cards, never X-profile cards, status
       // messages, or other rows without a contract address.
       const children=Array.from(list.children).filter(el=>el.classList?.contains('row'));
-      children.filter(el=>!el.querySelector('[data-mint]')).forEach(el=>el.classList.remove('signal-filter-hide'));
+      children.filter(el=>!el.hasAttribute('data-mint')&&!el.querySelector('[data-mint]')).forEach(el=>el.classList.remove('signal-filter-hide'));
       if(list.closest('details:not([open])'))return;
-      const rows=children.filter(el=>el.querySelector('[data-mint]')).map((el,i)=>({el,i,d:facts(el)}));
+      const rows=children.filter(el=>el.hasAttribute('data-mint')||el.querySelector('[data-mint]')).map((el,i)=>({el,i,d:facts(el)}));
       if(state.sort!=='default'){
         const ascending=state.sort==='old'||state.sort==='pnlUp';
         const field=state.sort==='old'||state.sort==='new'?'when':state.sort==='scoreDown'?'score':'pnl';
