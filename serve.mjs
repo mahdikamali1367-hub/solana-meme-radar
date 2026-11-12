@@ -104,7 +104,7 @@ const SUBMITTED_PUMP_CASES=[
     contextualPeak:null,
     contextualArticle:'https://pumpdata.fun/check/KMifrkYmDdAKtVXAVBEPEQxJ7qP2iLgUcfZjUZipump',
     contextualAccounts:[],
-    historicalSecurityWarning:'تمرکز اولیه عرضه: ۲۳ کیف پول حدود ۸۷٫۸٪ عرضه در ۱۰ ثانیه نخست'},
+    historicalSecurityWarning:'تمرکز اولیه عرضه: ۲۳ کیف پول حدود ۸۷٫۸٪ عرضه در ۱۰ ثانیه نخست',
     historicalPeakMarketCapUsd:9500000}
 ];
 async function reviewSubmittedPumpCases(){
