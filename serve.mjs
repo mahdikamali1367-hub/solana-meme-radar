@@ -5160,6 +5160,7 @@ function bucketScore(t,bucket){
   score=Math.max(0,Math.min(100,Math.round(score)));if(trustGuard(t).status==='WAIT'||t.flow?.volumeLabel!=='STRONG'||tradePlan(t).status!=='ENTRY')score=Math.min(score,74);return score;
 }
 function bucketSignalLabel(score,t){
+  if(t&&!rugcheckVerified(t))return 'Rugcheck تأیید نشده / سیگنال ورود ممنوع';
   if(t&&!(Number.isInteger(t.totalHolderCount)&&t.totalHolderCount>=1000))return 'حداقل ۱۰۰۰ هولدر تأیید نشده / ورود نکن';
   if(t&&!holderPolicyOk(t))return 'رد هولدر / ورود نکن';
   if(t&&trustGuard(t).status==='BLOCK')return 'ریسک خروج / ورود نکن';
@@ -5173,6 +5174,7 @@ function bucketSignalLabel(score,t){
   return 'ضعیف';
 }
 function bucketSignalClass(score,t){
+  if(t&&!rugcheckVerified(t))return 'bad';
   if(t&&!(Number.isInteger(t.totalHolderCount)&&t.totalHolderCount>=1000))return 'bad';
   if(t&&!holderPolicyOk(t))return 'bad';
   if(t&&t.securityGate?.blocked)return 'bad';
@@ -5807,7 +5809,7 @@ function featuredRows(){
 function tokenRow(t,bucket){
   var s=t.security||{},sg=t.signals||{},sh=sg.short||{},md=sg.medium||{},lg=sg.long||{},fl=t.flow||{},bs=bucketScore(t,bucket||ageBucket(t));
   return '<div class="row">'+
-  '<div class="asset"><b>'+esc(t.symbol||'?')+' · '+esc(t.name||'')+'</b><span class="age-chip">'+esc(ageText(t))+'</span>'+(t.kolTrend?'<span class="age-chip">👑 '+Number(t.kolTrend.kolCount||0)+' KOL</span>':'')+siteTrendBadges(t)+whaleTrendBadge(t)+socialTrendBadges(t)+topTraderBadge(t)+momentumChip(t)+tradePlanChips(t)+'<small>'+esc(short(t.mint))+'</small>'+socialButtons(t)+'</div>'+
+  '<div class="asset"><b>'+esc(t.symbol||'?')+' · '+esc(t.name||'')+'</b>'+rugcheckBadge(t)<span class="age-chip">'+esc(ageText(t))+'</span>'+(t.kolTrend?'<span class="age-chip">👑 '+Number(t.kolTrend.kolCount||0)+' KOL</span>':'')+siteTrendBadges(t)+whaleTrendBadge(t)+socialTrendBadges(t)+topTraderBadge(t)+momentumChip(t)+tradePlanChips(t)+'<small>'+esc(short(t.mint))+'</small>'+socialButtons(t)+'</div>'+
   '<div class="cell"><small>امتیاز گروه</small><b><span class="badge '+bucketSignalClass(bs,t)+'">'+bs+'/100</span></b></div>'+'<div class="cell"><small>ترند سایت‌ها</small><b><span class="badge '+(siteTrendScore(t)>=50?'good':siteTrendScore(t)>=20?'mid':'blue')+'">'+siteTrendScore(t)+'/100</span></b></div>'+
   '<div class="cell"><small>کوتاه / میان / بلند</small><b>'+Number(sh.score||0)+' / '+Number(md.score||0)+' / '+Number(lg.score||0)+'</b></div>'+
   '<div class="cell"><small>قدرت خریدار</small><b><span class="badge '+pressureClass(t)+'">'+(fl.buyerPower==null?'—':Number(fl.buyerPower)+'%')+'</span></b></div>'+
@@ -6773,7 +6775,7 @@ function renderAlerts(){
 
 function spotlightSocialWhaleCandidates(rows,whaleLookup){
   return (Array.isArray(rows)?rows:[]).map(function(t){
-    if(!t||!t.mint||t.securityGate?.blocked===true||
+    if(!t||!t.mint||!rugcheckVerified(t)||t.securityGate?.blocked===true||
        t.security?.tier==='REJECT'||t.security?.holderPolicyPassed===false||
        t.chart?.pumpDumpRisk==='HIGH')return null;
     var social=Number(t.socialHeat?.score||0),
