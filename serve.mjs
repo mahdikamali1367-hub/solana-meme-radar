@@ -6115,7 +6115,31 @@ function renderSocialTrends(){
   }).slice(0,20);
 
   if(el){
-    el.innerHTML=r.length?r.map(function(t,i){
+    // When external X/Bluesky/YouTube signals are missing, keep market
+    // discoveries visible WITHOUT representing them as verified social calls.
+    if(!r.length){
+      var marketCandidates=tokens.slice()
+        .filter(function(t){return t&&t.mint&&Number(t.liquidity)>0&&Number(t.priceUsd)>0})
+        .sort(function(a,b){return Number(b.trend?.score||0)-Number(a.trend?.score||0)||Number(a.ageMinutes||999999)-Number(b.ageMinutes||999999)})
+        .slice(0,20);
+      marketCandidates.forEach(rememberTokenRadar);
+      el.innerHTML=marketCandidates.length?
+        '<div class="empty" style="margin-bottom:12px">📡 فعلاً داده اجتماعی مستقلی برای تأیید وجود ندارد؛ توکن‌های زیر فقط <b>گزینه‌های رصد بازار</b> هستند، نه سیگنال اجتماعی یا توصیه خرید. برای تأیید باید منشن واقعی X/Bluesky/YouTube ثبت شود.</div>'+
+        marketCandidates.map(function(t,i){
+          var h=tokenRadarHistory.get(t.mint),price=currentPriceForMint(t.mint),seen=h&&h.introducedAt;
+          return '<div class="row"><div class="asset"><b>#'+(i+1)+' 🔎 '+esc(t.symbol||'?')+' · '+esc(t.name||'')+'</b>'+
+            '<span class="badge blue">در انتظار تأیید اجتماعی</span>'+
+            '<small>شناسه: '+esc(t.mint)+' · اولین رصد: '+(seen?new Date(seen).toLocaleString('fa-IR'):'نامشخص')+'</small>'+
+            '<small>امتیاز بازار '+Number(t.trend?.score||0).toFixed(0)+' · تعداد منشن تأییدشده: نامشخص</small></div>'+
+            '<div class="cell"><small>نقدینگی</small><b>'+money(t.liquidity)+'</b></div>'+
+            '<div class="cell"><small>حجم ۲۴ساعته</small><b>'+money(t.volume24h)+'</b></div>'+
+            '<div class="cell"><small>قیمت بازار</small><b data-live-price-mint="'+esc(t.mint)+'">'+fmtPrice(price)+'</b></div>'+
+            '<div class="cell"><small>امنیت</small><b>'+esc(faSec(t.security?.tier))+'</b></div>'+
+            '<div class="actions"><a class="action" target="_blank" rel="noopener" href="'+esc(dexUrl(t.mint,t.dexUrl))+'">📈 نمودار DEX</a><button class="detail-btn" data-mint="'+esc(t.mint)+'">جزئیات</button></div></div>';
+        }).join(''):
+        '<div class="empty">هنوز داده معتبر قیمت و نقدینگی برای نمایش توکن‌ها از منابع بازار دریافت نشده است. سلامت API را از بخش تنظیمات و سلامت اتصال منابع بررسی کن.</div>';
+    }else{
+    el.innerHTML=r.map(function(t,i){
       var h=t.socialHeat||{},s=t.security||{};
       var hist=socialSignalHistory.get(t.mint);
       var moneyFlow=socialMoneyFlow(t),wh=moneyFlow.whale,sm=moneyFlow.smart,trMoney=moneyFlow.tracked;
@@ -6146,7 +6170,8 @@ function renderSocialTrends(){
         '<div class="cell hide-sm"><small>YouTube / 24h</small><b>'+Number(h.youtubeVideos24h||0)+'</b></div>'+
         '<div class="cell hide-md"><small>امنیت</small><b><span class="badge '+secClass(s.tier)+'">'+esc(faSec(s.tier))+'</span></b></div>'+
         '<div class="actions"><a class="action" target="_blank" rel="noopener" href="'+esc(dexUrl(t.mint,t.dexUrl))+'">📈 DEX</a><a class="action" target="_blank" rel="noopener" href="https://pump.fun/coin/'+esc(t.mint)+'">🟢 Pump</a><button class="detail-btn" data-mint="'+esc(t.mint)+'">جزئیات</button></div></div>';
-    }).join(''):'<div class="empty">فعلاً داده Social Heat برای توکن‌های رادار کافی نیست.</div>';
+    }).join('');
+    }
   }
 
   var perfList=document.getElementById('socialPerformanceList');
