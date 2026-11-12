@@ -1,7 +1,7 @@
 /* Advanced signal filters. Loaded after the main radar client. */
 (function(){
   'use strict';
-  const KEY='radar:filters:v5'; // keep existing confirmed filters
+  const KEY='radar:filters:v6'; // keep existing confirmed filters
   const defaults={q:'',from:'',to:'',minPnl:'',maxPnl:'',minScore:'',minLiquidity:'',minVolume:'',minHolders:'',security:'',entry:'',whales:'',smart:'',sort:'default'};
   let state={...defaults};
   try{const saved=JSON.parse(localStorage.getItem(KEY)||'{}');if(saved&&typeof saved==='object')state={...state,...saved}}catch(_){}
