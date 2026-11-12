@@ -7031,8 +7031,13 @@ function renderCexDashboard(){
     }else{banner.style.display='none';banner.textContent=''}
   }
   status.textContent=cexNews?'بازبینی منابع رسمی: '+new Date(cexNews.checkedAt).toLocaleString('fa-IR')+' · '+spot.length+' اطلاعیه نامزد Spot (تطبیق قرارداد و نوع بازار لازم است)':'در حال دریافت یا عدم دسترسی به منابع رسمی؛ هیچ لیست آینده‌ای تأیید نشده است.';
-  sources.innerHTML=(cexNews?.sources||[]).map(function(a){
-    return '<a class="action" href="'+cexHtmlUrl(a.url)+'" target="_blank" rel="noopener">'+esc(a.exchange)+' · '+(a.status==='ok'?'اطلاعیه‌ها دریافت شد':'دسترسی/استخراج ناقص')+'</a>';
+  sources.innerHTML=[
+    {exchange:'Binance',url:'https://www.binance.com/en/support/announcement/list/48'},
+    {exchange:'Bybit',url:'https://announcements.bybit.com/en/?category=new_crypto&page=1'},
+    {exchange:'OKX',url:'https://www.okx.com/help/section/announcements-new-listings'}
+  ].map(function(a){
+    var st=(cexNews?.sources||[]).find(function(x){return x.exchange===a.exchange});
+    return '<a class="action" href="'+cexHtmlUrl(a.url)+'" target="_blank" rel="noopener">'+esc(a.exchange)+' · '+(st?.status==='ok'?'اطلاعیه‌های رسمی':'مشاهده دستی منبع رسمی')+'</a>';
   }).join('')+
   '<a class="action" target="_blank" rel="noopener" href="https://www.coinbase.com/exchange/asset-listings">Coinbase · معیارهای رسمی لیست</a>'+
   '<a class="action" target="_blank" rel="noopener" href="https://x.com/CoinbaseAssets">CoinbaseAssets · اطلاعیه‌ها</a>';
