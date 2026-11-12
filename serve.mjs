@@ -2697,6 +2697,11 @@ async function buildFresh(){
     const hc=allHolderCounts.get(t.mint);
     t.totalHolderCount=Number.isInteger(hc)?hc:null;
     t.totalHolderCountSource=Number.isInteger(hc)?'Jupiter Token API V2':'unavailable';
+    // Re-evaluate gates after holder count and pool observations arrive.
+    t.academy=academyGuard(t);
+    t.holderBehavior=holderBehaviorAudit(t);
+    t.preSignalGuard=preSignalConfirmation(t);
+    t.signals=multiHorizonSignals(t);
     t.verdict=verdict(t);
   }
   const pre=[...out].sort((a,b)=>b.trend.score-a.trend.score).slice(0,10);
@@ -5922,26 +5927,33 @@ function renderChampion(){
 function radarSignalDiagnostics(){
   var rows=Array.isArray(tokens)?tokens:[];
   if(!rows.length)return 'هنوز توکنی از API بازار دریافت نشده است؛ این وضعیت با رد امنیتی متفاوت است.';
-  var counts={rug:0,holders:0,lp:0,pool:0,entry:0,waiting:0},
-    examples=new Map();
+  var counts={rugRejected:0,rugReview:0,rugMissing:0,holdersUnder:0,holdersMissing:0,
+    holdersRisk:0,lpFailed:0,lpUnknown:0,poolRisk:0,poolWait:0,entry:0,waiting:0};
   rows.forEach(function(t){
-    var rug=t.externalSecurity?.rugcheck;
-    if(!rugcheckVerified(t)){counts.rug++;examples.set('rug',rug?.state||'UNKNOWN')}
-    if(!(Number.isInteger(t.totalHolderCount)&&t.totalHolderCount>=1000&&holderPolicyOk(t)))counts.holders++;
+    var rug=t.externalSecurity?.rugcheck,rs=rug?.state||'UNKNOWN';
+    if(rs==='REJECT')counts.rugRejected++;
+    else if(rs==='UNKNOWN')counts.rugMissing++;
+    else if(!rugcheckVerified(t))counts.rugReview++;
+    if(!Number.isInteger(t.totalHolderCount))counts.holdersMissing++;
+    else if(t.totalHolderCount<1000)counts.holdersUnder++;
+    if(!holderPolicyOk(t))counts.holdersRisk++;
     var lp=t.externalSecurity?.lp;
-    if(lp?.state!=='pass')counts.lp++;
-    if(t.poolHealth?.status!=='CLEAR')counts.pool++;
+    if(lp?.state==='fail')counts.lpFailed++;
+    else if(lp?.state!=='pass')counts.lpUnknown++;
+    if(t.poolHealth?.status==='RISK')counts.poolRisk++;
+    else if(t.poolHealth?.status!=='CLEAR')counts.poolWait++;
     var plan=tradePlan(t);
     if(plan.status==='ENTRY')counts.entry++;
     else counts.waiting++;
   });
-  return 'وضعیت '+rows.length+' توکن بررسی‌شده: ورود تأییدشده '+counts.entry+
-    ' | بدون تأیید Rugcheck '+counts.rug+
-    ' | شرط هولدر کامل نیست '+counts.holders+
-    ' | LP تأییدنشده '+counts.lp+
-    ' | استخر در انتظار/پرریسک '+counts.pool+
+  return 'از '+rows.length+' توکن، ورود تأییدشده '+counts.entry+
+    ' | Rugcheck رد واقعی '+counts.rugRejected+'، ناقص/ناموجود '+counts.rugMissing+'، نیازمند بررسی '+counts.rugReview+
+    ' | تعداد هولدر نامشخص '+counts.holdersMissing+'، کمتر از ۱۰۰۰ '+counts.holdersUnder+
+    '، توزیع هولدر تأییدنشده '+counts.holdersRisk+
+    ' | LP ردشده '+counts.lpFailed+'، تأییدنشده '+counts.lpUnknown+
+    ' | ریسک تخلیه استخر '+counts.poolRisk+'، در انتظار نمونه دوم '+counts.poolWait+
     ' | بدون مجوز ورود '+counts.waiting+
-    '. ممکن است یک توکن در چند دسته باشد؛ توکن رصدشده به‌معنای سیگنال خرید نیست.';
+    '. دسته‌ها ممکن است هم‌پوشانی داشته باشند. نامشخص ≠ کلاهبردار و نامشخص ≠ مجوز خرید.';
 }
 function renderTopQuick(){
   var f=document.getElementById('topFeaturedQuick');
