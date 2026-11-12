@@ -61,6 +61,19 @@ async function officialListingFeed(){
    announcements.push(...articles);
   }else status.push({exchange:source.exchange,url:source.url,status:'unavailable',count:0});
  });
+ // Only announce countdowns if an official Spot article explicitly gives
+ // a UTC trading-open time. Publication date is NOT the listing date.
+ const spot=announcements.filter(a=>a.market==='SPOT_CANDIDATE').slice(0,5);
+ const extra=await Promise.allSettled(spot.map(a=>request(a.url,7500)));
+ spot.forEach((a,i)=>{
+   if(extra[i].status!=='fulfilled')return;
+   const html=plain(extra[i].value);
+   const match=html.match(/(?:trading\s+will\s+(?:open|commence|start)|spot\s+trading\s+(?:opens|starts))[^.]{0,230}?(20\d{2})[-/]([01]\d)[-/]([0-3]\d)[,\s]+([0-2]\d):([0-5]\d)\s*(?:\(UTC\)|UTC)/i);
+   if(!match)return;
+   const when=Date.UTC(Number(match[1]),Number(match[2])-1,Number(match[3]),Number(match[4]),Number(match[5]));
+   if(when>Date.now()&&when-Date.now()<=30*86400000)
+     a.listingAt=new Date(when).toISOString();
+ });
  const value={ok:true,checkedAt:new Date().toISOString(),sources:status,announcements:announcements.slice(0,60),
   notes:'Official links only. Articles and token contract identities require independent verification. No estimated listing dates. Futures ≠ Spot.'};
  cache={at:now,value};return value;
