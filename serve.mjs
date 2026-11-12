@@ -78,6 +78,36 @@ const pumpXAccountEvidence=new Map();
 const pumpXCandleCache=new Map();
 const pumpXPostCache=new Map();
 const PUMP_X_REFRESH_MS=15*60*1000;
+// User-submitted backtest cases: onset time is user-reported, NOT verified
+// by historical candles. No authors become trusted from an unverified case.
+const SUBMITTED_PUMP_CASES=[
+  {mint:'4xgqefa5WcdHWKXzqvM9MRJqWYGaHVEUnpUL4Vq5pump',
+    symbol:'HUNG',name:'Jensen Hung',
+    reportedOnset:'2026-11-11T20:30:00.000Z',
+    reportedTimezone:'Asia/Tehran',
+    source:'user-reported',verifiedOnset:false}
+];
+async function reviewSubmittedPumpCases(){
+  const now=Date.now(),items=[];
+  for(const item of SUBMITTED_PUMP_CASES){
+    const onsetAt=Date.parse(item.reportedOnset),startAt=onsetAt-24*60*60*1000;
+    if(!Number.isFinite(onsetAt)||!PUMP_X_MINT_RE.test(item.mint))continue;
+    const q=await queryXPostsForMint(item.mint,startAt,onsetAt);
+    const posts=q.status==='ok'?[...new Map((q.posts||[]).map(p=>[p.authorId,p])).values()]
+      .filter(p=>p.postedAt>=startAt&&p.postedAt<onsetAt):[];
+    items.push({mint:item.mint,symbol:item.symbol,name:item.name,
+      reportedOnset:item.reportedOnset,reportedTimezone:item.reportedTimezone,
+      verifiedOnset:false,windowStart:new Date(startAt).toISOString(),
+      windowEnd:new Date(onsetAt).toISOString(),status:q.status,
+      checkedAt:new Date(now).toISOString(),partial:!!q.partial,
+      accounts:posts.slice(0,25).map(p=>({handle:p.handle,authorId:p.authorId,
+        postAt:p.postedAt,postUrl:p.url,text:p.text.slice(0,400)})),
+      note:posts.length
+        ?'پست‌ها از نظر آدرس قرارداد و زمان بررسی شده‌اند؛ زمان شروع پامپ هنوز تأیید بازار ندارد.'
+        :'هیچ پست X با آدرس دقیق قرارداد و جهت‌گیری خرید در بازه انتخاب‌شده تأیید نشده است. نبود نتیجه اثبات نبودن پست نیست.'});
+  }
+  return items;
+}
 const PUMP_X_MINT_RE=/^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
 function findPumpOnset(candles,pairCreatedAt){
   // Time stamped completed 15m candles, not a current 24h change masquerading as onset.
@@ -182,6 +212,7 @@ async function buildPumpXMonitor(){
     // Even without X authorization, still expose verified historical pump
     // onset times and contract addresses from public market data.
     const xConfigured=!!process.env.X_BEARER_TOKEN;
+    const submittedCases=await reviewSubmittedPumpCases();
     const base=cache.data?.tokens||[];
     const gecko=await geckoHistoricalPumpCandidates();
     const historyCandidates=[...new Map(gecko.concat(base.filter(t=>t.pairAddress&&t.mint&&
@@ -189,8 +220,8 @@ async function buildPumpXMonitor(){
       num(t.priceChange24h)>=60)).sort((a,b)=>num(b.volume24h)-num(a.volume24h))
       .map(t=>[t.mint,t])).values()].slice(0,8);
     if(!base.length&&!historyCandidates.length){
-      return {ok:true,configured:true,status:'waiting-for-first-token-scan',
-        generatedAt:new Date().toISOString(),discoveredPumps:[],trackedAccounts:[],watchlist:[],
+      return {ok:true,configured:xConfigured,status:'waiting-for-first-token-scan',
+        generatedAt:new Date().toISOString(),submittedCases,discoveredPumps:[],trackedAccounts:[],watchlist:[],
         note:'Token discovery has not completed. Retry after the initial radar scan.'};
     }
     const discoveredPumps=[];
@@ -251,7 +282,7 @@ async function buildPumpXMonitor(){
     }
     return {ok:true,configured:xConfigured,
       status:!xConfigured?'needs-x-bearer-token':xDiagnostics.apiErrors?'x-api-errors':xDiagnostics.archivalAccessRequired?'archive-access-needed':'scanned',
-      xDiagnostics,generatedAt:new Date().toISOString(),
+      xDiagnostics,generatedAt:new Date().toISOString(),submittedCases,
       samplesScanned:historyCandidates.length,discoveredPumps,trackedAccounts:tracked.map(a=>({
         authorId:a.authorId,handle:a.handle,documentedPumps:a.calls.size,
         calls:[...a.calls.values()].slice(-6)
@@ -4263,6 +4294,8 @@ body{font-size:15px}
       <p class="muted" style="font-size:11px">پامپ با کندل تاریخی ۱۵ دقیقه‌ای و رشد حداقل ۵۰٪ در یک ساعت شناسایی می‌شود. پست‌ها باید شامل آدرس دقیق توکن، اشاره به ورود/خرید و تاریخ قبل از شروع پامپ باشند. اکانت‌ها داخل رادار ردیابی می‌شوند، نه در حساب X شما. سبز بودن به معنی تضمین یا احتمال عددی پامپ نیست.</p>
       <h3 style="font-size:13px">🟢 کاندیدهای اجتماعی با تطابق تأییدشده</h3>
       <div id="pumpXWatchlist" class="list"></div>
+      <h3 style="font-size:13px">🕵️ بررسی کانترکت‌های ارسالی — ۲۴ ساعت قبل از پامپ</h3>
+      <div id="pumpXSubmitted" class="list"></div>
       <h3 style="font-size:13px">👤 اکانت‌های زودهنگام ردیابی‌شده</h3>
       <div id="pumpXAccounts" class="list"></div>
       <h3 style="font-size:13px">📈 پامپ‌های تاریخی و پست‌های قبل از رشد</h3>
@@ -6095,6 +6128,7 @@ function pumpXBadge(t){
 function renderPumpXMonitor(){
   var d=pumpXMonitor||{},st=document.getElementById('pumpXStatus');
   var watch=document.getElementById('pumpXWatchlist');
+  var submitted=document.getElementById('pumpXSubmitted');
   var accounts=document.getElementById('pumpXAccounts');
   var history=document.getElementById('pumpXHistory');
   if(st)st.textContent=!d.configured
@@ -6104,6 +6138,27 @@ function renderPumpXMonitor(){
       'پامپ‌های دارای شواهد: '+Number(d.discoveredPumps?.length||0)+
       ' · اکانت‌های دارای حداقل ۲ سابقه مستقل: '+Number(d.trackedAccounts?.length||0)+
       ' · آخرین بررسی: '+(d.generatedAt?new Date(d.generatedAt).toLocaleString('fa-IR'):'—');
+  if(submitted)submitted.innerHTML=(d.submittedCases||[]).map(function(x){
+    var code=x.status==='not-configured'?'اتصال X API روی سرور تنظیم نشده':
+      x.status==='api-error'?'خطای جستجوی X API':
+      x.status==='full-archive-required'?'نیازمند دسترسی آرشیوی X':
+      x.status==='ok'?'جستجوی X انجام شد':'جستجو کامل نیست';
+    var refs=(x.accounts||[]).map(function(a){
+      return '<a class="action" target="_blank" rel="noopener" href="'+esc(a.postUrl)+'">'+
+        '@'+esc(a.handle)+' · '+new Date(a.postAt).toLocaleString('fa-IR')+'</a>';
+    }).join('');
+    return '<div class="row"><div class="asset"><b>🕵️ '+esc(x.symbol)+' · '+esc(x.name)+'</b>'+
+      '<span class="badge mid">شروع پامپ: اعلام کاربر، تأییدنشده</span>'+
+      '<small>CA: '+esc(x.mint)+'</small>'+
+      '<small>پنجره بررسی: '+new Date(x.windowStart).toLocaleString('fa-IR')+
+      ' تا '+new Date(x.windowEnd).toLocaleString('fa-IR')+'</small>'+
+      '<small>وضعیت: '+esc(code)+' · '+esc(x.note||'')+'</small>'+
+      '<small>تعداد نویسنده‌های دارای پست مستند: '+Number(x.accounts?.length||0)+
+      (x.partial?' · نتایج API ممکن است ناقص باشد':'')+'</small></div>'+
+      '<div class="actions">'+refs+
+      '<a class="action" target="_blank" rel="noopener" href="https://x.com/search?q='+encodeURIComponent(x.mint)+'&f=live">جستجوی دستی X</a>'+
+      '<a class="action" target="_blank" rel="noopener" href="'+esc(dexUrl(x.mint,''))+'">چارت</a></div></div>';
+  }).join('')||'<div class="empty">هنوز کانترکتی برای بررسی تاریخی ثبت نشده است.</div>';
   if(watch)watch.innerHTML=(d.watchlist||[]).length?(d.watchlist||[]).map(function(x){
     var green=x.greenWatch===true;
     var refs=(x.accounts||[]).map(function(a){
