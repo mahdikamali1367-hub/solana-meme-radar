@@ -16,7 +16,7 @@ scripts.forEach((script,index)=>{
 assert(rendered.includes('id="tabs"')&&rendered.includes('id="socialPanel"'),'Navigation elements missing');
 
 const nav=[...rendered.matchAll(/data-tab="([^"]+)"/g)].map(x=>x[1]);
-assert.deepEqual(nav,['featured','tokens','social','cex','wallets','whales','smart','prelaunch'],
+assert.deepEqual(nav,['featured','tokens','social','allmarkets','cex','wallets','whales','smart','prelaunch'],
   'Modern navigation must keep all existing panels and the CEX radar accessible');
 for(const id of nav)assert(rendered.includes('id="'+id+'Panel"'),'Missing section '+id);
 assert(rendered.includes('id="advancedMenu"')&&rendered.includes('id="workspaceTitle"'),
@@ -57,7 +57,7 @@ assert.equal(simulatedWindow.rendered,true,'Tab navigation must trigger a render
 
 
 
-const sectionIds=['featured','tokens','social','cex','wallets','whales','smart','prelaunch'];
+const sectionIds=['featured','tokens','social','allmarkets','cex','wallets','whales','smart','prelaunch'];
 for(const name of sectionIds){
   assert(rendered.includes('data-index-for="'+name+'"'),
     'Legacy directory placeholder expected for '+name);
@@ -80,13 +80,13 @@ assert(rendered.includes('.list:not(.show-all)> .row:nth-child(n+7)'),
   'Long data lists must keep compact rows');
 const sections=[...rendered.matchAll(/<section class="panel(?: active)?" id="([^"]+)">/g)]
   .map(m=>({id:m[1],index:m.index}));
-assert.equal(sections.length,8,'Eight areas including CEX must remain available');
+assert.equal(sections.length,9,'Nine areas including CEX and broad markets must remain available');
 for(let i=0;i<sections.length;i++){
   const s=sections[i],fragment=rendered.slice(s.index,sections[i+1]?.index??rendered.indexOf('</main>',s.index));
   assert(fragment.includes('details class="accordion"'),
     'Each area needs data-bearing subsections: '+s.id);
 }
-console.log('Eight card catalogs, dedicated content pages, and return controls: PASS');
+console.log('Nine card catalogs, dedicated content pages, and return controls: PASS');
 
 
 assert(rendered.includes('id="radarSpotlight"')&&
@@ -94,7 +94,7 @@ assert(rendered.includes('id="radarSpotlight"')&&
        'Special feature cards must be visible at the top of all tabs');
 assert(rendered.indexOf('id="radarSpotlight"')<rendered.indexOf('id="tabs"'),
        'Hero spotlight must appear before the navigation');
-assert.equal((rendered.match(/class="nav-icon"/g)||[]).length,8,
+assert.equal((rendered.match(/class="nav-icon"/g)||[]).length,9,
        'All main and advanced tabs require their own icon');
 assert(rendered.includes('font-size:15px')&&rendered.includes('.radar-page-card-name{font-size:14px}'),
        'Readability improvements must apply to body and subsection cards');
