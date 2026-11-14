@@ -197,8 +197,8 @@ async function fromOkx(statuses){
   const active=new Set((instruments.data||[]).filter(x=>x.state==='live'&&
     x.quoteCcy==='USDT').map(x=>x.instId));
   const sorted=(ticks.data||[]).filter(t=>active.has(t.instId)&&
-    Number(t.volCcy24h)*Number(t.last)>=2000000&&Number(t.last)>0)
-    .sort((a,b)=>Number(b.volCcy24h)*Number(b.last)-Number(a.volCcy24h)*Number(a.last));
+    Number(t.volCcy24h)>=2000000&&Number(t.last)>0)
+    .sort((a,b)=>Number(b.volCcy24h)-Number(a.volCcy24h));
   const selection=sorted.slice(0,36),outputs=[];
   for(let i=0;i<selection.length;i+=9){
    const chunk=selection.slice(i,i+9);
@@ -209,7 +209,7 @@ async function fromOkx(statuses){
     const t=chunk[j],symbol=t.instId.replace('-','');
     const klines=(v.value.data||[]).map(normalizeOkxKline).filter(Boolean);
     const asset=scanCandles(symbol,klines,{
-      lastPrice:t.last,quoteVolume:Number(t.volCcy24h)*Number(t.last),
+      lastPrice:t.last,quoteVolume:Number(t.volCcy24h),
       priceChangePercent:Number(t.open24h)>0?(Number(t.last)/Number(t.open24h)-1)*100:0
     },'OKX');
     if(asset){asset.cexListings=['OKX'];outputs.push(asset)}
