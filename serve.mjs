@@ -7475,7 +7475,7 @@ setInterval(pollFamousXMonitor,60*60*1000);
 setTimeout(pollPumpXMonitor,6000);
 setTimeout(pollCexNews,2500);
 setTimeout(pollAllMarkets,3500);
-setInterval(pollAllMarkets,5*60*1000);
+setInterval(pollAllMarkets,20*1000); // cache prevents rescanning; UI receives completed first scan promptly
 setInterval(pollCexNews,15*60*1000);
 setInterval(pollPumpXMonitor,15*60*1000);
 </script>
