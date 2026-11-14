@@ -4413,7 +4413,7 @@ body{font-size:15px}
 <details class="section-index" data-index-for="cex"><summary>راهنمای بخش لیست‌شدن صرافی‌ها</summary><div class="section-index-content"></div></details>
   <h2>🏦 رادار لیست‌شدن صرافی‌ها</h2>
   <p class="muted">Binance، Bybit و OKX؛ فقط اعلام رسمی صرافی مبنای «لیست قطعی» است. لیست Spot با فیوچرز، مارجین و شایعه متفاوت است. تاریخ و شمارش معکوس فقط با زمان رسمی قابل‌استناد نمایش داده می‌شود.</p>
-  <details class="accordion highlight" open><summary>📣 اطلاعیه‌های رسمی و زمان‌بندی لیست</summary>
+  <details class="accordion" open><summary>📣 اطلاعیه‌های رسمی و زمان‌بندی لیست</summary>
     <div class="accordion-body">
       <div class="note" id="cexListingStatus">در حال دریافت اطلاعیه‌های رسمی...</div>
       <div class="list" id="cexOfficialListings"></div>
