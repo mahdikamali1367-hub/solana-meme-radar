@@ -253,7 +253,14 @@ async function broadCexScanner(){
  const now=Date.now();
  if(cache.result&&now-cache.at<(cache.result.ok?TTL:30000))return {...cache.result,scanning:!!inFlight};
  if(!inFlight){
-  inFlight=scan().then(r=>{cache={at:Date.now(),result:r};return r})
+  inFlight=scan().then(r=>{
+    cache={at:Date.now(),result:r};
+    console.log('CEX_SCAN_RESULT',JSON.stringify({ok:r.ok,exchange:r.primaryExchange||null,
+      checked:r.candlePairsScanned||0,results:r.assets?.length||0,
+      sources:r.sources?.map(x=>({name:x.exchange,status:x.status,error:x.error||null}))||[],
+      error:r.error||null}));
+    return r
+  })
     .catch(e=>{const r={ok:false,generatedAt:nowIso(),assets:[],sources:[],
       error:String(e.message||e)};cache={at:Date.now(),result:r};return r})
     .finally(()=>{inFlight=null});
