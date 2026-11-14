@@ -7025,11 +7025,16 @@ function renderAllMarkets(){
  if(!status||!list)return;
  var d=allMarketsData;
  if(!d){status.textContent='داده بازار هنوز دریافت نشده؛ تلاش برای اسکن Spot در جریان است.';return}
- status.textContent='Binance Spot · '+Number(d.totalSpotPairs||0)+' جفت فعال USDT · '+
-   Number(d.candlePairsScanned||0)+' جفت درخواست بررسی کندل · '+
+ var sourceNotes=(d.sources||[]).map(function(x){
+   return x.exchange+': '+(x.status==='ok'?'متصل':'ناموفق'+(x.error?' ('+x.error+')':''));
+ }).join(' | ');
+ status.textContent=(d.primaryExchange||'اسکن منابع Spot')+' · '+Number(d.totalSpotPairs||0)+' جفت فعال USDT · '+
+   Number(d.candlePairsScanned||0)+' درخواست کندل · '+
    Number(d.candlePairsWithAnalysis||0)+' تحلیل معتبر · '+
-   (d.scanning?'در حال اسکن':'آخرین دریافت '+new Date(d.generatedAt).toLocaleString('fa-IR'))+
-   '. '+(d.error||'فقط بازارهای نقد و پُرحجم در این اسکن؛ پوشش تمام کوین‌ها نیست.');
+   (d.scanning?'اسکن در حال اجرا':'آخرین نتیجه '+new Date(d.generatedAt).toLocaleString('fa-IR'))+
+   (d.error?' · '+d.error:'')+
+   (sourceNotes?' · وضعیت منابع: '+sourceNotes:'')+
+   '. داده ناقص یا قطع API به‌معنی نبود فرصت در بازار نیست.';
  var rows=Array.isArray(d.assets)?d.assets:[];
  list.innerHTML=rows.length?rows.slice(0,36).map(function(t){
    var zone=t.entryZone&&t.technicalStatus==='TECHNICAL_SETUP';
@@ -7045,7 +7050,11 @@ function renderAllMarkets(){
      '<div class="cell"><small>قدرت خرید تیکرها</small><b>'+(t.buyerPowerPct!=null?Number(t.buyerPowerPct).toFixed(1)+'٪':'نامشخص')+'</b></div>'+
      '<div class="cell"><small>حجم Spot ۲۴ساعته</small><b>$'+Math.round(t.quoteVolume24h).toLocaleString('en-US')+'</b></div>'+
      '<div class="actions"><a class="action" href="'+esc(t.link)+'" rel="noopener" target="_blank">بازار صرافی</a></div></div>';
- }).join(''):'<div class="empty">فعلاً داده کندل معتبر تکمیل‌شده موجود نیست؛ سیگنال ساختگی نمایش داده نمی‌شود.</div>';
+ }).join(''):'<div class="empty">'+
+   (d.scanning?'در حال دریافت کندل‌های Spot از صرافی‌ها؛ داده اسکن اول هنوز آماده نیست.':
+    d.error?'اطلاعات بازار از Binance، Bybit و OKX دریافت نشد. علت‌های اتصال در نوار بالا آمده است؛ لطفاً وضعیت منابع را بررسی کن.':
+    'داده کندل معتبر برای جفت‌های بررسی‌شده پیدا نشد؛ هیچ سیگنال ساختگی نمایش داده نمی‌شود.')+
+   '</div>';
 }
 async function pollAllMarkets(){
  if(allMarketsBusy)return;allMarketsBusy=true;
