@@ -1,5 +1,6 @@
 import {createServer} from 'node:http';
 import {officialListingFeed} from './cex-listings.mjs';
+import {broadCexScanner} from './cex-market.mjs';
 import {readFileSync} from 'node:fs';
 
 const PORT=Number(process.env.PORT||4173);
@@ -4147,6 +4148,7 @@ body{font-size:15px}
   <button type="button" class="tab active" data-tab="featured" aria-selected="true"><svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="8"/><path d="M12 7v10M7 12h10"/></svg> ◈ نمای کلی</button>
   <button type="button" class="tab" data-tab="tokens" aria-selected="false"><svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 17l6-6 4 4 8-9"/><path d="M16 6h5v5"/></svg> ◉ بازار و توکن‌ها</button>
   <button type="button" class="tab" data-tab="social" aria-selected="false"><svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6A8.38 8.38 0 0 1 12.5 3h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg> ◎ شبکه‌های اجتماعی</button>
+  <button type="button" class="tab" data-tab="allmarkets" aria-selected="false"><svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="m3 12 6-4 4 6 8-7M4 17h16"/></svg> 📊 بهترین فرصت‌های بازار</button>
   <button type="button" class="tab" data-tab="cex" aria-selected="false"><svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="8" width="18" height="12" rx="2"/><path d="M3 8l9-5 9 5M8 20v-8M16 20v-8"/></svg> 🏦 لیست‌شدن صرافی‌ها</button>
   <button type="button" class="tab" data-tab="wallets" aria-selected="false"><svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="15" rx="2"/><path d="M16 14h5M3 9h18"/><circle cx="16" cy="14" r="1"/></svg> ▣ کیف‌پول‌ها</button>
   <details class="nav-more" id="advancedMenu">
@@ -4396,6 +4398,17 @@ body{font-size:15px}
   </details>
 </section>
 
+<section class="panel" id="allmarketsPanel">
+<details class="section-index" data-index-for="allmarkets"><summary>زیرمجموعه‌های تحلیل بازار</summary><div class="section-index-content"></div></details>
+<h2>📊 بهترین موقعیت‌های تکنیکال در بازار صرافی‌های متمرکز</h2>
+<p class="muted">بررسی جفت‌ارزهای Spot با حجم بالا؛ تحلیل EMA20/50، RSI14، ATR14، فشار خرید تیکرها و حجم معاملات. فهرست شامل همه رمزارزهای جهان نیست؛ پوشش و تعداد جفت‌ارزهای بررسی‌شده نمایش داده می‌شود.</p>
+<details class="accordion highlight" open><summary>🎯 فرصت‌های تکنیکال و محدوده‌های ورود احتمالی</summary><div class="accordion-body">
+<div class="note" id="allMarketsStatus">در حال بررسی داده Spot صرافی...</div><div class="list" id="allMarketsSetups"></div></div></details>
+<details class="accordion" open><summary>🐋 نهنگ‌ها و اسمارت‌مانی — اعتبارسنجی جداگانه</summary><div class="accordion-body"><div class="note">
+خرید تیکرها در CEX هویت خریدار را نشان نمی‌دهد؛ بنابراین فشار خرید یا حجم بالا به‌عنوان «خرید نهنگ» یا «اسمارت‌مانی» ثبت نمی‌شود.
+اگر آدرس کیف‌پول قابل استناد به دارایی و شبکه آن وصل نباشد، وضعیت هر دو «تأییدنشده» است.
+</div></div></details></section>
+
 <section class="panel" id="cexPanel">
 <details class="section-index" data-index-for="cex"><summary>راهنمای بخش لیست‌شدن صرافی‌ها</summary><div class="section-index-content"></div></details>
   <h2>🏦 رادار لیست‌شدن صرافی‌ها</h2>
@@ -4546,6 +4559,7 @@ body{font-size:15px}
       social:['رادار اجتماعی','رصد X و اکانت‌های مشهور، پست‌های پیش از پامپ و شواهد قابل بررسی.'],
       wallets:['ردیابی کیف‌پول‌ها','تریدرهای برتر، خریدهای مشترک، پوزیشن‌ها و عملکرد تخمینی.'],
       cex:['رادار لیست‌شدن صرافی‌ها','اطلاعیه رسمی بایننس و سایر صرافی‌ها؛ نهنگ، اسمارت‌مانی و نقطه ورود فقط با شواهد امنیتی.'],
+      allmarkets:['فرصت‌های Spot صرافی‌ها','تحلیل EMA/RSI/ATR روی بازارهای پُرحجم؛ خرید نهنگ و اسمارت‌مانی فقط با مدرک مستقل.'],
       whales:['ردیابی نهنگ‌ها','ورود و خروج سرمایه بزرگ، جریان خرید و نشانه‌های هشدار.'],
       smart:['اسمارت‌مانی','رفتار کیف‌پول‌های منتخب و مقایسه سیگنال‌های سرمایه هوشمند.'],
       prelaunch:['رادار پیش‌لانچ','پروژه‌های پیش از عرضه و شواهد امنیتی؛ صرفاً برای بررسی.']
@@ -7001,6 +7015,44 @@ function safeUiRender(name,fn){
   }
 }
 
+var allMarketsData=null,allMarketsBusy=false;
+function marketPrice(v){
+ var n=Number(v);if(!Number.isFinite(n)||n<=0)return '—';
+ return n>=10?n.toFixed(2):n>=1?n.toFixed(4):n>=.01?n.toFixed(6):n.toPrecision(5);
+}
+function renderAllMarkets(){
+ var status=document.getElementById('allMarketsStatus'),list=document.getElementById('allMarketsSetups');
+ if(!status||!list)return;
+ var d=allMarketsData;
+ if(!d){status.textContent='داده بازار هنوز دریافت نشده؛ تلاش برای اسکن Spot در جریان است.';return}
+ status.textContent='Binance Spot · '+Number(d.totalSpotPairs||0)+' جفت فعال USDT · '+
+   Number(d.candlePairsScanned||0)+' جفت درخواست بررسی کندل · '+
+   Number(d.candlePairsWithAnalysis||0)+' تحلیل معتبر · '+
+   (d.scanning?'در حال اسکن':'آخرین دریافت '+new Date(d.generatedAt).toLocaleString('fa-IR'))+
+   '. '+(d.error||'فقط بازارهای نقد و پُرحجم در این اسکن؛ پوشش تمام کوین‌ها نیست.');
+ var rows=Array.isArray(d.assets)?d.assets:[];
+ list.innerHTML=rows.length?rows.slice(0,36).map(function(t){
+   var zone=t.entryZone&&t.technicalStatus==='TECHNICAL_SETUP';
+   return '<div class="row"><div class="asset"><b>'+esc(t.baseAsset)+' / USDT</b>'+
+     '<span class="badge '+(zone?'good':'mid')+'">'+(zone?'محدوده تکنیکال قابل رصد':'در انتظار موقعیت مناسب')+'</span>'+
+     '<small>Spot فعال در '+esc((t.cexListings||['Binance']).join(' و '))+' · آخرین کندل '+new Date(t.lastCandleAt).toLocaleString('fa-IR')+'</small>'+
+     '<small>روند '+esc(t.trend)+' · EMA20 '+marketPrice(t.ema20)+' · EMA50 '+marketPrice(t.ema50)+' · RSI '+Number(t.rsi14).toFixed(1)+' · ATR '+marketPrice(t.atr14)+'</small>'+
+     '<small>محدوده ورود تکنیکال: '+(zone?marketPrice(t.entryZone.low)+' تا '+marketPrice(t.entryZone.high):'تأیید نشده')+
+     ' · حد ضرر: '+(zone?marketPrice(t.stopLoss):'—')+' · هدف اول: '+(zone?marketPrice(t.target1):'—')+'</small>'+
+     '<small>🐋 نهنگ: تأییدنشده · 🧠 اسمارت‌مانی: تأییدنشده · بدون سیگنال خرید تأییدشده</small>'+
+     '</div><div class="cell"><small>امتیاز تکنیکال</small><b>'+Number(t.score)+'/100</b></div>'+
+     '<div class="cell"><small>قیمت</small><b>'+marketPrice(t.lastPrice)+' USDT</b></div>'+
+     '<div class="cell"><small>قدرت خرید تیکرها</small><b>'+(t.buyerPowerPct!=null?Number(t.buyerPowerPct).toFixed(1)+'٪':'نامشخص')+'</b></div>'+
+     '<div class="cell"><small>حجم Spot ۲۴ساعته</small><b>$'+Math.round(t.quoteVolume24h).toLocaleString('en-US')+'</b></div>'+
+     '<div class="actions"><a class="action" href="'+esc(t.link)+'" rel="noopener" target="_blank">بازار صرافی</a></div></div>';
+ }).join(''):'<div class="empty">فعلاً داده کندل معتبر تکمیل‌شده موجود نیست؛ سیگنال ساختگی نمایش داده نمی‌شود.</div>';
+}
+async function pollAllMarkets(){
+ if(allMarketsBusy)return;allMarketsBusy=true;
+ try{var result=await safeJson('/api/v1/cex-market');if(result)allMarketsData=result;
+   if(activeTab==='allmarkets')renderAllMarkets();
+ }finally{allMarketsBusy=false}
+}
 var cexNews=null;
 var cexNewsBusy=false;
 function cexHtmlUrl(url){
@@ -7113,6 +7165,8 @@ function renderActivePanel(){
       safeUiRender('ترند اجتماعی',renderSocialTrends);
     }else if(activeTab==='cex'){
       safeUiRender('لیست‌شدن صرافی',renderCexDashboard);
+    }else if(activeTab==='allmarkets'){
+      safeUiRender('فرصت‌های بازار صرافی',renderAllMarkets);
     }else if(activeTab==='wallets'){
       safeUiRender('کیف‌پول‌ها',renderWallets);
       safeUiRender('Conviction',renderConviction);
@@ -7420,6 +7474,8 @@ setTimeout(pollFamousXMonitor,3500);
 setInterval(pollFamousXMonitor,60*60*1000);
 setTimeout(pollPumpXMonitor,6000);
 setTimeout(pollCexNews,2500);
+setTimeout(pollAllMarkets,3500);
+setInterval(pollAllMarkets,5*60*1000);
 setInterval(pollCexNews,15*60*1000);
 setInterval(pollPumpXMonitor,15*60*1000);
 </script>
@@ -7430,6 +7486,11 @@ setInterval(pollPumpXMonitor,15*60*1000);
 createServer(async(req,res)=>{
   const url=new URL(req.url,'http://localhost');
   try{
+    if(url.pathname==='/api/v1/cex-market'){
+      const data=await broadCexScanner();
+      res.writeHead(200,{'content-type':'application/json; charset=utf-8','cache-control':'no-store',...headers});
+      return res.end(JSON.stringify(data));
+    }
     if(url.pathname==='/api/v1/cex-listings'){
       const data=await officialListingFeed();
       res.writeHead(200,{'content-type':'application/json; charset=utf-8','cache-control':'no-store',...headers});
