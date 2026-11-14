@@ -7492,6 +7492,9 @@ setInterval(pollPumpXMonitor,15*60*1000);
 </body>
 </html>`;
 
+// Prewarm exchange scanner so market data is available before opening the tab.
+setTimeout(()=>broadCexScanner().catch(e=>console.error('CEX_PREWARM',e?.message||e)),6000);
+
 createServer(async(req,res)=>{
   const url=new URL(req.url,'http://localhost');
   try{
